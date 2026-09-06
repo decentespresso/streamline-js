@@ -10257,6 +10257,26 @@ export function renderBluetoothMachineSettings() {
     `;
 }
 
+function renderScaleToggle(settings, key, title, description) {
+    if (!Object.prototype.hasOwnProperty.call(settings || {}, key)) return '';
+    return `
+            <div class="flex items-center justify-between w-full">
+                <div class="flex flex-col gap-[8px]">
+                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[30px] leading-[1.2]" data-i18n-key="${title}">${title}</p>
+                    <p class="font-['Inter:Regular',sans-serif] text-[var(--text-primary)] text-[24px] leading-[1.4]" data-i18n-key="${description}">${description}</p>
+                </div>
+                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                    <input type="checkbox" class="sr-only peer" ${settings[key] ? 'checked' : ''}
+                           onchange="window.updateReaSetting('${key}', this.checked, false)">
+                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                </label>
+            </div>
+
+            <hr class="border-t border-[#c9c9c9] w-full" />
+    `;
+}
+
 // Render Bluetooth Scale settings
 export function renderBluetoothScaleSettings(settings) {
     // Render devices from WebSocket cache on initial render
@@ -10294,6 +10314,9 @@ export function renderBluetoothScaleSettings(settings) {
             </div>
 
             <hr class="border-t border-[#c9c9c9] w-full" />
+
+            ${renderScaleToggle(settings, 'scaleButtonStartsEspresso', 'Skale Square Button', 'Start espresso from idle or stop the active espresso.')}
+            ${renderScaleToggle(settings, 'skalePoweredByUsb', 'Skale USB Power', 'Declare USB power manually and suppress battery reads.')}
 
             <!-- Scale Power Mode -->
             <div class="flex flex-col gap-[16px] items-start relative w-full">
@@ -10431,9 +10454,19 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
         const isUnavailable = device.available === false;
         const isConnected = !isUnavailable && device.state === 'connected';
         const isPreferred = preferredId && device.id === preferredId;
+        const deviceInfo = device.deviceInfo || {};
         const safeId = (device.id || '').replace(/'/g, "\\'");
         const safeName = (device.name || '').replace(/'/g, "\\'");
         const safeSettingKey = settingKey.replace(/'/g, "\\'");
+        const firmware = deviceInfo.firmwareVersion
+            ? `<span class="text-[18px] text-[var(--text-primary)] opacity-60">${getTranslation('Firmware')} ${escapeHtml(deviceInfo.firmwareVersion)}</span>`
+            : '';
+        const batteryLevel = type === 'Scale' && isConnected
+            ? (Number.isFinite(deviceInfo.batteryLevel) ? deviceInfo.batteryLevel : window.getLatestScaleBattery?.())
+            : null;
+        const batteryBadge = batteryLevel !== null && batteryLevel !== undefined
+            ? renderBatteryBadge(batteryLevel)
+            : '';
 
         const dotClass = isConnected ? 'bg-green-500'
             : isUnavailable ? 'bg-amber-500/40'
@@ -10474,16 +10507,14 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                     <div class="flex flex-col gap-[4px] min-w-0">
                         <span class="text-[26px] font-bold text-[var(--text-primary)] truncate leading-tight">${device.name}</span>
                         <span class="text-[18px] text-[var(--text-primary)] opacity-40 font-mono truncate">${device.id || 'N/A'}</span>
+                        ${firmware}
                     </div>
                 </div>
                 <div class="flex items-center gap-[20px] flex-shrink-0 ml-[24px]">
-                    ${(() => {
-                        if (type === 'Scale' && isConnected) {
-                            const batt = window.getLatestScaleBattery?.();
-                            return batt !== null && batt !== undefined ? renderBatteryBadge(batt) : '';
-                        }
-                        return '';
-                    })()}
+                    ${batteryBadge}
+                    ${type === 'Scale' && isConnected && deviceInfo.powerSource === 'usb'
+                        ? '<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full bg-[#385a92] text-white">USB</span>'
+                        : ''}
                     ${settingKey ? `
                     <div class="flex flex-col items-center gap-[4px]">
                         <span class="text-[16px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
