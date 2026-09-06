@@ -10257,24 +10257,33 @@ export function renderBluetoothMachineSettings() {
     `;
 }
 
-function renderScaleToggle(settings, key, title, description) {
-    if (!Object.prototype.hasOwnProperty.call(settings || {}, key)) return '';
+function renderScalePopupToggle(title, description, enabled, inputAttributes) {
     return `
-            <div class="flex items-center justify-between w-full">
-                <div class="flex flex-col gap-[8px]">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[30px] leading-[1.2]" data-i18n-key="${title}">${title}</p>
-                    <p class="font-['Inter:Regular',sans-serif] text-[var(--text-primary)] text-[24px] leading-[1.4]" data-i18n-key="${description}">${description}</p>
-                </div>
-                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                    <input type="checkbox" class="sr-only peer" ${settings[key] ? 'checked' : ''}
-                           onchange="window.updateReaSetting('${key}', this.checked, false)">
-                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
-                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                </label>
+        <div class="flex items-center justify-between gap-[24px] py-[16px]">
+            <div class="flex flex-col gap-[6px]">
+                <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px] leading-[1.2]" data-i18n-key="${title}">${title}</p>
+                <p class="font-['Inter:Regular',sans-serif] text-[var(--text-primary)] text-[20px] leading-[1.4]" data-i18n-key="${description}">${description}</p>
             </div>
-
-            <hr class="border-t border-[#c9c9c9] w-full" />
+            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                <input type="checkbox" class="sr-only peer" ${enabled ? 'checked' : ''}
+                       ${inputAttributes}>
+                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+            </label>
+        </div>
     `;
+}
+
+function renderScaleDeviceToggle(settings, key, legacyKey, deviceId, title, description) {
+    const hasPerDeviceSetting = Object.prototype.hasOwnProperty.call(settings || {}, key);
+    if (!hasPerDeviceSetting && !Object.prototype.hasOwnProperty.call(settings || {}, legacyKey)) return '';
+    return renderScalePopupToggle(
+        title,
+        description,
+        hasPerDeviceSetting ? settings?.[key]?.[deviceId] === true : settings[legacyKey] === true,
+        `data-setting-key="${key}" data-legacy-key="${legacyKey}" data-device-id="${escapeHtml(deviceId)}"
+         onchange="window.updateScaleDeviceSetting(this.dataset.settingKey, this.dataset.legacyKey, this.dataset.deviceId, this.checked)"`,
+    );
 }
 
 // Render Bluetooth Scale settings
@@ -10314,9 +10323,6 @@ export function renderBluetoothScaleSettings(settings) {
             </div>
 
             <hr class="border-t border-[#c9c9c9] w-full" />
-
-            ${renderScaleToggle(settings, 'scaleButtonStartsEspresso', 'Skale Square Button', 'Start espresso from idle or stop the active espresso.')}
-            ${renderScaleToggle(settings, 'skalePoweredByUsb', 'Skale USB Power', 'Declare USB power manually and suppress battery reads.')}
 
             <!-- Scale Power Mode -->
             <div class="flex flex-col gap-[16px] items-start relative w-full">
@@ -10395,6 +10401,16 @@ export function renderBluetoothScaleSettings(settings) {
                     </div>
                     <div class="modal-action">
                         <button class="btn" onclick="document.getElementById('wifi-scale-modal').close()">Close</button>
+                    </div>
+                </div>
+            </dialog>
+
+            <dialog id="scale-device-settings-modal" class="modal">
+                <div class="modal-box bg-[var(--box-color)] max-w-2xl">
+                    <h3 id="scale-device-settings-title" class="font-bold text-[28px] text-[var(--text-primary)] mb-2"></h3>
+                    <div id="scale-device-settings-content"></div>
+                    <div class="modal-action">
+                        <button class="btn" onclick="document.getElementById('scale-device-settings-modal').close()">Close</button>
                     </div>
                 </div>
             </dialog>
@@ -10515,7 +10531,7 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                     ${type === 'Scale' && isConnected && deviceInfo.powerSource === 'usb'
                         ? '<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full bg-[#385a92] text-white">USB</span>'
                         : ''}
-                    ${settingKey ? `
+                    ${settingKey && type !== 'Scale' ? `
                     <div class="flex flex-col items-center gap-[4px]">
                         <span class="text-[16px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
                         <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[72px] h-[36px]">
@@ -10527,6 +10543,12 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                         </label>
                     </div>
                     ` : ''}
+                    ${type === 'Scale' ? `
+                    <button aria-label="Configure ${escapeHtml(device.name)}"
+                            data-device-id="${escapeHtml(device.id || '')}"
+                            class="border-2 border-[#385a92] text-[#385a92] hover:bg-[#385a92] hover:text-white h-[62px] px-[24px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200"
+                            onclick="window.openScaleDeviceSettings(this.dataset.deviceId)">Settings</button>
+                    ` : ''}
                     ${badge}
                     ${actions}
                 </div>
@@ -10536,6 +10558,41 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
 
     return deviceItems;
 }
+
+window.openScaleDeviceSettings = function(deviceId) {
+    const device = deviceStateCache.devices.find(item => item.id === deviceId);
+    const modal = document.getElementById('scale-device-settings-modal');
+    const title = document.getElementById('scale-device-settings-title');
+    const content = document.getElementById('scale-device-settings-content');
+    if (!device || !modal || !title || !content) return;
+
+    const settings = settingsCache.rea || {};
+    const isPreferred = settings.preferredScaleId === deviceId;
+    title.textContent = `${device.name} settings`;
+    content.innerHTML = `
+        ${renderScalePopupToggle(
+            'Preferred Scale',
+            'Reconnect to this scale automatically.',
+            isPreferred,
+            `data-device-id="${escapeHtml(deviceId)}"
+             onchange="window.setPreferredDevice('preferredScaleId', this.dataset.deviceId, this.checked)"`,
+        )}
+        ${renderScaleDeviceToggle(settings, 'scaleButtonStartsEspressoByDevice', 'scaleButtonStartsEspresso', deviceId, 'Skale Square Button', 'Start espresso from idle or stop the active espresso.')}
+        ${renderScaleDeviceToggle(settings, 'skalePoweredByUsbByDevice', 'skalePoweredByUsb', deviceId, 'Skale USB Power', 'Declare USB power manually and suppress battery reads.')}
+    `;
+    modal.showModal();
+};
+
+window.updateScaleDeviceSetting = function(key, legacyKey, deviceId, enabled) {
+    if (Object.prototype.hasOwnProperty.call(settingsCache.rea || {}, key)) {
+        const values = { ...(settingsCache.rea[key] || {}) };
+        if (enabled) values[deviceId] = true;
+        else delete values[deviceId];
+        updateReaSetting(key, values, false);
+    } else {
+        updateReaSetting(legacyKey, enabled, false);
+    }
+};
 
 
 
@@ -10626,7 +10683,7 @@ window.handleDeviceRescan = function() {
 window.setPreferredDevice = async function(settingKey, deviceId, isOn) {
     const value = isOn ? deviceId : null;
     try {
-        await window.updateReaSetting(settingKey, value);
+        await window.updateReaSetting(settingKey, value, false);
         // Re-render device lists so only one row shows as preferred
         renderDeviceListFromCache();
     } catch (error) {
