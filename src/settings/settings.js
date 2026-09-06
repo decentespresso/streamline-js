@@ -10461,7 +10461,7 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
         const firmware = deviceInfo.firmwareVersion
             ? `<span class="text-[18px] text-[var(--text-primary)] opacity-60">${getTranslation('Firmware')} ${escapeHtml(deviceInfo.firmwareVersion)}</span>`
             : '';
-        const batteryLevel = type === 'Scale' && isConnected
+        const batteryLevel = type === 'Scale' && isConnected && deviceInfo.powerSource !== 'usb'
             ? (Number.isFinite(deviceInfo.batteryLevel) ? deviceInfo.batteryLevel : window.getLatestScaleBattery?.())
             : null;
         const batteryBadge = batteryLevel !== null && batteryLevel !== undefined

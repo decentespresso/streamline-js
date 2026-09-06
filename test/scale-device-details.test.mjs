@@ -12,6 +12,7 @@ test('scale settings show device metadata exposed by Decaid', () => {
     assert.match(source, /firmwareVersion/);
     assert.match(source, /batteryLevel/);
     assert.match(source, /powerSource === 'usb'/);
+    assert.match(source, /deviceInfo\.powerSource !== 'usb'/);
 });
 
 test('scale settings expose supported Skale controls', () => {
