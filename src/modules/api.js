@@ -149,6 +149,14 @@ export async function getDevices() {
     if (!response.ok) {
         throw new Error('Failed to get devices');
     }
+
+    export async function getScaleInfo() {
+        const response = await fetch(`${API_BASE_URL}/scale/info`);
+        if (!response.ok) {
+            throw new Error(`Failed to get scale info (${response.status})`);
+        }
+        return response.json();
+    }
     return response.json();
 }
 

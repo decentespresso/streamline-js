@@ -8,11 +8,13 @@ const source = readFileSync(
 );
 
 test('scale settings show device metadata exposed by Decaid', () => {
-    assert.match(source, /device\.deviceInfo/);
+    assert.match(source, /getScaleInfo/);
+    assert.match(source, /scaleInfoByDeviceId/);
     assert.match(source, /firmwareVersion/);
     assert.match(source, /batteryLevel/);
-    assert.match(source, /powerSource === 'usb'/);
-    assert.match(source, /deviceInfo\.powerSource !== 'usb'/);
+    assert.match(source, /scaleInfoRequestGeneration/);
+    assert.match(source, /scaleInfoDeviceId !== connectedScaleId/);
+    assert.doesNotMatch(source, /deviceInfo\.powerSource/);
 });
 
 test('scale settings put supported controls in a device popup', () => {
