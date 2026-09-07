@@ -10470,7 +10470,7 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
         const isUnavailable = device.available === false;
         const isConnected = !isUnavailable && device.state === 'connected';
         const isPreferred = preferredId && device.id === preferredId;
-        const deviceInfo = device.deviceInfo || {};
+        const deviceInfo = {};
         const safeId = (device.id || '').replace(/'/g, "\\'");
         const safeName = (device.name || '').replace(/'/g, "\\'");
         const safeSettingKey = settingKey.replace(/'/g, "\\'");
