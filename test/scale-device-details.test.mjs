@@ -26,6 +26,25 @@ function extractFunction(name) {
     throw new Error(`Could not extract ${name}`);
 }
 
+function extractAssignedFunction(name) {
+    const start = source.indexOf(`window.${name} = function(`);
+    assert.notEqual(start, -1, `${name} was not found`);
+    let depth = 0;
+    let bodyStarted = false;
+    for (let index = source.indexOf('{', start); index < source.length; index += 1) {
+        if (source[index] === '{') {
+            depth += 1;
+            bodyStarted = true;
+        } else if (source[index] === '}') {
+            depth -= 1;
+            if (bodyStarted && depth === 0) {
+                return source.slice(source.indexOf('function', start), index + 1);
+            }
+        }
+    }
+    throw new Error(`Could not extract ${name}`);
+}
+
 function loadScaleInfoLifecycle({ getScaleInfo, deviceStateCache, renderDeviceListFromCache = () => {} }) {
     const start = source.indexOf('const scaleInfoByDeviceId = new Map();');
     const end = source.indexOf('// Render generic loading state', start);
@@ -40,10 +59,15 @@ function loadScaleInfoLifecycle({ getScaleInfo, deviceStateCache, renderDeviceLi
     )(getScaleInfo, deviceStateCache, renderDeviceListFromCache, { warn() {}, debug() {} });
 }
 
-function loadRenderSingleDeviceList({ scaleInfoByDeviceId, latestBattery = undefined }) {
+function loadRenderSingleDeviceList({
+    scaleInfoByDeviceId,
+    usbPoweredByDevice = {},
+    latestBattery = undefined,
+}) {
     const render = extractFunction('renderSingleDeviceList');
     return new Function(
         'scaleInfoByDeviceId',
+        'settingsCache',
         'renderBatteryBadge',
         'escapeHtml',
         'getTranslation',
@@ -52,6 +76,7 @@ function loadRenderSingleDeviceList({ scaleInfoByDeviceId, latestBattery = undef
         `${render}\nreturn renderSingleDeviceList;`,
     )(
         scaleInfoByDeviceId,
+        { rea: { skalePoweredByUsbByDevice: usbPoweredByDevice } },
         level => `<battery>${level}</battery>`,
         value => String(value),
         value => value,
@@ -154,6 +179,58 @@ test('stale metadata is not rendered for disconnected scales or unknown batterie
 
     const connectedHtml = render([{ id: 'A', name: 'Scale A', state: 'connected' }], '', '', 'Scale');
     assert.doesNotMatch(connectedHtml, /77/);
+});
+
+test('USB power state is rendered from the per-device setting and suppresses battery', () => {
+    const metadata = new Map([['A', { firmwareVersion: 'R029', batteryLevel: 77 }]]);
+    const render = loadRenderSingleDeviceList({
+        scaleInfoByDeviceId: metadata,
+        usbPoweredByDevice: { A: true },
+    });
+
+    const html = render([{ id: 'A', name: 'Scale A', state: 'connected' }], '', '', 'Scale');
+    assert.match(html, />USB</);
+    assert.doesNotMatch(html, /<battery>77<\/battery>/);
+});
+
+test('USB badge and battery return to the live metadata path when disabled', () => {
+    const metadata = new Map([['A', { firmwareVersion: 'R029', batteryLevel: 77 }]]);
+    const render = loadRenderSingleDeviceList({
+        scaleInfoByDeviceId: metadata,
+        usbPoweredByDevice: { A: false },
+    });
+
+    const html = render([{ id: 'A', name: 'Scale A', state: 'connected' }], '', '', 'Scale');
+    assert.doesNotMatch(html, />USB</);
+    assert.match(html, /<battery>77<\/battery>/);
+});
+
+test('changing USB power clears cached metadata and repaints the device list', () => {
+    const scaleInfoByDeviceId = new Map([['A', { firmwareVersion: 'R029', batteryLevel: 77 }]]);
+    const settingsCache = { rea: { skalePoweredByUsbByDevice: {} } };
+    let renderCount = 0;
+    let staged;
+    const update = new Function(
+        'settingsCache',
+        'scaleInfoByDeviceId',
+        'renderDeviceListFromCache',
+        'updateReaSetting',
+        `const updateScaleDeviceSetting = ${extractAssignedFunction('updateScaleDeviceSetting')};\nreturn updateScaleDeviceSetting;`,
+    )(
+        settingsCache,
+        scaleInfoByDeviceId,
+        () => { renderCount += 1; },
+        (key, value) => { staged = { key, value }; settingsCache.rea[key] = value; },
+    );
+
+    update('skalePoweredByUsbByDevice', 'skalePoweredByUsb', 'A', true);
+    assert.equal(settingsCache.rea.skalePoweredByUsbByDevice.A, true);
+    assert.equal(scaleInfoByDeviceId.has('A'), false);
+    assert.equal(renderCount, 1);
+    assert.deepEqual(staged, {
+        key: 'skalePoweredByUsbByDevice',
+        value: { A: true },
+    });
 });
 
 test('scale settings put supported controls in a device popup', () => {
