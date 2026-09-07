@@ -308,6 +308,51 @@ let deviceStateCache = {
     scanning: false,
     initialized: false
 };
+const scaleInfoByDeviceId = new Map();
+const scaleInfoInFlight = new Map();
+let scaleInfoRequestGeneration = 0;
+let scaleInfoDeviceId = null;
+
+async function refreshScaleInfo(connectedScaleId) {
+    if (scaleInfoDeviceId !== connectedScaleId) {
+        scaleInfoRequestGeneration += 1;
+        scaleInfoDeviceId = connectedScaleId;
+        scaleInfoByDeviceId.clear();
+        scaleInfoInFlight.clear();
+    }
+    if (!connectedScaleId) return;
+    if (scaleInfoByDeviceId.has(connectedScaleId)) return;
+    if (scaleInfoInFlight.has(connectedScaleId)) return;
+    const generation = scaleInfoRequestGeneration;
+    const request = getScaleInfo();
+    scaleInfoInFlight.set(connectedScaleId, request);
+    try {
+        const info = await request;
+        if (generation !== scaleInfoRequestGeneration ||
+            scaleInfoDeviceId !== connectedScaleId ||
+            !deviceStateCache.devices.some(d =>
+                d.id === connectedScaleId &&
+                d.state === 'connected' &&
+                d.available !== false
+            )) {
+            return;
+        }
+        scaleInfoByDeviceId.set(connectedScaleId, info || {});
+        renderDeviceListFromCache();
+    } catch (error) {
+        if (generation === scaleInfoRequestGeneration) {
+            if ([404, 405, 501, 503].includes(error?.status)) {
+                scaleInfoByDeviceId.set(connectedScaleId, {});
+            } else {
+                logger.warn(`Could not load scale info for ${connectedScaleId}:`, error);
+            }
+        }
+    } finally {
+        if (scaleInfoInFlight.get(connectedScaleId) === request) {
+            scaleInfoInFlight.delete(connectedScaleId);
+        }
+    }
+}
 
 // Render generic loading state
 function renderLoadingState(title) {
@@ -9909,6 +9954,8 @@ function renderDeviceListFromCache() {
                         device.name.toLowerCase().includes('weight')))
     );
 
+    const connectedScale = scales.find(device => device.state === 'connected' && device.available !== false);
+    refreshScaleInfo(connectedScale?.id || null);
     renderDeviceList('bluetooth-machine-devices-container', machines, 'Machine',
         settingsCache.rea?.preferredMachineId || '', 'preferredMachineId');
     renderDeviceList('bluetooth-scale-devices-container', scales, 'Scale',
@@ -10470,15 +10517,17 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
         const isUnavailable = device.available === false;
         const isConnected = !isUnavailable && device.state === 'connected';
         const isPreferred = preferredId && device.id === preferredId;
-        const deviceInfo = {};
+        const deviceInfo = type === 'Scale' && isConnected
+            ? (scaleInfoByDeviceId.get(device.id) || {})
+            : {};
         const safeId = (device.id || '').replace(/'/g, "\\'");
         const safeName = (device.name || '').replace(/'/g, "\\'");
         const safeSettingKey = settingKey.replace(/'/g, "\\'");
         const firmware = deviceInfo.firmwareVersion
             ? `<span class="text-[18px] text-[var(--text-primary)] opacity-60">${getTranslation('Firmware')} ${escapeHtml(deviceInfo.firmwareVersion)}</span>`
             : '';
-        const batteryLevel = type === 'Scale' && isConnected && deviceInfo.powerSource !== 'usb'
-            ? (Number.isFinite(deviceInfo.batteryLevel) ? deviceInfo.batteryLevel : window.getLatestScaleBattery?.())
+        const batteryLevel = Number.isFinite(deviceInfo.batteryLevel)
+            ? deviceInfo.batteryLevel
             : null;
         const batteryBadge = batteryLevel !== null && batteryLevel !== undefined
             ? renderBatteryBadge(batteryLevel)

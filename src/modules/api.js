@@ -149,13 +149,15 @@ export async function getDevices() {
     if (!response.ok) {
         throw new Error('Failed to get devices');
     }
+    return response.json();
+}
 
-    export async function getScaleInfo() {
-        const response = await fetch(`${API_BASE_URL}/scale/info`);
-        if (!response.ok) {
-            throw new Error(`Failed to get scale info (${response.status})`);
-        }
-        return response.json();
+export async function getScaleInfo() {
+    const response = await fetch(`${API_BASE_URL}/scale/info`);
+    if (!response.ok) {
+        const error = new Error(`Failed to get scale info (${response.status})`);
+        error.status = response.status;
+        throw error;
     }
     return response.json();
 }
