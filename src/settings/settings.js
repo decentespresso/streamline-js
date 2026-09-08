@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, resetLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, resetLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { initScaling } from '../modules/scaling.js';
 import { getSupportedLanguages, getCurrentLanguage, setLanguage, translatePage, getTranslation } from '../modules/i18n.js';
@@ -238,6 +238,13 @@ const isNum = (v) => typeof v === 'number' && isFinite(v);
 
 async function flushPendingChanges() {
     const tasks = [];
+    const usbPowerSettingsChanged = Object.prototype.hasOwnProperty.call(
+        pendingChanges.rea,
+        'skalePoweredByUsbByDevice',
+    ) || Object.prototype.hasOwnProperty.call(
+        pendingChanges.rea,
+        'skalePoweredByUsb',
+    );
     if (Object.keys(pendingChanges.rea).length) tasks.push(setReaSettings(pendingChanges.rea));
     if (Object.keys(pendingChanges.de1).length) tasks.push(setDe1Settings(pendingChanges.de1));
     if (Object.keys(pendingChanges.de1Advanced).length) tasks.push(setDe1AdvancedSettings(pendingChanges.de1Advanced));
@@ -267,6 +274,11 @@ async function flushPendingChanges() {
         if (isNum(water.targetTemperature)) persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, water.targetTemperature);
     }
     if (tasks.length) await Promise.all(tasks);
+    if (usbPowerSettingsChanged) {
+        scaleInfoRequestGeneration += 1;
+        scaleInfoByDeviceId.clear();
+        scaleInfoInFlight.clear();
+    }
     saveSettingsBackup();
     resetPendingChanges();
 }
@@ -277,6 +289,51 @@ let deviceStateCache = {
     scanning: false,
     initialized: false
 };
+const scaleInfoByDeviceId = new Map();
+const scaleInfoInFlight = new Map();
+let scaleInfoRequestGeneration = 0;
+let scaleInfoDeviceId = null;
+
+async function refreshScaleInfo(connectedScaleId) {
+    if (scaleInfoDeviceId !== connectedScaleId) {
+        scaleInfoRequestGeneration += 1;
+        scaleInfoDeviceId = connectedScaleId;
+        scaleInfoByDeviceId.clear();
+        scaleInfoInFlight.clear();
+    }
+    if (!connectedScaleId) return;
+    if (scaleInfoByDeviceId.has(connectedScaleId)) return;
+    if (scaleInfoInFlight.has(connectedScaleId)) return;
+    const generation = scaleInfoRequestGeneration;
+    const request = getScaleInfo();
+    scaleInfoInFlight.set(connectedScaleId, request);
+    try {
+        const info = await request;
+        if (generation !== scaleInfoRequestGeneration ||
+            scaleInfoDeviceId !== connectedScaleId ||
+            !deviceStateCache.devices.some(d =>
+                d.id === connectedScaleId &&
+                d.state === 'connected' &&
+                d.available !== false
+            )) {
+            return;
+        }
+        scaleInfoByDeviceId.set(connectedScaleId, info || {});
+        renderDeviceListFromCache();
+    } catch (error) {
+        if (generation === scaleInfoRequestGeneration) {
+            if ([404, 405, 501, 503].includes(error?.status)) {
+                scaleInfoByDeviceId.set(connectedScaleId, {});
+            } else {
+                logger.warn(`Could not load scale info for ${connectedScaleId}:`, error);
+            }
+        }
+    } finally {
+        if (scaleInfoInFlight.get(connectedScaleId) === request) {
+            scaleInfoInFlight.delete(connectedScaleId);
+        }
+    }
+}
 
 // Render generic loading state
 function renderLoadingState(title) {
@@ -9084,6 +9141,8 @@ function renderDeviceListFromCache() {
                         device.name.toLowerCase().includes('weight')))
     );
 
+    const connectedScale = scales.find(device => device.state === 'connected' && device.available !== false);
+    refreshScaleInfo(connectedScale?.id || null);
     renderDeviceList('bluetooth-machine-devices-container', machines, 'Machine',
         settingsCache.rea?.preferredMachineId || '', 'preferredMachineId');
     renderDeviceList('bluetooth-scale-devices-container', scales, 'Scale',
@@ -9419,6 +9478,45 @@ export function renderBluetoothMachineSettings() {
     `;
 }
 
+function renderScalePopupToggle(title, description, enabled, inputAttributes) {
+    return `
+        <div class="flex items-center justify-between gap-[24px] py-[16px]">
+            <div class="flex flex-col gap-[6px]">
+                <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px] leading-[1.2]" data-i18n-key="${title}">${title}</p>
+                <p class="font-['Inter:Regular',sans-serif] text-[var(--text-primary)] text-[20px] leading-[1.4]" data-i18n-key="${description}">${description}</p>
+            </div>
+            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                <input type="checkbox" class="sr-only peer" ${enabled ? 'checked' : ''}
+                       ${inputAttributes}>
+                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+            </label>
+        </div>
+    `;
+}
+
+function getScaleDeviceSetting(settings, key, legacyKey, deviceId) {
+    if (Object.prototype.hasOwnProperty.call(settings || {}, key)) {
+        return settings?.[key]?.[deviceId] === true;
+    }
+    if (Object.prototype.hasOwnProperty.call(settings || {}, legacyKey)) {
+        return settings[legacyKey] === true;
+    }
+    return undefined;
+}
+
+function renderScaleDeviceToggle(settings, key, legacyKey, deviceId, title, description) {
+    const hasPerDeviceSetting = Object.prototype.hasOwnProperty.call(settings || {}, key);
+    if (!hasPerDeviceSetting && !Object.prototype.hasOwnProperty.call(settings || {}, legacyKey)) return '';
+    return renderScalePopupToggle(
+        title,
+        description,
+        getScaleDeviceSetting(settings, key, legacyKey, deviceId) === true,
+        `data-setting-key="${key}" data-legacy-key="${legacyKey}" data-device-id="${escapeHtml(deviceId)}"
+         onchange="window.updateScaleDeviceSetting(this.dataset.settingKey, this.dataset.legacyKey, this.dataset.deviceId, this.checked)"`,
+    );
+}
+
 // Render Bluetooth Scale settings
 export function renderBluetoothScaleSettings(settings) {
     // Render devices from WebSocket cache on initial render
@@ -9538,6 +9636,16 @@ export function renderBluetoothScaleSettings(settings) {
                 </div>
             </dialog>
 
+            <dialog id="scale-device-settings-modal" class="modal">
+                <div class="modal-box bg-[var(--box-color)] max-w-2xl">
+                    <h3 id="scale-device-settings-title" class="font-bold text-[28px] text-[var(--text-primary)] mb-2"></h3>
+                    <div id="scale-device-settings-content"></div>
+                    <div class="modal-action">
+                        <button class="btn" onclick="document.getElementById('scale-device-settings-modal').close()">Close</button>
+                    </div>
+                </div>
+            </dialog>
+
         </div>
     `;
 }
@@ -9593,9 +9701,31 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
         const isUnavailable = device.available === false;
         const isConnected = !isUnavailable && device.state === 'connected';
         const isPreferred = preferredId && device.id === preferredId;
+        const deviceInfo = type === 'Scale' && isConnected
+            ? (scaleInfoByDeviceId.get(device.id) || {})
+            : {};
+        const usbPowered = type === 'Scale' && isConnected &&
+            getScaleDeviceSetting(
+                settingsCache.rea,
+                'skalePoweredByUsbByDevice',
+                'skalePoweredByUsb',
+                device.id,
+            ) === true;
         const safeId = (device.id || '').replace(/'/g, "\\'");
         const safeName = (device.name || '').replace(/'/g, "\\'");
         const safeSettingKey = settingKey.replace(/'/g, "\\'");
+        const firmware = deviceInfo.firmwareVersion
+            ? `<span class="text-[18px] text-[var(--text-primary)] opacity-60">${getTranslation('Firmware')} ${escapeHtml(deviceInfo.firmwareVersion)}</span>`
+            : '';
+        const batteryLevel = !usbPowered && Number.isFinite(deviceInfo.batteryLevel)
+            ? deviceInfo.batteryLevel
+            : null;
+        const batteryBadge = batteryLevel !== null && batteryLevel !== undefined
+            ? renderBatteryBadge(batteryLevel)
+            : '';
+        const usbBadge = usbPowered
+            ? '<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full bg-[#385a92] text-white">USB</span>'
+            : '';
 
         const dotClass = isConnected ? 'bg-green-500'
             : isUnavailable ? 'bg-amber-500/40'
@@ -9636,17 +9766,13 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                     <div class="flex flex-col gap-[4px] min-w-0">
                         <span class="text-[26px] font-bold text-[var(--text-primary)] truncate leading-tight">${device.name}</span>
                         <span class="text-[18px] text-[var(--text-primary)] opacity-40 font-mono truncate">${device.id || 'N/A'}</span>
+                        ${firmware}
                     </div>
                 </div>
                 <div class="flex items-center gap-[20px] flex-shrink-0 ml-[24px]">
-                    ${(() => {
-                        if (type === 'Scale' && isConnected) {
-                            const batt = window.getLatestScaleBattery?.();
-                            return batt !== null && batt !== undefined ? renderBatteryBadge(batt) : '';
-                        }
-                        return '';
-                    })()}
-                    ${settingKey ? `
+                    ${batteryBadge}
+                    ${usbBadge}
+                    ${settingKey && type !== 'Scale' ? `
                     <div class="flex flex-col items-center gap-[4px]">
                         <span class="text-[16px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
                         <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[72px] h-[36px]">
@@ -9658,6 +9784,12 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                         </label>
                     </div>
                     ` : ''}
+                    ${type === 'Scale' ? `
+                    <button aria-label="Configure ${escapeHtml(device.name)}"
+                            data-device-id="${escapeHtml(device.id || '')}"
+                            class="border-2 border-[#385a92] text-[#385a92] hover:bg-[#385a92] hover:text-white h-[62px] px-[24px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200"
+                            onclick="window.openScaleDeviceSettings(this.dataset.deviceId)">Settings</button>
+                    ` : ''}
                     ${badge}
                     ${actions}
                 </div>
@@ -9667,6 +9799,41 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
 
     return deviceItems;
 }
+
+window.openScaleDeviceSettings = function(deviceId) {
+    const device = deviceStateCache.devices.find(item => item.id === deviceId);
+    const modal = document.getElementById('scale-device-settings-modal');
+    const title = document.getElementById('scale-device-settings-title');
+    const content = document.getElementById('scale-device-settings-content');
+    if (!device || !modal || !title || !content) return;
+
+    const settings = settingsCache.rea || {};
+    const isPreferred = settings.preferredScaleId === deviceId;
+    title.textContent = `${device.name} settings`;
+    content.innerHTML = `
+        ${renderScalePopupToggle(
+            'Preferred Scale',
+            'Reconnect to this scale automatically.',
+            isPreferred,
+            `data-device-id="${escapeHtml(deviceId)}"
+             onchange="window.setPreferredDevice('preferredScaleId', this.dataset.deviceId, this.checked)"`,
+        )}
+        ${renderScaleDeviceToggle(settings, 'scaleButtonStartsEspressoByDevice', 'scaleButtonStartsEspresso', deviceId, 'Skale Square Button', 'Start espresso on machines without an active group-head controller, or stop active espresso on any machine.')}
+        ${renderScaleDeviceToggle(settings, 'skalePoweredByUsbByDevice', 'skalePoweredByUsb', deviceId, 'Skale USB Power', 'Declare USB power manually and suppress battery reads.')}
+    `;
+    modal.showModal();
+};
+
+window.updateScaleDeviceSetting = function(key, legacyKey, deviceId, enabled) {
+    if (Object.prototype.hasOwnProperty.call(settingsCache.rea || {}, key)) {
+        const values = { ...(settingsCache.rea[key] || {}) };
+        if (enabled) values[deviceId] = true;
+        else delete values[deviceId];
+        updateReaSetting(key, values, false);
+    } else {
+        updateReaSetting(legacyKey, enabled, false);
+    }
+};
 
 
 
@@ -9757,7 +9924,7 @@ window.handleDeviceRescan = function() {
 window.setPreferredDevice = async function(settingKey, deviceId, isOn) {
     const value = isOn ? deviceId : null;
     try {
-        await window.updateReaSetting(settingKey, value);
+        await window.updateReaSetting(settingKey, value, false);
         // Re-render device lists so only one row shows as preferred
         renderDeviceListFromCache();
     } catch (error) {

@@ -134,6 +134,16 @@ export async function getDevices() {
     return response.json();
 }
 
+export async function getScaleInfo() {
+    const response = await fetch(`${API_BASE_URL}/scale/info`);
+    if (!response.ok) {
+        const error = new Error(`Failed to get scale info (${response.status})`);
+        error.status = response.status;
+        throw error;
+    }
+    return response.json();
+}
+
 // ── Sensors (Bengle milk probe et al.) ──────────────────────────────────────
 // GET /api/v1/sensors lists devices currently registered on the sensor bus
 // (e.g. a Bengle's onboard milk probe, auto-registered by reaprime's
