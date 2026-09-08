@@ -217,14 +217,34 @@ body {
     --button-secondary-bg: #e8e8e8;
     --button-secondary-text: #121212;
     /* bg colors in profile editor */
-    --secondary-button-bg:#b6c3d7; 
+    --secondary-button-bg:#b6c3d7;
     --secondary-button-outline:#385a92;
+
+    /* Profile editor CARDS redesign (Figma, Light Mode only export) */
+    --bg-tertiary: #E9F1F8;
+    --bg-secondary: #F6F8FA;
+    --border-primary: #C9C9C9;
+    --border-graph-grid: #E8E8E8;
+    --tab-text-inactive: #5F7BA8;
 }
 
 [data-theme='dark'] {
     --profile-button-outline-color: #17191e;
     --profile-button-background-color: #292c38;
     --profile-button-text-color: #FFFFFF;
+
+    /* Profile editor CARDS redesign — DERIVED, not specified: the Figma file
+       only ships Light Mode variables. Picked to sit the same way the light
+       values sit relative to a white (#FFFFFF) card: --bg-tertiary/--bg-secondary
+       are the ground behind a card, darker than --profile-button-background-color
+       (#292c38) the same way #E9F1F8/#F6F8FA sit lighter than white; --border-*
+       and --tab-text-inactive are lifted enough off --profile-button-background-color
+       and --mimoja-blue-v2 (#415996) to stay legible on a dark card. */
+    --bg-tertiary: #101217;
+    --bg-secondary: #1b1e26;
+    --border-primary: #454b5c;
+    --border-graph-grid: #333844;
+    --tab-text-inactive: #8a9ac9;
     --box-color: #17191e;
     --profileselectorbg:#17191e;
     --button-grey: #2a2d36;
@@ -519,7 +539,6 @@ body {
    token to #292c38, which would vanish against a dark panel. These id
    selectors outrank the app-wide [data-theme="dark"] scrollbar rules in
    dark-mode.css, so both themes are set here. */
-#editor-steps-container,
 #review-steps-col,
 #review-right-col {
   scrollbar-color: rgba(0, 0, 0, 0.42) rgba(0, 0, 0, 0.10); /* Firefox + Chromium 121+ */
@@ -531,13 +550,31 @@ body {
   width: 14px;
   height: 14px;
 }
-#editor-steps-container::-webkit-scrollbar-track,
 #review-steps-col::-webkit-scrollbar-track,
 #review-right-col::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.10);
   border-radius: 8px;
 }
-#editor-steps-container::-webkit-scrollbar-thumb,
+
+/* The CARDS row is the exception: the redesign draws a bare thumb on the page
+   ground with no trough, matching the pill the Figma shows on the SCRIPT and
+   SETTINGS panels. Declaring ::-webkit-scrollbar above still opts this pane
+   out of Chromium's fading overlay scrollbars, so the thumb stays put; only
+   the track is erased. */
+#editor-steps-container {
+  scrollbar-color: var(--secondary-button-bg) transparent; /* Firefox + Chromium 121+ */
+  scrollbar-gutter: stable;
+}
+#editor-steps-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+#editor-steps-container::-webkit-scrollbar-thumb {
+  background-color: var(--secondary-button-bg);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
 #review-steps-col::-webkit-scrollbar-thumb,
 #review-right-col::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.42);
@@ -546,28 +583,23 @@ body {
   border: 3px solid transparent;
   background-clip: content-box;
 }
-#editor-steps-container::-webkit-scrollbar-thumb:hover,
 #review-steps-col::-webkit-scrollbar-thumb:hover,
 #review-right-col::-webkit-scrollbar-thumb:hover {
   background-color: rgba(0, 0, 0, 0.62);
 }
 
-[data-theme='dark'] #editor-steps-container,
 [data-theme='dark'] #review-steps-col,
 [data-theme='dark'] #review-right-col {
   scrollbar-color: rgba(255, 255, 255, 0.42) rgba(255, 255, 255, 0.10);
 }
-[data-theme='dark'] #editor-steps-container::-webkit-scrollbar-track,
 [data-theme='dark'] #review-steps-col::-webkit-scrollbar-track,
 [data-theme='dark'] #review-right-col::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.10);
 }
-[data-theme='dark'] #editor-steps-container::-webkit-scrollbar-thumb,
 [data-theme='dark'] #review-steps-col::-webkit-scrollbar-thumb,
 [data-theme='dark'] #review-right-col::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.42);
 }
-[data-theme='dark'] #editor-steps-container::-webkit-scrollbar-thumb:hover,
 [data-theme='dark'] #review-steps-col::-webkit-scrollbar-thumb:hover,
 [data-theme='dark'] #review-right-col::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.62);
@@ -762,4 +794,18 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .led-tab, .led-step, .led-chip { transition: none; }
+}
+
+/* Profile editor CARDS icons — SVGs rendered as a CSS mask so the glyph picks
+   up `currentColor`/a theme token instead of the fixed stroke baked into the
+   source file. Size and mask-image are set inline per instance (they vary per
+   icon); this class only carries the mask mechanics shared by all of them. */
+.pe-icon-mask {
+  display: inline-block;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }

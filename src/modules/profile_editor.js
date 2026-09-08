@@ -1,8 +1,8 @@
 import { loadPage } from './router.js';
 import { showToast, flashPlusMinusButton } from './ui.js';
-import { openModal, shouldUseNumpad, resetNumpadModal } from './numpad-modal.js';
+import { openModal, resetNumpadModal } from './numpad-modal.js';
 import { openNotesModal } from './notes-modal.js';
-import { getTranslation } from './i18n.js';
+import { getTranslation, fitTextToWidth } from './i18n.js';
 import { callPluginEndpoint, getPluginSettings } from './api.js';
 import { validateProfileStructure, isActiveProfile } from './profileManager.js';
 import { getProfileOverride, saveProfileOverride, removeProfileOverrideKeys,
@@ -21,6 +21,9 @@ let editorState = {
     sourceProfileRecord: null,
     profile: null,
     activeTab: 0,
+    // Index of the one step card allowed to be expanded/editable at a time in
+    // the CARDS tab; every other card renders read-only. null = all collapsed.
+    editingStep: null,
 };
 
 // IDs of profiles persisted to the server via share-code import during a
@@ -71,101 +74,48 @@ function createSettingPill({ value, step, unit, min, max, fieldType, title, form
     pill.addEventListener('mouseleave', () => { pill.style.backgroundColor = ''; });
 
     pill.addEventListener('click', () => {
-        if (shouldUseNumpad()) {
-            openNumpadForField(value, {
-                fieldType: fieldType || 'pe-review-setting',
-                title: title || (unit ? unit.toUpperCase() : 'VALUE'),
-                unit: unit || '',
-                min: min ?? 0,
-                max: max ?? 9999,
-                label: `${min ?? 0}–${max ?? 9999}`
-            }, (val) => {
-                value = val;
-                pill.textContent = fmt(value);
-                onCommit(value);
-            });
-            return;
-        }
-        inlineEditValue(pill, value, {
-            min, max, step: step || 1, unit,
-            onCommit(val) {
-                value = val;
-                pill.textContent = fmt(value);
-                onCommit(value);
-            }
+        openNumpadForField(value, {
+            fieldType: fieldType || 'pe-review-setting',
+            title: title || (unit ? unit.toUpperCase() : 'VALUE'),
+            unit: unit || '',
+            min: min ?? 0,
+            max: max ?? 9999,
+            label: `${min ?? 0}–${max ?? 9999}`
+        }, (val) => {
+            value = val;
+            pill.textContent = fmt(value);
+            onCommit(value);
+            // Every caller of createSettingPill edits a profile-wide execution
+            // field (tank temperature, target weight/volume, preinfusion step)
+            // — keep SAVE AS NEW's enabled state current.
+            updateSaveAsNewButtonState();
         });
     });
 
     return pill;
 }
 
-// ─── Desktop Inline Edit Helper ────────────────────────────────────────────
-// On desktop (non-numpad), clicking a numeric display opens a small input field
-// so the user can type a value directly instead of using +/- buttons.
+// ─── Icon Mask Helper ──────────────────────────────────────────────────────
+// Renders an SVG as a CSS mask (see .pe-icon-mask in main.css) so the glyph
+// follows a theme token/currentColor instead of the fixed stroke baked into
+// the source file. `size` is a single px number (icons here are square).
 
-function inlineEditValue(displayEl, currentValue, { min, max, step, unit, onCommit }) {
-    if (shouldUseNumpad()) return false; // tablet — let numpad handle it
-    if (!displayEl || !displayEl.querySelector) return false; // not a valid element
-    if (displayEl.querySelector('input')) return false; // already editing
+const ICON_MINUS         = 'src/ui/Minus.svg';
+const ICON_PLUS          = 'src/ui/Plus.svg';
+const ICON_ARROW         = 'src/ui/Arrow.svg';
+const ICON_TRASH         = 'src/ui/lucide_trash-2.svg';
+const ICON_CHEVRON_LEFT  = 'src/ui/icons/chevron-left.svg';
+const ICON_CHEVRON_RIGHT = 'src/ui/icons/chevron-right.svg';
 
-    // Find the first text node to replace (preserve child elements like ± buttons)
-    let textNode = null;
-    for (const child of displayEl.childNodes) {
-        if (child.nodeType === Node.TEXT_NODE) { textNode = child; break; }
-    }
-    const savedText = textNode ? textNode.textContent : displayEl.textContent;
-
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.value = currentValue;
-    input.step = step || 'any';
-    if (min !== undefined) input.min = min;
-    if (max !== undefined) input.max = max;
-    input.className = 'bg-transparent border-b-2 border-[var(--text-primary)] outline-none text-center font-bold text-[var(--text-primary)]';
-    input.style.cssText = `width:${Math.max(displayEl.offsetWidth, 60)}px;font-size:inherit;line-height:inherit;`;
-
-    if (textNode) {
-        displayEl.replaceChild(input, textNode);
-    } else {
-        displayEl.textContent = '';
-        displayEl.appendChild(input);
-    }
-    input.focus();
-    input.select();
-
-    function commit() {
-        const num = parseFloat(input.value);
-        restore(); // always put text node back before calling onCommit
-        if (!isNaN(num)) {
-            const clamped = clamp(roundTo(num, step || 0.1), min ?? 0, max ?? 9999);
-            onCommit(clamped);
-        }
-        cleanup();
-    }
-
-    function restore() {
-        const newText = document.createTextNode(savedText);
-        if (input.parentNode === displayEl) displayEl.replaceChild(newText, input);
-    }
-
-    function cancel() {
-        restore();
-        cleanup();
-    }
-
-    function cleanup() {
-        input.removeEventListener('blur', commit);
-        input.removeEventListener('keydown', onKey);
-    }
-
-    function onKey(e) {
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
-        if (e.key === 'Escape') { e.preventDefault(); input.removeEventListener('blur', commit); cancel(); }
-    }
-
-    input.addEventListener('blur', commit);
-    input.addEventListener('keydown', onKey);
-    return true; // handled
+function maskIcon(svgPath, size, color) {
+    const el = document.createElement('span');
+    el.className = 'pe-icon-mask';
+    el.style.width = `${size}px`;
+    el.style.height = `${size}px`;
+    el.style.maskImage = `url('${svgPath}')`;
+    el.style.webkitMaskImage = `url('${svgPath}')`;
+    el.style.backgroundColor = color;
+    return el;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -317,11 +267,10 @@ function moveStep(from, to) {
 
 const TAB_COUNT = 3;
 
-// Stepper ± button. 44px is the WCAG 2.5.5 / iOS HIG touch-target floor; the old
-// expand-on-tap buttons were 60px, which only fitted because they were hidden at
-// rest and drawn outside the cell. Always-visible buttons have to live in the
-// cell's width budget, and 44 is what pays for that.
-const STEPPER_BTN_CLASS = 'bg-[var(--button-grey)] rounded-[14px] w-[44px] h-[44px] flex items-center justify-center shrink-0 cursor-pointer select-none text-xl font-bold text-[var(--text-primary)]';
+// Stepper ± button — shared by every ± control in the editor (the grid's
+// createGridStepper and the settings tab's createSpinner), so there is
+// exactly one ± button style in the file.
+const STEPPER_BTN_CLASS = 'bg-[var(--button-grey)] rounded-[15px] w-[72px] h-[72px] flex items-center justify-center shrink-0 cursor-pointer select-none';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -353,8 +302,8 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
 
     const minusBtn = document.createElement('button');
     minusBtn.type = 'button';
-    minusBtn.className = 'bg-[var(--button-grey)] rounded-[18px] w-[60px] h-[60px] flex items-center justify-center cursor-pointer select-none text-xl font-bold text-[var(--text-primary)] z-[10]';
-    minusBtn.textContent = '\u2212';
+    minusBtn.className = STEPPER_BTN_CLASS;
+    minusBtn.appendChild(maskIcon(ICON_MINUS, 37.5, 'var(--text-primary)'));
     minusBtn.setAttribute('aria-label', 'Decrease');
 
     const display = document.createElement('span');
@@ -362,8 +311,8 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
 
     const plusBtn = document.createElement('button');
     plusBtn.type = 'button';
-    plusBtn.className = 'bg-[var(--button-grey)] rounded-[18px] w-[60px] h-[60px] flex items-center justify-center cursor-pointer select-none text-xl font-bold text-[var(--text-primary)] z-[10]';
-    plusBtn.textContent = '+';
+    plusBtn.className = STEPPER_BTN_CLASS;
+    plusBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--text-primary)'));
     plusBtn.setAttribute('aria-label', 'Increase');
 
     function updateDisplay() {
@@ -371,10 +320,20 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
         display.textContent = unit ? `${formatted} ${unit}` : `${formatted}`;
     }
 
+    // Every createSpinner field in this editor (target weight/volume, tank
+    // temperature, limiter tolerance) is a profile-wide execution field, so
+    // every path that commits a value also has to keep SAVE AS NEW's enabled
+    // state current — wrapped once here rather than at each of the two call
+    // sites below (± via the debounce, tap-to-type via the numpad).
+    function notifyChange(val) {
+        onChange(val);
+        updateSaveAsNewButtonState();
+    }
+
     function debouncedOnChange() {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-            onChange(value);
+            notifyChange(value);
         }, 300);
     }
 
@@ -392,25 +351,21 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
         debouncedOnChange();
     });
 
-    // Click the value to type one: numpad on tablet, inline input on desktop.
-    // This used to need two taps (first selected, second opened) with a 2s
-    // window in between — the ± are always visible here, so there was never
-    // anything for the first tap to disambiguate.
+    // Click the value to type one on the full-screen numpad. This used to need
+    // two taps (first selected, second opened) with a 2s window in between —
+    // the ± are always visible here, so there was never anything for the first
+    // tap to disambiguate.
     display.style.cursor = 'pointer';
     display.addEventListener('click', () => {
-        const commit = (val) => { value = roundTo(val, step); updateDisplay(); onChange(value); };
-        if (shouldUseNumpad()) {
-            openNumpadForField(value, {
-                fieldType: 'pe-settings',
-                title: (unit || 'VALUE').toUpperCase(),
-                unit: unit || '',
-                min: min ?? 0,
-                max: max ?? 9999,
-                label: `${min ?? 0}–${max ?? 9999}`
-            }, commit);
-            return;
-        }
-        inlineEditValue(display, value, { min, max, step, unit, onCommit: commit });
+        const commit = (val) => { value = roundTo(val, step); updateDisplay(); notifyChange(value); };
+        openNumpadForField(value, {
+            fieldType: 'pe-settings',
+            title: (unit || 'VALUE').toUpperCase(),
+            unit: unit || '',
+            min: min ?? 0,
+            max: max ?? 9999,
+            label: `${min ?? 0}–${max ?? 9999}`
+        }, commit);
     });
 
     updateDisplay();
@@ -463,69 +418,48 @@ function newLimiterRange(pump) {
 }
 
 // ─── Grid Stepper ───────────────────────────────────────────────────────────
-// One control for every numeric field in the step grid: [−] [value] [+].
+// One control for every numeric field in an expanded step card: [−] [value] [+].
+// The ± are always visible (no reveal-on-tap — cards themselves are the
+// collapse/expand unit now, see editorState.editingStep). Tapping the value
+// opens the full-screen numpad.
 //
-// `revealOnTap` hides the ± until the value is tapped, so a cell at rest shows
-// only its numbers. Two rules keep that from repeating the old tap-to-expand
-// model's mistakes:
-//
-//  1. Hidden means `visibility:hidden`, not `display:none`. The ± keep their
-//     space, so revealing them cannot reflow the row out from under a finger —
-//     which is the reason the old code positioned them `absolute` outside the
-//     pill, where they overlapped the sticky label column and the next step.
-//  2. Nothing auto-collapses. The old 2s timer expired mid-edit and was a
-//     WCAG 2.2.1 failure. A revealed stepper closes only when another one
-//     opens, tracked by the single `_activeStepper` below (the previous code
-//     spread this across five Sets and a Map that could disagree).
-//
-// Tapping the value opens the numpad on tablet or an inline input on desktop —
-// once revealed, or immediately when `revealOnTap` is false.
-let _activeStepper = null; // { hide: fn } | null
-
-// `startRevealed` steppers are the grid's affordance hint: the Temp row draws
-// its ± on first paint so the control demonstrates itself, and the first tap on
-// any pill anywhere retires them — by then the user has seen what a pill does.
-// Dismissal is sticky for the editing session, otherwise every renderStepCards()
-// (tab switch, insert, delete) would re-arm the hint and it would read as a
-// flicker rather than a one-time lesson. Reset in initializeProfileEditor.
-let _hintSteppers = [];      // hide fns still acting as hints
-let _hintsDismissed = false;
-
-function _dismissHints(exceptHide) {
-    if (!_hintSteppers.length) return;
-    for (const hideFn of _hintSteppers) if (hideFn !== exceptHide) hideFn();
-    _hintSteppers = [];
-    _hintsDismissed = true;
-}
-
-function createGridStepper({ value, lim, numpad, revealOnTap = false, startRevealed = false, offWhenZero = false, format, onChange }) {
+// `unit`, when given, renders as a second line stacked under the value (e.g.
+// "7.5" over "mL/s"). Omit it and fold the unit into `format` instead for a
+// field the design keeps on one line (e.g. "92°C", "15g").
+function createGridStepper({ value, lim, numpad, unit = null, offWhenZero = false, format, onChange }) {
     let current = value;
     const fmt = format || ((v) => `${roundTo(v, lim.step)}`);
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'flex items-center gap-[8px]';
+    wrapper.className = 'flex items-center gap-[15px]';
 
-    const display = document.createElement('span');
-    display.style.minWidth = '140px';
+    const valueCol = document.createElement('div');
+    valueCol.className = 'flex flex-col items-center justify-center w-[72px] cursor-pointer select-none';
+
+    const valueLine = document.createElement('span');
+    valueLine.className = 'font-bold text-[25.5px] text-center leading-tight';
+    valueCol.appendChild(valueLine);
+
+    let unitLine = null;
+    if (unit) {
+        unitLine = document.createElement('span');
+        unitLine.className = 'font-semibold text-[19.5px] text-center leading-tight';
+        unitLine.textContent = unit;
+        valueCol.appendChild(unitLine);
+    }
 
     function restyle() {
-        // offWhenZero fields (the limiter, the three Max limits) read as an
-        // outline pill at 0 — white on --secondary-button-bg was 1.75:1 in the
-        // light theme. Off is greyed, not just unfilled: --secondary-button-outline
-        // is the blue the live Flow/Quickly toggles wear, so a 0 g pill used to
-        // look exactly as enabled as they are.
+        // offWhenZero fields (the limiter, the three Max limits) read as
+        // "off" via muted text rather than an outline pill — 0 is a real,
+        // reachable state (a limiter/limit that isn't set), not a disabled one.
         const on = !offWhenZero || current > 0;
-        const textCls = on ? 'text-white' : 'text-[var(--low-contrast-white)]';
-        const bg = on ? 'bg-[var(--button-primary-bg)]' : '';
-        display.className = `${bg} rounded-[8px] px-[10px] py-[4px] text-[24px] font-semibold cursor-pointer select-none text-center ${textCls}`;
-        display.style.border = on ? '1px solid transparent' : '1px solid var(--border-color)';
-        // The ± dim with their pill, so a revealed-but-off field still reads off.
-        minusBtn.style.opacity = on ? '' : '0.45';
-        plusBtn.style.opacity  = on ? '' : '0.45';
+        const color = on ? 'var(--text-primary)' : 'var(--low-contrast-white)';
+        valueLine.style.color = color;
+        if (unitLine) unitLine.style.color = color;
     }
 
     function render() {
-        display.textContent = fmt(current);
+        valueLine.textContent = fmt(current);
         restyle();
     }
 
@@ -533,13 +467,17 @@ function createGridStepper({ value, lim, numpad, revealOnTap = false, startRevea
         current = val;
         render();
         onChange(current);
+        // Every createGridStepper field is an execution field (temp, pump
+        // target, limiter, max, exit value) — SAVE AS NEW's enabled state has
+        // to track every one of them, not just full-tab re-renders.
+        updateSaveAsNewButtonState();
     }
 
-    function mkBtn(label, delta, ariaLabel) {
+    function mkBtn(svgPath, delta, ariaLabel) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = STEPPER_BTN_CLASS;
-        btn.textContent = label;
+        btn.appendChild(maskIcon(svgPath, 37.5, 'var(--text-primary)'));
         btn.setAttribute('aria-label', ariaLabel);
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -549,60 +487,290 @@ function createGridStepper({ value, lim, numpad, revealOnTap = false, startRevea
         return btn;
     }
 
-    const minusBtn = mkBtn('−', -lim.step, numpad.title + ' decrease');
-    const plusBtn  = mkBtn('+',       lim.step, numpad.title + ' increase');
+    const minusBtn = mkBtn(ICON_MINUS, -lim.step, numpad.title + ' decrease');
+    const plusBtn  = mkBtn(ICON_PLUS,   lim.step, numpad.title + ' increase');
 
-    const isHint = revealOnTap && startRevealed && !_hintsDismissed;
-    let revealed = !revealOnTap || isHint;
-    function setRevealed(on) {
-        revealed = on;
-        const v = on ? 'visible' : 'hidden';
-        minusBtn.style.visibility = v;
-        plusBtn.style.visibility = v;
-    }
-    setRevealed(revealed);
-
-    function hide() {
-        if (!revealOnTap) return;
-        setRevealed(false);
-        if (_activeStepper && _activeStepper.hide === hide) _activeStepper = null;
-    }
-
-    if (isHint) _hintSteppers.push(hide);
-
-    display.addEventListener('click', () => {
-        // Any pill tap ends the hint — including a tap on a hinting pill itself,
-        // which keeps its own ± (it is the field being edited) while its peers
-        // drop theirs.
-        _dismissHints(hide);
-        if (revealOnTap && !revealed) {
-            if (_activeStepper) _activeStepper.hide();
-            setRevealed(true);
-            _activeStepper = { hide };
-            return;
-        }
-        // A hinting pill was already revealed, so this tap is the edit itself —
-        // register it as active so the next tap elsewhere collapses it.
-        if (revealOnTap && revealed && !_activeStepper) _activeStepper = { hide };
-        if (shouldUseNumpad()) {
-            openNumpadForField(current, numpad, commit);
-            return;
-        }
-        inlineEditValue(display, current, {
-            min: lim.min, max: lim.max, step: lim.step,
-            onCommit: commit,
-        });
+    valueCol.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openNumpadForField(current, numpad, commit);
     });
 
     render();
     wrapper.appendChild(minusBtn);
-    wrapper.appendChild(display);
+    wrapper.appendChild(valueCol);
     wrapper.appendChild(plusBtn);
-    wrapper._setWidth = (px) => { display.style.minWidth = px; };
     return wrapper;
 }
 
 // ─── Render Functions ───────────────────────────────────────────────────────
+
+// ─── Cycle Chip Factory ─────────────────────────────────────────────────────
+// One control for every "cycle through N states on tap" chip in an expanded
+// card (temp sensor, pump mode, exit condition). `states` is an array of
+// opaque backing values; `labelFor` renders the chip text for a given state.
+function createCycleChip({ states, index, labelFor, onChange }) {
+    let i = index;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'w-[114px] h-[72px] rounded-[15px] border-[1.5px] border-[var(--border-primary)] text-[var(--button-primary-bg)] font-bold text-[19.5px] leading-tight flex items-center justify-center text-center shrink-0 cursor-pointer select-none';
+    chip.style.whiteSpace = 'normal';
+
+    function render() { chip.textContent = labelFor(states[i], i); }
+    render();
+
+    chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        i = (i + 1) % states.length;
+        render();
+        onChange(states[i], i);
+        // Every chip in this editor (sensor, pump mode, exit condition) cycles
+        // an execution field — keep SAVE AS NEW's enabled state current.
+        updateSaveAsNewButtonState();
+    });
+
+    return chip;
+}
+
+// ─── Pure state-cycle + paging math ────────────────────────────────────────
+// Kept as small standalone functions (not closures) so they can be extracted
+// and unit-tested the same way readExitDef/pushChannel are above.
+
+// Pump-mode chip: Flow Quickly → Flow Slowly → Pressure Quickly → Pressure
+// Slowly → (wrap). Composed from existing translation keys, not a new CSV row.
+const PUMP_CYCLE_STATES = [
+    { pump: 'flow',     transition: 'fast'   },
+    { pump: 'flow',     transition: 'smooth' },
+    { pump: 'pressure', transition: 'fast'   },
+    { pump: 'pressure', transition: 'smooth' },
+];
+function pumpCycleIndex(pump, transition) {
+    return (pump === 'pressure' ? 2 : 0) + (transition === 'smooth' ? 1 : 0);
+}
+function pumpChipLabel(state) {
+    return `${getTranslation(state.pump === 'pressure' ? 'Pressure' : 'Flow')} `
+         + getTranslation(state.transition === 'smooth' ? 'Slowly' : 'Quickly');
+}
+
+// "Move on if" chip: Pressure is over → Pressure is under → Flow is over →
+// Flow is under → Off → (wrap). `type: null` marks the Off state, matching
+// readExitDef's { type: 'off', condition: 'over', value: 0 } shape's 'off'.
+const EXIT_CYCLE_STATES = [
+    { type: 'pressure', condition: 'over'  },
+    { type: 'pressure', condition: 'under' },
+    { type: 'flow',      condition: 'over'  },
+    { type: 'flow',      condition: 'under' },
+    { type: 'off',       condition: null    },
+];
+function exitCycleIndex(type, condition) {
+    if (type !== 'pressure' && type !== 'flow') return 4; // off
+    return (type === 'flow' ? 2 : 0) + (condition === 'under' ? 1 : 0);
+}
+function exitChipLabel(state) {
+    if (state.type === 'off') return getTranslation('Off');
+    return `${getTranslation(state.type === 'flow' ? 'Flow' : 'Pressure')} `
+         + getTranslation(state.condition === 'under' ? 'is under' : 'is over');
+}
+
+// Card paging: the row scrolls by one card "pitch" (450 card + 15 gap) per tap.
+const CARD_WIDTH = 450;
+const CARD_GAP = 15;
+const CARD_PITCH = CARD_WIDTH + CARD_GAP;
+// Skirt of page ground left visible below the card row (Figma 42 at 0.75).
+const CARD_BOTTOM_GAP = 31.5;
+
+// Which end-chevron is disabled for a header at `index` of `total` cards —
+// shared by the header's own reorder chevrons.
+function isChevronDisabled(index, dir, total) {
+    const target = index + dir;
+    return target < 0 || target >= total;
+}
+
+// ─── Card collapse/expand state ────────────────────────────────────────────
+// Only one card is expanded at a time; collapsed cards render read-only.
+// Outside-click collapses the open card — see installOutsideClickHandler.
+function expandCard(index) {
+    if (editorState.editingStep === index) return;
+    editorState.editingStep = index;
+    renderStepCards();
+}
+
+function collapseCard() {
+    if (editorState.editingStep === null) return;
+    editorState.editingStep = null;
+    renderStepCards();
+}
+
+let _outsideClickHandler = null;
+function installOutsideClickHandler() {
+    removeOutsideClickHandler();
+    _outsideClickHandler = (e) => {
+        if (editorState.editingStep === null) return;
+        const stepsContainer = document.getElementById('editor-steps-container');
+        // Modals (numpad, notes, confirm dialogs) mount outside this container,
+        // so a click landing there is never "outside the card" in the sense
+        // that should collapse it.
+        if (!stepsContainer || !stepsContainer.contains(e.target)) return;
+        if (e.target.closest(`[data-card-index="${editorState.editingStep}"]`)) return;
+        collapseCard();
+    };
+    document.addEventListener('click', _outsideClickHandler);
+}
+
+function removeOutsideClickHandler() {
+    if (_outsideClickHandler) {
+        document.removeEventListener('click', _outsideClickHandler);
+        _outsideClickHandler = null;
+    }
+}
+
+// ─── Card paging controls ───────────────────────────────────────────────────
+let _pagingScrollHandler = null;
+
+function updatePagingButtons() {
+    const container = document.getElementById('editor-steps-container');
+    const prevBtn = document.getElementById('editor-page-prev-btn');
+    const nextBtn = document.getElementById('editor-page-next-btn');
+    if (!container || !prevBtn || !nextBtn) return;
+    const atStart = container.scrollLeft <= 1;
+    const atEnd = container.scrollLeft >= container.scrollWidth - container.clientWidth - 1;
+    const prevIcon = prevBtn.querySelector('.pe-icon-mask');
+    const nextIcon = nextBtn.querySelector('.pe-icon-mask');
+    prevBtn.classList.toggle('pointer-events-none', atStart);
+    prevBtn.setAttribute('aria-disabled', String(atStart));
+    if (prevIcon) prevIcon.style.backgroundColor = atStart ? 'var(--profile-button-outline-color)' : 'var(--text-primary)';
+    nextBtn.classList.toggle('pointer-events-none', atEnd);
+    nextBtn.setAttribute('aria-disabled', String(atEnd));
+    if (nextIcon) nextIcon.style.backgroundColor = atEnd ? 'var(--profile-button-outline-color)' : 'var(--text-primary)';
+}
+
+function removeCardPagingScrollHandler() {
+    if (!_pagingScrollHandler) return;
+    const container = document.getElementById('editor-steps-container');
+    if (container) container.removeEventListener('scroll', _pagingScrollHandler);
+    _pagingScrollHandler = null;
+}
+
+// Binds the paging buttons and the scroll listener exactly once per page
+// mount. Called from initializeProfileEditor, NOT from renderStepCards: the
+// prev/next buttons and the scroll container are static markup in
+// profile_editor.html, so renderStepCards (which runs on every expand,
+// collapse, reorder, chip cycle, insert and delete) only ever clears the
+// container's *children* — calling this from there stacked a fresh click/
+// scroll listener on the same three elements every single re-render.
+// Idempotent: the router replaces the whole subpage HTML on every real
+// navigation (fresh elements, nothing to double-bind), but this still has to
+// survive being invoked twice against the same elements without stacking.
+function initCardPaging() {
+    const container = document.getElementById('editor-steps-container');
+    const prevBtn = document.getElementById('editor-page-prev-btn');
+    const nextBtn = document.getElementById('editor-page-next-btn');
+    if (!container || !prevBtn || !nextBtn) return;
+
+    if (prevBtn.dataset.pagingBound === 'true') {
+        updatePagingButtons();
+        return;
+    }
+    prevBtn.dataset.pagingBound = 'true';
+    nextBtn.dataset.pagingBound = 'true';
+
+    prevBtn.innerHTML = '';
+    const prevIcon = maskIcon(ICON_ARROW, 37.5, 'var(--text-primary)');
+    prevIcon.style.transform = 'rotate(180deg)';
+    prevBtn.appendChild(prevIcon);
+
+    nextBtn.innerHTML = '';
+    nextBtn.appendChild(maskIcon(ICON_ARROW, 37.5, 'var(--text-primary)'));
+
+    prevBtn.addEventListener('click', () => container.scrollBy({ left: -CARD_PITCH, behavior: 'smooth' }));
+    nextBtn.addEventListener('click', () => container.scrollBy({ left: CARD_PITCH, behavior: 'smooth' }));
+
+    removeCardPagingScrollHandler();
+    _pagingScrollHandler = () => updatePagingButtons();
+    container.addEventListener('scroll', _pagingScrollHandler);
+    updatePagingButtons();
+}
+
+// ─── Exit-value memory ──────────────────────────────────────────────────────
+// readExitDef reports a step with no exit as { type: 'off', value: 0 } — that
+// 0 is a display fallback, not a real value (see the comment on readExitDef).
+// Cycling the exit chip away from Off must not write it as one: a live
+// { type: 'pressure', condition: 'over', value: 0 } exit fires on essentially
+// any pressure at all, silently changing how the step runs. This remembers
+// the last real value per pump type per step (keyed by the step object, so it
+// survives a reorder — splice moves references, it never clones them — but
+// naturally drops off if the step itself is deleted) so cycling Off and back
+// through the same type restores what was there, and falls back to a sane
+// default otherwise.
+const _lastExitValue = new WeakMap(); // step -> { pressure?: number, flow?: number }
+
+// DEFAULT_STEP.exit.value (9.0 bar) is the single source of truth for a fresh
+// step's pressure exit; flow has no such default elsewhere, so 6.0 mL/s is
+// chosen to match PUMP_SEED_FLOW's already-established "reasonable default
+// flow" figure.
+const EXIT_FALLBACK_VALUE = { pressure: DEFAULT_STEP.exit.value, flow: 6.0 };
+
+function rememberExitValue(step, type, value) {
+    if ((type !== 'pressure' && type !== 'flow') || !(value > 0)) return;
+    const rec = _lastExitValue.get(step) || {};
+    rec[type] = value;
+    _lastExitValue.set(step, rec);
+}
+
+function recallExitValue(step, type) {
+    const remembered = _lastExitValue.get(step)?.[type];
+    const value = remembered > 0 ? remembered : EXIT_FALLBACK_VALUE[type];
+    return clamp(value, 0, EXIT_MAX_MAP[type]);
+}
+
+// ─── Render Functions ───────────────────────────────────────────────────────
+
+// Collapsed-card row: centered "Label  Value", read-only.
+// A collapsed card mirrors the expanded one line for line — same labels, same
+// order — so expanding a card changes only how a value is edited, never what
+// the card says. `accent` follows the expanded row's own left slot: a label
+// backed by a cycling chip reads in the action blue (Group, Flow Quickly,
+// Pressure is over), a plain caption reads as body text (Limit to, Weight,
+// Time, Volume). The gutter already names the row, so a line never repeats it.
+function collapsedRow(labelText, valueText, { accent = true } = {}) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-center gap-[7.5px] flex-wrap px-[16px]';
+    const label = document.createElement('span');
+    label.className = accent
+        ? 'font-bold text-[24px] text-[var(--button-primary-bg)]'
+        : 'text-[24px] text-[var(--text-primary)]';
+    label.textContent = labelText;
+    const value = document.createElement('span');
+    value.className = 'font-bold text-[25.5px] text-[var(--text-primary)]';
+    value.textContent = valueText;
+    row.appendChild(label);
+    row.appendChild(value);
+    return row;
+}
+
+// Expanded-card control line's fixed-width left slot when it has no cycling
+// chip (a plain caption — "Limit to", "Weight", "Time" — rather than a
+// tappable state). Same 114px width and centering as the chip so every
+// stepper in the card lines up on the same column regardless of which kind
+// of left slot its row uses.
+function labelSlot(text) {
+    const span = document.createElement('span');
+    span.className = 'w-[114px] shrink-0 text-[24px] font-normal text-[var(--text-primary)] text-center leading-tight';
+    span.textContent = text;
+    return span;
+}
+
+// One horizontal control line: a 114px left slot (chip or label) + 30px gap
+// + the stepper group. This is the one repeating structure every expanded
+// row (Temp, each Pump/Maximum sub-line, Move on if) is built from — rows
+// with two sub-fields (Pump, Maximum) stack two of these with a 15px gap
+// between them; single-field rows (Temp, Move on if) use exactly one.
+function controlLine(leftSlot, stepper) {
+    const line = document.createElement('div');
+    line.className = 'flex items-center justify-center gap-[30px]';
+    line.appendChild(leftSlot);
+    if (stepper) line.appendChild(stepper);
+    return line;
+}
 
 function renderStepCards() {
     const container = document.getElementById('editor-steps-container');
@@ -611,26 +779,60 @@ function renderStepCards() {
 
     const steps = editorState.profile.steps || [];
     const numSteps = steps.length;
+    if (editorState.editingStep !== null && editorState.editingStep >= numSteps) {
+        editorState.editingStep = numSteps > 0 ? numSteps - 1 : null;
+    }
 
-    // CSS grid: label col + step cols (4 visible at once, extras scroll) + add-step col
-    // 380px per step = (1920 - 220 label - 180 add) / 4; minmax keeps 4 visible, min enforces scroll beyond 4
     const R = { HEADER: 1, TEMP: 2, PUMP: 3, MAX: 4, EXIT: 5, FOOTER: 6 };
-    const TOTAL_ROWS = 6;
 
     container.style.display = 'grid';
-    // Label column grows to fit the longest (translated) row label — min 110px so
-    // English stays compact, max-content so longer languages don't clip/overflow.
     // repeat() rejects a count of 0 and CSS drops the whole declaration, so a
-    // zero-step profile has to omit the step track entirely.
-    const stepCols = numSteps > 0 ? ` repeat(${numSteps}, minmax(380px, 1fr))` : '';
-    container.style.gridTemplateColumns = `minmax(110px, max-content)${stepCols} 180px`;
-    container.style.gridTemplateRows = `60px 1fr 1fr 1fr 1fr 60px`;
+    // zero-step profile reserves one bare track instead, for the empty-state
+    // "insert a step" button below.
+    const stepCols = numSteps > 0 ? ` repeat(${numSteps}, ${CARD_WIDTH}px)` : ` ${CARD_WIDTH}px`;
+    // Fixed 450px tracks, not 1fr: cards must not stretch to fill the row —
+    // with few steps the row leaves empty space on the right ("cards snap to
+    // the left"), which is the point of the horizontal scroll-snap below.
+    container.style.gridTemplateColumns = `192.75px${stepCols}`;
+    // Header/footer stay content-sized; the four data rows are proportional
+    // so they absorb the rest of the container's height — `auto` rows
+    // stopped short of the bottom, leaving a bg-tertiary gap under the cards
+    // instead of running the cards full height.
+    // Figma's own label-gutter row heights (Temp 157, Pump 289, Move on if
+    // 140) assumed a two-line Maximum row (289 too); Maximum carries a third
+    // line (Volume) here, so its share is scaled up from 289 by the same
+    // ratio a third 72px control line + 15px gap adds to a two-line row
+    // (~1.46x) rather than reusing Pump's two-line figure verbatim.
+    // Pump and Maximum share one share: Maximum carries a third line (Volume)
+    // the design's two-line row didn't, and letting the two rows size apart
+    // put a visible step in the hairline between neighbouring cards. Equal
+    // shares keep that rule straight across the row, and 422 is the taller of
+    // the two requirements (three 72px lines + two 15px gaps + padding).
+    container.style.gridTemplateRows = `minmax(45px, auto) 157fr 422fr 422fr 140fr minmax(57px, auto)`;
+    container.style.columnGap = `${CARD_GAP}px`;
+    // Cards stop short of the content area's bottom edge: the design's card row
+    // is 1138 tall in a 1600 frame starting at y=420, leaving a 42px skirt
+    // (31.5 here) of --bg-tertiary below them. That skirt is padding, not a
+    // shorter box: the element still runs to the bottom of the screen so its
+    // horizontal scrollbar — which renders at the border box's bottom edge —
+    // sits flush against it rather than floating 31.5px up.
     container.style.height = '100%';
+    container.style.paddingBottom = `${CARD_BOTTOM_GAP}px`;
+    // Width stays at the viewport (not max-content): the fixed-px column
+    // tracks are what overflow it, and that overflow is exactly what makes
+    // this scrollable — a content-sized container has scrollWidth ===
+    // clientWidth, so scrollBy() and the paging buttons become no-ops.
     container.style.width = '100%';
-    // Match the data rows to the header/label background (transparent cells pick this up).
-    container.style.backgroundColor = 'var(--box-color)';
+    container.style.backgroundColor = 'var(--bg-tertiary)';
+    container.style.scrollSnapType = 'x mandatory';
+    // The label gutter is `position: sticky; left: 0` over the first
+    // 192.75px of this container, but scroll-snap-align:start on the cards
+    // snaps them to the container's own (unadjusted) left edge — landing a
+    // snapped card underneath the gutter instead of flush against it.
+    // scroll-padding insets the snapport by exactly the gutter's width so
+    // snap positions account for the pinned overlay.
+    container.style.scrollPaddingLeft = '192.75px';
 
-    // Helper: create a grid cell, append to container
     function mkCell(row, col, className) {
         const el = document.createElement('div');
         el.style.gridRow = row;
@@ -640,91 +842,137 @@ function renderStepCards() {
         return el;
     }
 
-    // ── Label column (sticky left) ────────────────────────────────────────────
-    const labelBase = 'flex items-center px-[20px] py-[8px] border-r-2 border-b border-[var(--border-color)] bg-[var(--box-color)]';
+    // ── Label gutter ────────────────────────────────────────────────────────
+    const labelBase = 'flex items-center justify-end bg-[var(--bg-tertiary)] px-[22.5px]';
 
-    function mkLabel(row, text, tip = '') {
+    function mkLabel(row, text) {
         const el = mkCell(row, 1, labelBase);
+        // Fixed rail at x0 that the cards scroll underneath, per Figma — the
+        // gutter's own bg-tertiary is a solid color (no alpha), so it stays
+        // opaque and cards pass cleanly behind it rather than showing through.
         el.style.position = 'sticky';
         el.style.left = '0';
         el.style.zIndex = '2';
         if (text) {
             const span = document.createElement('span');
-            span.className = 'text-[17px] font-semibold text-[var(--low-contrast-white)] leading-tight break-words';
+            span.className = 'w-[123px] text-right text-[24px] font-bold text-[var(--text-primary)] leading-tight';
             span.textContent = text;
             el.appendChild(span);
-        }
-        if (tip) {
-            const tipWrapper = document.createElement('div');
-            tipWrapper.className = 'tooltip tooltip-right ml-[6px] before:text-[18px]';
-            tipWrapper.setAttribute('data-tip', tip);
-            tipWrapper.innerHTML = `<button type="button" class="w-[18px] h-[18px] rounded-full bg-[var(--button-grey)] text-[var(--low-contrast-white)] text-[12px] font-bold flex items-center justify-center shrink-0 focus:outline-none" tabindex="-1" aria-label="Help">i</button>`;
-            el.appendChild(tipWrapper);
         }
         return el;
     }
 
-    mkLabel(R.HEADER,  '');
-    mkLabel(R.TEMP,    getTranslation('Temp')).id = 'editor-row-temp';
-    mkLabel(R.PUMP,    getTranslation('Pump')).id = 'editor-row-pump';
-    mkLabel(R.MAX,     getTranslation('Max')).id = 'editor-row-max';
-    mkLabel(R.EXIT,    getTranslation('Exit if')).id = 'editor-row-exit';
-    mkLabel(R.FOOTER,  '');
+    mkLabel(R.HEADER, '');
+    mkLabel(R.TEMP,   getTranslation('Temp')).id = 'editor-row-temp';
+    mkLabel(R.PUMP,   getTranslation('Pump')).id = 'editor-row-pump';
+    mkLabel(R.MAX,    getTranslation('Maximum')).id = 'editor-row-max';
+    mkLabel(R.EXIT,   getTranslation('Move on if')).id = 'editor-row-exit';
+    mkLabel(R.FOOTER, '');
 
-    // ── Step columns ──────────────────────────────────────────────────────────
-    const stepCell = 'flex items-center justify-start px-[16px] py-[8px] border-r border-b border-[var(--border-color)]';
+    // ── Card columns ────────────────────────────────────────────────────────
+    // Each column is one white "card": rounded-[15px], 1.5px border, drawn as
+    // per-row grid cells that share a background/side-border so the row reads
+    // as one continuous card. The row's own border-top is the hairline between
+    // fields — it bleeds the full 450px card width, past the 390px content col.
+    const CARD_BG = 'bg-[var(--profile-button-background-color)]';
+    const SIDE = 'border-l-[1.5px] border-r-[1.5px] border-[var(--border-graph-grid)]';
+    const HAIRLINE = 'border-t-[1.5px] border-[var(--border-graph-grid)]';
 
     steps.forEach((step, index) => {
         const col = index + 2;
+        const expanded = editorState.editingStep === index;
         const isFlow = step.pump !== 'pressure';
+        const cardAttr = (el) => { el.dataset.cardIndex = String(index); el.style.scrollSnapAlign = 'start'; return el; };
+        const onExpandClick = (el) => {
+            if (!expanded) el.addEventListener('click', () => expandCard(index));
+            return el;
+        };
 
-        // Header: step number + name input
-        // overflow-hidden + the min-w-0/max-w-full pair below keep a long step name
-        // inside its column: the track is minmax(380px, 1fr), so it does not grow to
-        // fit content — without the cap the name input spilled over the next step.
-        const hCell = mkCell(R.HEADER, col, 'flex items-center justify-center px-[16px] py-[10px] border-r border-b-2 border-[var(--border-color)] bg-[var(--box-color)] overflow-hidden');
-        const nameWrapper = document.createElement('div');
-        nameWrapper.className = 'flex items-center gap-[6px] min-w-0 max-w-full';
-        const numSpan = document.createElement('span');
-        numSpan.className = 'text-[24px] font-bold text-[var(--low-contrast-white)] shrink-0 select-none';
-        numSpan.textContent = `${index + 1}.`;
-        const nameInput = document.createElement('input');
-        nameInput.type = 'text';
-        nameInput.value = step.name || '';
-        // Dashed underline, the same affordance the Text tab's editable values
-        // use. Without it a transparent borderless input reads as static text.
-        // It also restores a focus indicator: `outline-none` left this field with
-        // no visible focus state at all.
-        // min-w-0 lets the input shrink below its `size` width (a form control's
-        // default min-width is auto, which is what let it push past the column);
-        // max-w-full stops at the cell edge. Short names still size to their text.
-        nameInput.className = 'text-[24px] font-bold text-[var(--text-primary)] bg-transparent outline-none underline decoration-dashed min-w-0 max-w-full';
-        nameInput.style.textDecorationColor = 'var(--low-contrast-white)';
-        nameInput.style.textUnderlineOffset = '4px';
-        nameInput.addEventListener('focus', () => { nameInput.style.textDecorationColor = 'var(--mimoja-blue)'; });
-        nameInput.addEventListener('blur',  () => { nameInput.style.textDecorationColor = 'var(--low-contrast-white)'; });
-        const syncSize = () => { nameInput.size = Math.max(4, nameInput.value.length + 1); };
-        syncSize();
-        nameInput.addEventListener('input', syncSize);
-        nameInput.addEventListener('change', () => { editorState.profile.steps[index].name = nameInput.value; });
-        nameWrapper.appendChild(numSpan);
-        nameWrapper.appendChild(nameInput);
-        hCell.appendChild(nameWrapper);
+        // ── Header row ──────────────────────────────────────────────────────
+        const hCell = cardAttr(mkCell(R.HEADER, col,
+            `flex items-center justify-center gap-[8px] ${CARD_BG} border-t-[1.5px] border-[var(--border-graph-grid)] ${SIDE} rounded-t-[15px] px-[30px] pt-[30px] pb-[15px] overflow-hidden ${expanded ? '' : 'cursor-pointer'}`));
+        onExpandClick(hCell);
 
-        // Temp + Sensor.
-        //   [−]  93 °C  [+]
-        //   Group
-        // Temp starts with its ± shown as the grid's affordance hint; the first tap
-        // on any pill retires it and Temp behaves like every other row.
-        {
-            const tCell = mkCell(R.TEMP, col, 'flex flex-col justify-center items-center px-[16px] py-[8px] border-r border-b border-[var(--border-color)] gap-[10px]');
+        if (expanded) {
+            const chevLeftDisabled = isChevronDisabled(index, -1, numSteps);
+            const chevLeft = document.createElement('button');
+            chevLeft.type = 'button';
+            chevLeft.className = `w-[45px] h-[45px] flex items-center justify-center shrink-0 ${chevLeftDisabled ? 'pointer-events-none' : 'cursor-pointer'}`;
+            chevLeft.setAttribute('aria-label', 'Move step earlier');
+            chevLeft.setAttribute('aria-disabled', String(chevLeftDisabled));
+            chevLeft.appendChild(maskIcon(ICON_CHEVRON_LEFT, 45, chevLeftDisabled ? 'var(--profile-button-outline-color)' : 'var(--button-primary-bg)'));
+            chevLeft.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (moveStep(index, index - 1)) { editorState.editingStep = index - 1; renderStepCards(); }
+            });
+
+            const nameWrapper = document.createElement('div');
+            nameWrapper.className = 'flex items-center gap-[6px] min-w-0 max-w-full';
+            const numSpan = document.createElement('span');
+            numSpan.className = 'text-[24px] font-semibold text-[var(--text-primary)] shrink-0 select-none';
+            numSpan.textContent = `${index + 1}.`;
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.value = step.name || '';
+            nameInput.className = 'text-[24px] font-bold text-[var(--button-primary-bg)] bg-transparent outline-none underline decoration-dashed min-w-0 max-w-full';
+            nameInput.style.textDecorationColor = 'var(--low-contrast-white)';
+            nameInput.style.textUnderlineOffset = '4px';
+            nameInput.addEventListener('click', (e) => e.stopPropagation());
+            nameInput.addEventListener('focus', () => { nameInput.style.textDecorationColor = 'var(--mimoja-blue)'; });
+            nameInput.addEventListener('blur',  () => { nameInput.style.textDecorationColor = 'var(--low-contrast-white)'; });
+            const syncSize = () => { nameInput.size = Math.max(4, nameInput.value.length + 1); };
+            syncSize();
+            nameInput.addEventListener('input', syncSize);
+            nameInput.addEventListener('change', () => {
+                editorState.profile.steps[index].name = nameInput.value;
+                // A step name lives inside `steps`, which is hashed as
+                // execution content (unlike the profile's own title) — no
+                // other render path runs after this raw listener.
+                updateSaveAsNewButtonState();
+            });
+            nameWrapper.appendChild(numSpan);
+            nameWrapper.appendChild(nameInput);
+
+            const chevRightDisabled = isChevronDisabled(index, 1, numSteps);
+            const chevRight = document.createElement('button');
+            chevRight.type = 'button';
+            chevRight.className = `w-[45px] h-[45px] flex items-center justify-center shrink-0 ${chevRightDisabled ? 'pointer-events-none' : 'cursor-pointer'}`;
+            chevRight.setAttribute('aria-label', 'Move step later');
+            chevRight.setAttribute('aria-disabled', String(chevRightDisabled));
+            chevRight.appendChild(maskIcon(ICON_CHEVRON_RIGHT, 45, chevRightDisabled ? 'var(--profile-button-outline-color)' : 'var(--button-primary-bg)'));
+            chevRight.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (moveStep(index, index + 1)) { editorState.editingStep = index + 1; renderStepCards(); }
+            });
+
+            hCell.appendChild(chevLeft);
+            hCell.appendChild(nameWrapper);
+            hCell.appendChild(chevRight);
+        } else {
+            const label = document.createElement('span');
+            label.className = 'text-[24px] font-bold text-center leading-tight';
+            const numSpan = document.createElement('span');
+            numSpan.className = 'text-[var(--text-primary)]';
+            numSpan.textContent = `${index + 1}. `;
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'text-[var(--button-primary-bg)]';
+            nameSpan.textContent = step.name || '';
+            label.appendChild(numSpan);
+            label.appendChild(nameSpan);
+            hCell.appendChild(label);
+        }
+
+        // ── Temp row ────────────────────────────────────────────────────────
+        // One horizontal line: the sensor chip on the left, then the ± target.
+        const tCell = cardAttr(mkCell(R.TEMP, col,
+            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+        onExpandClick(tCell);
+
+        if (expanded) {
             const TEMP_LIM = FIELD_LIMITS.temperature;
-
             const tempStepper = createGridStepper({
                 value: step.temperature || 93,
                 lim: TEMP_LIM,
-                revealOnTap: true,
-                startRevealed: true,
                 numpad: numpadConfig('pe-temp', 'TEMPERATURE', '°C', TEMP_LIM),
                 format: (v) => `${v}°C`,
                 onChange: (val) => {
@@ -732,46 +980,39 @@ function renderStepCards() {
                     renderReviewGraph();
                 },
             });
-            tempStepper._setWidth('110px');
 
-            let sensorValue = step.sensor || 'coffee';
-            const sensorBtn = document.createElement('button');
-            sensorBtn.type = 'button';
-            sensorBtn.className = 'text-[var(--text-primary)] border border-[var(--secondary-button-outline)] rounded-[8px] px-[8px] py-[2px] text-[24px] font-semibold cursor-pointer select-none';
-            sensorBtn.textContent = sensorValue === 'coffee' ? getTranslation('Group') : getTranslation('Mix');
-            sensorBtn.addEventListener('click', () => {
-                sensorValue = sensorValue === 'coffee' ? 'water' : 'coffee';
-                sensorBtn.textContent = sensorValue === 'coffee' ? getTranslation('Group') : getTranslation('Mix');
-                editorState.profile.steps[index].sensor = sensorValue;
+            const sensorStates = ['coffee', 'water'];
+            const sensorChip = createCycleChip({
+                states: sensorStates,
+                index: (step.sensor || 'coffee') === 'water' ? 1 : 0,
+                labelFor: (s) => getTranslation(s === 'water' ? 'Mix' : 'Group'),
+                onChange: (s) => { editorState.profile.steps[index].sensor = s; },
             });
 
-            tCell.appendChild(tempStepper);
-            tCell.appendChild(sensorBtn);
+            tCell.appendChild(controlLine(sensorChip, tempStepper));
+        } else {
+            tCell.appendChild(collapsedRow(
+                getTranslation((step.sensor || 'coffee') === 'water' ? 'Mix' : 'Group'),
+                `${step.temperature ?? 93}°C`,
+            ));
         }
 
-        // Pump + Limit — three lines:
-        //   [−]  6.0 mL/s  [+]      (± revealed on tap)
-        //   [Flow]  [Quickly]
-        //   + Limit   /   Limit to [−] 4.0 bar [+]
-        // The pump cell carries the most controls, so its steppers stay quiet
-        // until tapped — the ± keep their space (visibility, not display), so
-        // revealing them never shifts the row.
-        {
-            const pCell = mkCell(R.PUMP, col, 'flex flex-col justify-center items-center px-[16px] py-[4px] gap-[10px] border-r border-b border-[var(--border-color)]');
+        // ── Pump row ────────────────────────────────────────────────────────
+        const pCell = cardAttr(mkCell(R.PUMP, col,
+            `flex flex-col items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+        onExpandClick(pCell);
 
+        if (expanded) {
             const targetUnit = isFlow ? 'mL/s' : 'bar';
-            const PUMP_LIM   = isFlow ? FIELD_LIMITS.flow : FIELD_LIMITS.pressure;
-            let transValue   = step.transition || 'fast';
+            const PUMP_LIM = isFlow ? FIELD_LIMITS.flow : FIELD_LIMITS.pressure;
 
-            // ── Line 1: pump target ──────────────────────────────────────────
             const targetStepper = createGridStepper({
                 value: isFlow ? (step.flow || 0) : (step.pressure || 0),
                 lim: PUMP_LIM,
-                revealOnTap: true,
+                unit: targetUnit,
                 numpad: isFlow
                     ? numpadConfig('pe-pump', 'FLOW', 'mL/s', PUMP_LIM)
                     : numpadConfig('pe-pump', 'PRESSURE', 'bar', PUMP_LIM),
-                format: (v) => `${roundTo(v, PUMP_LIM.step)} ${targetUnit}`,
                 onChange: (val) => {
                     if (isFlow) editorState.profile.steps[index].flow = val;
                     else editorState.profile.steps[index].pressure = val;
@@ -779,55 +1020,31 @@ function renderStepCards() {
                 },
             });
 
-            // ── Line 2: pump mode + ramp ─────────────────────────────────────
-            // The 'Ramp' label is gone: it was the widest element in the cell,
-            // and its German (row 1721, 'Sanfter Ubergang' = smooth transition)
-            // hardcodes 'smooth', so beside the toggle it read 'Sanfter
-            // Ubergang Schnell' — smooth transition, fast. The toggle says the
-            // whole thing on its own.
-            // Single cycling button, not a segmented pair: every other toggle in
-            // this editor shows the current value and cycles on tap, and the
-            // unit in the value above already says which mode is active.
-            const modeLine = document.createElement('div');
-            modeLine.className = 'flex items-center gap-[8px] flex-wrap justify-center';
-
-            const modeBtn = document.createElement('button');
-            modeBtn.type = 'button';
-            modeBtn.className = 'border border-[var(--secondary-button-outline)] text-[var(--text-primary)] rounded-[8px] px-[8px] py-[2px] text-[24px] font-semibold cursor-pointer select-none';
-            modeBtn.textContent = isFlow ? getTranslation('Flow') : getTranslation('Pressure');
-            modeBtn.addEventListener('click', () => {
-                const s = editorState.profile.steps[index];
-                if (isFlow) {
-                    s.pump = 'pressure';
-                    if (!s.pressure) s.pressure = PUMP_SEED_PRESSURE;
-                    delete s.flow;
-                } else {
-                    s.pump = 'flow';
-                    if (!s.flow) s.flow = PUMP_SEED_FLOW;
-                    delete s.pressure;
-                }
-                renderStepCards(); // units, limits and the limiter axis all change with the mode
+            // Single cycling chip replaces the old mode + transition button
+            // pair: Flow Quickly → Flow Slowly → Pressure Quickly → Pressure
+            // Slowly. Crossing the flow/pressure boundary keeps the existing
+            // seed/delete behavior and re-renders the whole tab, because units,
+            // FIELD_LIMITS bounds and the limiter axis all change with the mode.
+            const modeChip = createCycleChip({
+                states: PUMP_CYCLE_STATES,
+                index: pumpCycleIndex(step.pump === 'pressure' ? 'pressure' : 'flow', step.transition || 'fast'),
+                labelFor: pumpChipLabel,
+                onChange: (state) => {
+                    const s = editorState.profile.steps[index];
+                    if (state.pump === 'pressure' && s.pump !== 'pressure') {
+                        s.pump = 'pressure';
+                        if (!s.pressure) s.pressure = PUMP_SEED_PRESSURE;
+                        delete s.flow;
+                    } else if (state.pump === 'flow' && s.pump === 'pressure') {
+                        s.pump = 'flow';
+                        if (!s.flow) s.flow = PUMP_SEED_FLOW;
+                        delete s.pressure;
+                    }
+                    s.transition = state.transition;
+                    renderStepCards(); // units, limits and the limiter axis all change with the mode
+                },
             });
 
-            const transBtn = document.createElement('button');
-            transBtn.type = 'button';
-            transBtn.className = 'border border-[var(--secondary-button-outline)] text-[var(--text-primary)] rounded-[8px] px-[8px] py-[2px] text-[24px] font-semibold cursor-pointer select-none';
-            transBtn.textContent = transValue === 'fast' ? getTranslation('Quickly') : getTranslation('Slowly');
-            transBtn.addEventListener('click', () => {
-                transValue = transValue === 'fast' ? 'smooth' : 'fast';
-                transBtn.textContent = transValue === 'fast' ? getTranslation('Quickly') : getTranslation('Slowly');
-                editorState.profile.steps[index].transition = transValue;
-                renderReviewGraph();
-            });
-
-            modeLine.appendChild(modeBtn);
-            modeLine.appendChild(transBtn);
-
-            // ── Line 3: limiter ──────────────────────────────────────────────
-            // Off collapses to a single '+ Limit' chip: 'Limit to [−] 0 bar [+]'
-            // spent four elements saying nothing is limited, on the majority of
-            // steps. The chip opens the numpad directly, so there is no
-            // revealed-but-still-zero state and no silently seeded value.
             const limUnit = isFlow ? 'bar' : 'mL/s';
             const LIM_LIM = isFlow ? FIELD_LIMITS.pressureLimit : FIELD_LIMITS.flowLimit;
             const limValue = step.limiter?.value ?? 0;
@@ -835,157 +1052,67 @@ function renderStepCards() {
                 ? numpadConfig('pe-lim', 'PRESSURE LIMIT', 'bar', LIM_LIM)
                 : numpadConfig('pe-lim', 'FLOW LIMIT', 'mL/s', LIM_LIM);
 
-            function writeLim(val) {
-                const s = editorState.profile.steps[index];
-                if (!s.limiter) s.limiter = { value: val, range: newLimiterRange(s.pump) };
-                else s.limiter.value = val;
-                renderReviewGraph();
-            }
-
-            const limLine = document.createElement('div');
-            // Column, not a row: "Limit to" sits above its stepper as a caption.
-            // Inline it competed with the value for the cell's width and forced
-            // German ("Begrenzen auf") to wrap mid-phrase.
-            limLine.className = 'flex flex-col items-center gap-[4px]';
-
-            if (limValue > 0) {
-                const withText = document.createElement('span');
-                // Caption weight, not body weight — at 24px it read as a peer of
-                // the value it labels.
-                withText.className = 'text-[20px] text-[var(--low-contrast-white)] select-none';
-                withText.textContent = getTranslation('Limit to');
-
-                const limStepper = createGridStepper({
-                    value: limValue,
-                    lim: LIM_LIM,
-                    revealOnTap: true,
-                    offWhenZero: true,
-                    numpad: limNumpad,
-                    format: (v) => `${roundTo(v, LIM_LIM.step)} ${limUnit}`,
-                    onChange: writeLim,
-                });
-                limStepper._setWidth('130px');
-
-                limLine.appendChild(withText);
-                limLine.appendChild(limStepper);
-            } else {
-                const addLimit = document.createElement('button');
-                addLimit.type = 'button';
-                addLimit.className = 'border border-[var(--secondary-button-outline)] text-[var(--text-primary)] rounded-[8px] px-[10px] py-[2px] text-[24px] font-semibold cursor-pointer select-none';
-                addLimit.textContent = `+ ${getTranslation('Limit')}`;
-                addLimit.addEventListener('click', () => {
-                    const apply = (val) => { writeLim(val); if (val > 0) renderStepCards(); };
-                    if (shouldUseNumpad()) openNumpadForField(0, limNumpad, apply);
-                    else inlineEditValue(addLimit, 0, { min: LIM_LIM.min, max: LIM_LIM.max, step: LIM_LIM.step, onCommit: apply });
-                });
-                limLine.appendChild(addLimit);
-            }
-
-            pCell.appendChild(targetStepper);
-            pCell.appendChild(modeLine);
-            pCell.appendChild(limLine);
-        }
-
-        // Exit — two lines:
-        //   [Pressure] [is over]
-        //   [−]  9.0 bar  [+]
-        // Type 'off' is a UI-only state (step.exit = null on save); it hides the
-        // condition and value rather than showing a disabled control.
-        {
-            const exitCell = mkCell(R.EXIT, col, 'flex flex-col justify-center items-center px-[16px] py-[4px] gap-[8px] border-r border-b border-[var(--border-color)]');
-
-            const exitDef = readExitDef(step);
-            let exitType  = exitDef.type;
-            let exitCond  = exitDef.condition;
-            const exitValue = exitDef.value;
-
-            const TOGGLE_CLASS = 'border border-[var(--secondary-button-outline)] text-[var(--text-primary)] rounded-[8px] px-[8px] py-[2px] text-[24px] font-semibold cursor-pointer select-none';
-
-            function writeExit(patch) {
-                const s = editorState.profile.steps[index];
-                if (!s.exit) s.exit = { type: exitType, condition: exitCond, value: exitValue };
-                Object.assign(s.exit, patch);
-                renderReviewGraph();
-            }
-
-            const typeBtn = document.createElement('button');
-            typeBtn.type = 'button';
-            typeBtn.className = TOGGLE_CLASS;
-            typeBtn.textContent = getTranslation(exitType.charAt(0).toUpperCase() + exitType.slice(1));
-            typeBtn.addEventListener('click', () => {
-                exitType = EXIT_TYPES[(EXIT_TYPES.indexOf(exitType) + 1) % EXIT_TYPES.length];
-                // Bounds are per-type — pressure tops out at 12 bar, flow at
-                // 8 mL/s — so the value has to come along into the new range.
-                // Switching 11 bar to flow used to leave an 11 mL/s exit, well
-                // over the ceiling the numpad and ± both enforce.
-                const patch = { type: exitType };
-                if (exitType !== 'off') patch.value = clamp(exitValue, 0, EXIT_MAX_MAP[exitType]);
-                writeExit(patch);
-                renderStepCards(); // unit, bounds and the whole line's visibility change with the type
+            const limStepper = createGridStepper({
+                value: limValue,
+                lim: LIM_LIM,
+                unit: limUnit,
+                offWhenZero: true,
+                numpad: limNumpad,
+                onChange: (val) => {
+                    const s = editorState.profile.steps[index];
+                    if (!s.limiter) s.limiter = { value: val, range: newLimiterRange(s.pump) };
+                    else s.limiter.value = val;
+                    renderReviewGraph();
+                },
             });
 
-            const condBtn = document.createElement('button');
-            condBtn.type = 'button';
-            condBtn.className = TOGGLE_CLASS;
-            condBtn.textContent = getTranslation(exitCond === 'over' ? 'is over' : 'is under');
-            condBtn.addEventListener('click', () => {
-                exitCond = exitCond === 'over' ? 'under' : 'over';
-                condBtn.textContent = getTranslation(exitCond === 'over' ? 'is over' : 'is under');
-                writeExit({ condition: exitCond });
-            });
+            // Two horizontal lines, stacked: mode chip + target on top,
+            // "Limit to" + limiter stepper below — never the other way
+            // around (stacking the chip above the stepper) as before.
+            pCell.appendChild(controlLine(modeChip, targetStepper));
+            pCell.appendChild(controlLine(labelSlot(getTranslation('Limit to')), limStepper));
+        } else {
+            // Two lines, matching the expanded row: the pump mode (chip-backed,
+            // so accented) with its target, then the limiter caption with its
+            // value — "Off" rather than "0 bar" when nothing is limited, which
+            // is what the zero actually means.
+            const targetUnit = isFlow ? 'mL/s' : 'bar';
+            const targetLim  = isFlow ? FIELD_LIMITS.flow : FIELD_LIMITS.pressure;
+            const targetVal  = isFlow ? (step.flow || 0) : (step.pressure || 0);
+            const limUnitC   = isFlow ? 'bar' : 'mL/s';
+            const limLimC    = isFlow ? FIELD_LIMITS.pressureLimit : FIELD_LIMITS.flowLimit;
+            const limValC    = step.limiter?.value ?? 0;
 
-            const exitTopLine = document.createElement('div');
-            exitTopLine.className = 'flex items-center gap-[8px] flex-wrap justify-center';
-            exitTopLine.appendChild(typeBtn);
-            exitCell.appendChild(exitTopLine);
-
-            if (exitType !== 'off') {
-                condBtn.style.display = '';
-                exitTopLine.appendChild(condBtn);
-
-                const EXIT_LIM = { min: 0, max: EXIT_MAX_MAP[exitType], step: EXIT_STEP_MAP[exitType] };
-                const exitStepper = createGridStepper({
-                    value: exitValue,
-                    lim: EXIT_LIM,
-                    revealOnTap: true,
-                    numpad: {
-                        fieldType: 'pe-exit',
-                        title: 'EXIT ' + exitType.toUpperCase(),
-                        unit: EXIT_UNIT_MAP[exitType] || '',
-                        min: EXIT_LIM.min, max: EXIT_LIM.max,
-                        label: `${EXIT_LIM.min}–${EXIT_LIM.max}`,
-                    },
-                    format: (v) => `${roundTo(v, EXIT_LIM.step)} ${EXIT_UNIT_MAP[exitType]}`,
-                    onChange: (val) => writeExit({ value: val }),
-                });
-                exitStepper._setWidth('130px');
-                exitCell.appendChild(exitStepper);
-            }
+            pCell.appendChild(collapsedRow(
+                pumpChipLabel({ pump: isFlow ? 'flow' : 'pressure', transition: step.transition || 'fast' }),
+                `${roundTo(targetVal, targetLim.step)} ${targetUnit}`,
+            ));
+            pCell.appendChild(collapsedRow(
+                getTranslation('Limit to'),
+                limValC > 0 ? `${roundTo(limValC, limLimC.step)} ${limUnitC}` : getTranslation('Off'),
+                { accent: false },
+            ));
         }
 
-        // Max — one stepper per limit, stacked.
-        //   [−]  0 g    [+]      outline = this limit is off
-        //   [−]  30 sec [+]      filled  = active
-        //   [−]  0 ml   [+]
-        // All three are shown because all three are live on the machine: whichever
-        // trips first ends the step. The old row colored exactly one of them blue
-        // by a weight > seconds > volume priority, which described nothing the
-        // machine does, and it floated the inactive pills absolutely above and
-        // below the active one — over the Pump and Exit rows either side of it.
-        {
-            const maxCell = mkCell(R.MAX, col, 'flex flex-col justify-center items-center px-[16px] py-[4px] border-r border-b border-[var(--border-color)] gap-[4px]');
+        // ── Maximum row ─────────────────────────────────────────────────────
+        // Three horizontal lines, stacked: Weight, Time (seconds), Volume.
+        // All three are live on the machine — whichever trips first ends the
+        // step — so all three stay editable from here, not just weight/time.
+        const mCell = cardAttr(mkCell(R.MAX, col,
+            `flex flex-col items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+        onExpandClick(mCell);
 
-            const MAX_FIELDS = [
-                { key: 'weight',  unit: 'g',   lim: FIELD_LIMITS.weight },
-                { key: 'seconds', unit: 'sec', lim: FIELD_LIMITS.seconds },
-                { key: 'volume',  unit: 'ml',  lim: FIELD_LIMITS.volume },
-            ];
+        const MAX_FIELDS = [
+            { key: 'weight',  unit: 'g',   lim: FIELD_LIMITS.weight,  label: 'Weight' },
+            { key: 'seconds', unit: 'sec', lim: FIELD_LIMITS.seconds, label: 'Time' },
+            { key: 'volume',  unit: 'ml',  lim: FIELD_LIMITS.volume,  label: 'Volume' },
+        ];
 
-            MAX_FIELDS.forEach(({ key, unit, lim }) => {
+        if (expanded) {
+            MAX_FIELDS.forEach(({ key, unit, lim, label }) => {
                 const stepper = createGridStepper({
                     value: step[key] || 0,
                     lim,
-                    revealOnTap: true,
                     offWhenZero: true,
                     numpad: numpadConfig(MAX_NUMPAD[key].fieldType, MAX_NUMPAD[key].title, unit, lim),
                     format: (v) => `${roundTo(v, lim.step)} ${unit}`,
@@ -994,56 +1121,167 @@ function renderStepCards() {
                         renderReviewGraph();
                     },
                 });
-                stepper._setWidth('120px');
-                maxCell.appendChild(stepper);
+                mCell.appendChild(controlLine(labelSlot(getTranslation(label)), stepper));
+            });
+        } else {
+            // One line per field, same order as expanded — a comma-joined
+            // digest hid which limit a number belonged to, and dropped the
+            // unset ones entirely so the row's shape changed with its values.
+            MAX_FIELDS.forEach(({ key, unit, lim, label }) => {
+                const v = step[key] || 0;
+                mCell.appendChild(collapsedRow(
+                    getTranslation(label),
+                    v > 0 ? `${roundTo(v, lim.step)} ${unit}` : getTranslation('Off'),
+                    { accent: false },
+                ));
             });
         }
 
-        // Footer: move left / delete / insert / move right.
-        // gap drops from 40px to 16px — four 60px buttons plus 40px gaps would be
-        // 360px in a 380px column.
-        const fCell = mkCell(R.FOOTER, col, 'flex justify-center items-center gap-[16px] px-[16px] py-[8px] border-r border-[var(--border-color)]');
+        // ── Move on if row ──────────────────────────────────────────────────
+        // One horizontal line: the exit-condition chip, then the ± value —
+        // the value is simply absent while the chip reads Off.
+        const eCell = cardAttr(mkCell(R.EXIT, col,
+            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+        onExpandClick(eCell);
 
-        fCell.appendChild(makeMoveBtn(index, -1, numSteps, renderStepCards, true));
+        const exitDef = readExitDef(step);
+
+        if (expanded) {
+            function writeExit(patch) {
+                const s = editorState.profile.steps[index];
+                if (patch.type === 'off') { s.exit = null; return; }
+                if (!s.exit || s.exit.type === undefined) s.exit = { type: patch.type, condition: patch.condition, value: 0 };
+                else Object.assign(s.exit, patch);
+                // Remember a real edited value so a later Off-and-back on this
+                // step restores it instead of reseeding a 0.
+                if (patch.value !== undefined) rememberExitValue(step, patch.type, patch.value);
+                renderReviewGraph();
+            }
+
+            const exitChip = createCycleChip({
+                states: EXIT_CYCLE_STATES,
+                index: exitCycleIndex(exitDef.type, exitDef.condition),
+                labelFor: exitChipLabel,
+                onChange: (state) => {
+                    // Leaving a real type — remember its value before it's
+                    // dropped (Off) or overwritten (switching pressure<->flow),
+                    // so cycling back through it later is lossless.
+                    if (exitDef.type === 'pressure' || exitDef.type === 'flow') {
+                        rememberExitValue(step, exitDef.type, exitDef.value);
+                    }
+                    if (state.type === 'off') {
+                        editorState.profile.steps[index].exit = null;
+                    } else {
+                        // Bounds are per-type — pressure tops out at 12 bar, flow
+                        // at 8 mL/s. recallExitValue restores whatever this step
+                        // last had for the new type (or a sane default) rather
+                        // than carrying over 0 from readExitDef's Off fallback —
+                        // a live "pressure is over 0 bar" fires on essentially
+                        // any pressure at all.
+                        const value = recallExitValue(step, state.type);
+                        editorState.profile.steps[index].exit = { type: state.type, condition: state.condition, value };
+                    }
+                    renderStepCards(); // unit, bounds and the stepper's visibility change with the type
+                },
+            });
+            let exitStepper = null;
+            if (exitDef.type !== 'off') {
+                const EXIT_LIM = { min: 0, max: EXIT_MAX_MAP[exitDef.type], step: EXIT_STEP_MAP[exitDef.type] };
+                exitStepper = createGridStepper({
+                    value: exitDef.value,
+                    lim: EXIT_LIM,
+                    unit: EXIT_UNIT_MAP[exitDef.type],
+                    numpad: {
+                        fieldType: 'pe-exit',
+                        title: 'EXIT ' + exitDef.type.toUpperCase(),
+                        unit: EXIT_UNIT_MAP[exitDef.type] || '',
+                        min: EXIT_LIM.min, max: EXIT_LIM.max,
+                        label: `${EXIT_LIM.min}–${EXIT_LIM.max}`,
+                    },
+                    onChange: (val) => writeExit({ type: exitDef.type, condition: exitDef.condition, value: val }),
+                });
+            }
+            eCell.appendChild(controlLine(exitChip, exitStepper));
+        } else {
+            // The chip's own label, then its value — "Pressure is over 4.0 bar".
+            // Off has no value to show, so the label carries the line alone.
+            const exitLabel = exitChipLabel(
+                exitDef.type === 'off' ? { type: 'off' } : { type: exitDef.type, condition: exitDef.condition }
+            );
+            eCell.appendChild(collapsedRow(
+                exitLabel,
+                exitDef.type === 'off'
+                    ? ''
+                    : `${roundTo(exitDef.value, EXIT_STEP_MAP[exitDef.type])} ${EXIT_UNIT_MAP[exitDef.type]}`,
+            ));
+        }
+
+        // ── Footer row — trash / plus, on every card (collapsed or expanded) ──
+        const fCell = cardAttr(mkCell(R.FOOTER, col,
+            `flex items-center justify-between ${CARD_BG} ${SIDE} border-b-[1.5px] ${HAIRLINE} rounded-b-[15px] px-[30px] pt-[15px] pb-[22.5px] ${expanded ? '' : 'cursor-pointer'}`));
+        onExpandClick(fCell);
 
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'pe-step-action-btn w-[60px] h-[60px] flex items-center justify-center text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-grey)] rounded-[10px] cursor-pointer';
-        deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>';
+        deleteBtn.className = 'w-[67.5px] h-[67.5px] flex items-center justify-center cursor-pointer';
         deleteBtn.setAttribute('aria-label', 'Delete step');
-        deleteBtn.addEventListener('click', async () => {
+        deleteBtn.appendChild(maskIcon(ICON_TRASH, 37.5, 'var(--button-primary-bg)'));
+        deleteBtn.addEventListener('click', async (e) => {
+            // stopPropagation so tapping trash on a collapsed card deletes the
+            // step instead of expanding the card first.
+            e.stopPropagation();
             if (!await confirmDeleteStep(index)) return;
             removeStepAt(index);
+            if (editorState.editingStep === index) editorState.editingStep = null;
             renderStepCards();
         });
 
         const insertBtn = document.createElement('button');
         insertBtn.type = 'button';
-        insertBtn.className = 'pe-step-action-btn w-[60px] h-[60px] flex items-center justify-center text-[var(--mimoja-blue)] hover:bg-[var(--button-grey)] rounded-[10px] cursor-pointer';
-        insertBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>';
+        insertBtn.className = 'w-[67.5px] h-[67.5px] flex items-center justify-center cursor-pointer';
         insertBtn.setAttribute('aria-label', 'Insert step after');
-        insertBtn.addEventListener('click', () => { insertStepAfter(index); renderStepCards(); });
+        insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--button-primary-bg)'));
+        insertBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            insertStepAfter(index);
+            editorState.editingStep = index + 1;
+            renderStepCards();
+        });
 
         fCell.appendChild(deleteBtn);
         fCell.appendChild(insertBtn);
-        fCell.appendChild(makeMoveBtn(index, +1, numSteps, renderStepCards, true));
     });
 
-    // ── Add-step column ───────────────────────────────────────────────────────
-    // Full-height so it reads as a column, and so deleting the last step leaves
-    // something to click. Every other way to add a step lives in a step's own
-    // footer, which means an empty profile used to be a dead end: no columns, no
-    // "+", and Save rejects a profile with no steps.
-    const addCell = mkCell(`1 / ${TOTAL_ROWS + 1}`, numSteps + 2, 'flex items-center justify-center');
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'pe-step-action-btn w-[60px] h-[60px] flex items-center justify-center text-[var(--mimoja-blue)] hover:bg-[var(--button-grey)] rounded-[10px] cursor-pointer';
-    addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>';
-    addBtn.setAttribute('aria-label', 'Insert a step');
-    addBtn.title = getTranslation('Insert a step');
-    // -1 when there are no steps → splice(0, 0, …), which is what we want.
-    addBtn.addEventListener('click', () => { insertStepAfter(numSteps - 1); renderStepCards(); });
-    addCell.appendChild(addBtn);
+    // ── Empty state ─────────────────────────────────────────────────────────
+    // A step's own footer is the only other way to add one, so a zero-step
+    // profile needs its own affordance or it is a dead end (Save also rejects
+    // a profile with no steps).
+    if (numSteps === 0) {
+        const emptyCell = mkCell('1 / 7', 2, 'flex items-center justify-center');
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'w-[72px] h-[72px] rounded-[15px] bg-[var(--button-grey)] flex items-center justify-center cursor-pointer';
+        addBtn.setAttribute('aria-label', getTranslation('Insert a step'));
+        addBtn.title = getTranslation('Insert a step');
+        addBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--text-primary)'));
+        addBtn.addEventListener('click', () => {
+            insertStepAfter(-1);
+            editorState.editingStep = 0;
+            renderStepCards();
+        });
+        emptyCell.appendChild(addBtn);
+    }
+
+    // Bindings live in initCardPaging (called once from initializeProfileEditor);
+    // only the disabled states need recomputing here, since the step count and
+    // the container's scrollWidth just changed.
+    updatePagingButtons();
+
+    // A full re-render here always follows an execution-field edit — insert,
+    // delete, reorder, or a pump-mode/exit-type change that rebuilds the tab —
+    // so this is also the catch-all for those, alongside the per-control
+    // updates inside createGridStepper/createCycleChip.
+    updateSaveAsNewButtonState();
 }
 
 // ─── Flow calibration (per profile) ─────────────────────────────────────────
@@ -1252,7 +1490,10 @@ function renderSettingsTab() {
         if (profile.beverage_type === type) opt.selected = true;
         select.appendChild(opt);
     });
-    select.addEventListener('change', () => { editorState.profile.beverage_type = select.value; });
+    select.addEventListener('change', () => {
+        editorState.profile.beverage_type = select.value;
+        updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
+    });
     addFieldTo(leftCol, getTranslation('Beverage type'), select);
 
     // Author (text input)
@@ -1289,6 +1530,7 @@ function renderSettingsTab() {
 
         preinfSelect.addEventListener('change', () => {
             editorState.profile.target_volume_count_start = parseInt(preinfSelect.value, 10);
+            updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
         });
 
         addFieldTo(middleCol, getTranslation('Preinfusion ends after'), preinfSelect);
@@ -1317,9 +1559,11 @@ function renderSettingsTab() {
         editorState.profile = deepCopy(newProfile);
         editorState.sourceProfileRecord = sourceRecord || null;
         editorState.sourceProfileId = sourceRecord?.id || null;
+        editorState.editingStep = null;
         _baselineProfileJson = JSON.stringify(editorState.profile);
         const titleDisplay = document.getElementById('editor-title-display');
         if (titleDisplay) titleDisplay.textContent = editorState.profile.title || 'Untitled Profile';
+        updateSaveAsNewButtonState();
         renderStepCards();
         renderSettingsTab();
     }
@@ -1526,23 +1770,17 @@ function describeStep(step, index) {
             value = val;
             render();
             onCommit(value);
+            updateSaveAsNewButtonState();
         }
 
         pill.addEventListener('click', () => {
-            if (shouldUseNumpad()) {
-                openNumpadForField(value, {
-                    fieldType: opts.fieldType || 'pe-review',
-                    title: (opts.title || unit || 'VALUE').toUpperCase(),
-                    unit,
-                    min: lim.min, max: lim.max,
-                    label: `${lim.min}–${lim.max}`,
-                }, commit);
-                return;
-            }
-            inlineEditValue(pill, value, {
-                min: lim.min, max: lim.max, step: lim.step, unit,
-                onCommit: commit,
-            });
+            openNumpadForField(value, {
+                fieldType: opts.fieldType || 'pe-review',
+                title: (opts.title || unit || 'VALUE').toUpperCase(),
+                unit,
+                min: lim.min, max: lim.max,
+                label: `${lim.min}–${lim.max}`,
+            }, commit);
         });
 
         render();
@@ -1772,6 +2010,12 @@ export function pushChannel(xArr, yArr, startT, endT, prevVal, target, transitio
 }
 
 function renderReviewGraph() {
+    // Every execution-field edit in the SCRIPT tab (describeStep's toggles —
+    // sensor, pump mode, transition, exit condition) reaches this function
+    // whichever tab is active, so it doubles as the catch-all for those raw
+    // toggles — unlike the plotting below, this must run even while another
+    // tab is showing, not just on re-entry to SCRIPT.
+    updateSaveAsNewButtonState();
     // The panel stays in the DOM when hidden, so every grid edit used to replot
     // into a zero-size container. setActiveTab(2) re-renders on entry, so
     // skipping the work while another tab is up loses nothing.
@@ -2000,11 +2244,16 @@ function setActiveTab(tabIndex) {
     document.querySelectorAll('.editor-tab-btn').forEach((btn) => {
         const idx = parseInt(btn.dataset.tab, 10);
         if (idx === tabIndex) {
-            btn.className = 'editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase bg-[var(--button-primary-bg)] text-white';
+            btn.className = 'editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap bg-[var(--button-primary-bg)] text-white';
         } else {
-            btn.className = 'editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase text-[var(--button-primary-bg)] bg-transparent';
+            btn.className = 'editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap text-[var(--tab-text-inactive)] bg-transparent';
         }
+        fitTextToWidth(btn);
     });
+
+    // Paging controls only make sense on the CARDS tab.
+    const pagingControls = document.getElementById('editor-paging-controls');
+    if (pagingControls) pagingControls.classList.toggle('hidden', tabIndex !== 0);
 
     // Show/hide panels
     for (let i = 0; i < TAB_COUNT; i++) {
@@ -2047,6 +2296,7 @@ function initTitleEditing() {
         }
         input.classList.add('hidden');
         display.classList.remove('hidden');
+        updateSaveAsNewButtonState();
     }
 
     display.addEventListener('click', startEditing);
@@ -2166,7 +2416,112 @@ async function saveDraftEdit(draftRecord) {
     }
 }
 
-async function saveProfile() {
+// A brand-new profile arrives as a stub record carrying id null (see the Add
+// Profile handler in profile_selector.js), so "is there a source profile"
+// keys off the id, not record truthiness — the stub itself is always set.
+// Shared by saveProfile (PUT-vs-POST routing) and the SAVE AS NEW button's
+// enabled state, so the two definitions of "no source" can't drift apart.
+function currentSaveSource() {
+    return editorState.sourceProfileRecord?.id ? editorState.sourceProfileRecord : null;
+}
+
+// Whether the editor's current profile differs from the source in any
+// execution field (steps, beverage_type, tank_temperature, target_weight,
+// target_volume, … — see rest_v1.yml's content-hash inputs; title/author/
+// notes are a separate metadata hash and never count). Shared by saveProfile's
+// routing and the SAVE AS NEW button's enabled state so the two can't drift —
+// the same reason currentSaveSource() above is shared rather than each caller
+// re-deriving "is there a source" its own way.
+function currentExecChanged() {
+    const src = currentSaveSource();
+    if (!src?.profile) return true;
+    const sourceProfile = normalizeLegacySteps(deepCopy(src.profile));
+    return executionChanged(sourceProfile, editorState.profile);
+}
+
+// SAVE AS NEW only makes sense once an execution field has actually changed —
+// resolveSaveTarget below returns 'blocked' for asNew && !execChanged, because
+// a rename-only POST dedups back to the source by content hash (title isn't
+// part of that hash). Gating on the title instead — as this used to — enabled
+// the button in exactly the state where it could never succeed. This has to
+// be re-evaluated on every execution-field edit, not just a title edit: see
+// the updateSaveAsNewButtonState() calls threaded through createGridStepper,
+// createCycleChip, createSettingPill, createSpinner, renderStepCards and
+// renderReviewGraph.
+function updateSaveAsNewButtonState() {
+    const btn = document.getElementById('editor-save-as-btn');
+    if (!btn || !editorState.profile) return;
+    const src = currentSaveSource();
+    const enabled = !src || currentExecChanged();
+    btn.classList.toggle('opacity-40', !enabled);
+    btn.classList.toggle('pointer-events-none', !enabled);
+    btn.setAttribute('aria-disabled', String(!enabled));
+}
+
+// ─── Save routing (pure) ────────────────────────────────────────────────────
+// SAVE (asNew=false) and SAVE AS NEW (asNew=true) are the explicit choice —
+// routing no longer infers "fork vs overwrite" from titleChanged, since that
+// left the one case the buttons exist for (title changed) with no way to
+// choose between them.
+//
+// 'put'     — updateProfile(src.id, …): same id, in place. Only reachable
+//             with a source, no execution change, not a default, not asNew —
+//             a presentation-only change (rename included) is always safe to
+//             PUT because PUT never hashes/dedups by content.
+// 'post'    — uploadProfileWithParent(…): mints a record via POST. Covers
+//             three different call sites in saveProfile (forced default fork,
+//             an explicit Save As New, and a plain overwrite's hide+replace
+//             dance) — which one is decided there from the same inputs.
+// 'blocked' — neither is possible: a default with no execution change (PUT is
+//             rejected server-side, and POST would dedup by content hash back
+//             to the same default, silently dropping the rename), or an
+//             explicit Save As New with no execution change (POST would
+//             dedup back to the *source* record for the same reason — title
+//             isn't part of a record's content hash).
+function resolveSaveTarget({ hasSource, isDefault, execChanged, titleChanged, asNew }) {
+    if (!hasSource) return 'post';
+    if (!execChanged) return (isDefault || asNew) ? 'blocked' : 'put';
+    // execChanged is true from here: every branch mints a record via POST —
+    // a forced default fork, an explicit Save As New, or a plain SAVE's
+    // hide+replace overwrite. Which of the three is decided in saveProfile
+    // from the same isDefault/asNew inputs; titleChanged plays no part here.
+    return 'post';
+}
+
+// Which title actually gets saved, and whether it needs an auto-suffix to
+// avoid colliding with another profile.
+//
+// `existingTitles` is every OTHER profile's title — the caller has already
+// excluded the source by id, because for a PUT/overwrite that's exactly
+// right (the source is the record being kept, not a collision candidate).
+// A real fork is different: it mints a second record, so if the title was
+// left unchanged that second record collides with its own still-visible
+// parent — this adds sourceTitle back in for exactly that case.
+//
+//  - PUT (in place), or SAVE's hide+replace overwrite of a non-default: the
+//    same profile kept under whatever title it now has — no collision check
+//    at all, even if that title happens to match something else (matches
+//    the pre-existing 'overwrite' path, which was only ever reached with an
+//    unchanged title).
+//  - Everything else that mints a record (Save As New, a brand-new/uploaded
+//    profile, or a default forced to fork on an execution change) must not
+//    silently share a title with its own source.
+function resolveFinalTitle({ title, existingTitles, sourceId, sourceTitle, asNew, target, isDefault }) {
+    const trimmed = title.trim();
+    // The no-source case (a brand-new profile, or an uploaded file) is never
+    // "in place" — sourceId gates it explicitly so it still collision-checks
+    // against existingTitles, same as before this function existed.
+    const isInPlace = !!sourceId && (target === 'put' || (target === 'post' && !asNew && !isDefault));
+    if (isInPlace) return trimmed;
+
+    const collisionTitles = (sourceId && sourceTitle) ? new Set([...existingTitles, sourceTitle]) : existingTitles;
+    if (!collisionTitles.has(trimmed)) return trimmed;
+    let n = 2;
+    while (collisionTitles.has(`${trimmed} (${n})`)) n++;
+    return `${trimmed} (${n})`;
+}
+
+async function saveProfile({ asNew = false } = {}) {
     if (!editorState.profile.title?.trim()) {
         showToast(getTranslation('Invalid name'), 3000, 'error');
         return;
@@ -2180,16 +2535,11 @@ async function saveProfile() {
         const { updateProfile, uploadProfileWithParent, updateProfileVisibility } = await import('./api.js');
         const { availableProfiles, remapFavorite } = await import('./profileManager.js');
 
-        // Overwrite-in-place is the default: editing an existing user profile and
-        // keeping its title updates the same record (no "(2)" cruft on a
-        // draft→test→tweak loop). Renaming via the inline title editor is the
-        // explicit save-as — titleChanged below routes it to a new record.
-        //
-        // A brand-new profile arrives as a stub record carrying id null (see the
-        // Add Profile handler in profile_selector.js), so key off the id, not the
-        // record: with the stub as `src` the no-op guard below saw the untouched
-        // defaults as "unchanged" and silently dropped the whole profile.
-        const src = editorState.sourceProfileRecord?.id ? editorState.sourceProfileRecord : null;
+        // Overwrite-in-place is the default (SAVE): editing an existing user
+        // profile updates the same record, whatever the title says (no "(2)"
+        // cruft on a draft→test→tweak loop, and no surprise fork from a typo
+        // fix). SAVE AS NEW (asNew=true) is the explicit save-as instead.
+        const src = currentSaveSource();
 
         // Editing a local-only draft (see profileManager.js duplicateProfileAsDraft
         // / createOrUpdateDraft) follows a completely separate routing: it only
@@ -2220,6 +2570,10 @@ async function saveProfile() {
         // An uploaded file also has no source record and also resets the
         // baseline, but saving it verbatim is the whole point of uploading —
         // _hasImportedInSession excludes it from the template check.
+        // Either way stay on the editor rather than bouncing to the selector: the
+        // user pressed Save meaning to keep something, and navigating away reads
+        // as success. The toast names the way forward — renaming and pressing
+        // SAVE AS NEW is the save-as route, which does mint a record.
         const editedJson = JSON.stringify(editorState.profile);
         if (sourceProfileJson) {
             if (sourceProfileJson === editedJson) {
@@ -2231,30 +2585,52 @@ async function saveProfile() {
             return;
         }
 
-        // Title change at save = user intent to save as a brand-new profile.
         const sourceTitle = (src?.profile?.title || '').trim();
         const currentTitle = editorState.profile.title.trim();
         const titleChanged = sourceTitle && currentTitle !== sourceTitle;
 
-        // Both sides normalised (see above), so a legacy field the editor drops
-        // on load can't masquerade as an execution change and fork the profile.
-        const execChanged = !src || executionChanged(sourceProfile, editorState.profile);
+        // Shared with the SAVE AS NEW button's enabled state (currentExecChanged)
+        // so the two can't drift. Both sides are normalised there the same way
+        // sourceProfile is above, so a legacy field the editor drops on load
+        // can't masquerade as an execution change and fork the profile.
+        const execChanged = currentExecChanged();
 
-        // Auto-suffix title only when minting a NEW record (a save-as, a fresh
-        // profile, or a default forked on execution change). An in-place PUT can
-        // keep its own title, so exclude self from the collision set.
-        const willCreateNew = !src || titleChanged || (src.isDefault && execChanged);
+        const target = resolveSaveTarget({
+            hasSource: !!src,
+            isDefault: !!src?.isDefault,
+            execChanged,
+            titleChanged,
+            asNew,
+        });
+
+        // Neither PUT nor POST can honor this save — say so instead of
+        // pretending it stuck (PUT is rejected for defaults; POST would dedup
+        // by content hash and silently drop the rename either way).
+        if (target === 'blocked') {
+            showToast(getTranslation('Change a setting to save a copy'), 3500, 'info');
+            return;
+        }
+
+        // existingTitles excludes the source itself — resolveFinalTitle below
+        // decides whether to add it back in (a real fork must collide with
+        // its own parent; an in-place PUT or overwrite is exempt because it's
+        // the same profile, not a second one).
         const existingTitles = new Set(
             Object.values(availableProfiles)
                 .filter(r => r.id !== src?.id)
                 .map(r => r.profile?.title)
                 .filter(Boolean)
         );
-        let finalTitle = editorState.profile.title.trim();
-        if (willCreateNew && existingTitles.has(finalTitle)) {
-            let n = 2;
-            while (existingTitles.has(`${finalTitle} (${n})`)) n++;
-            finalTitle = `${finalTitle} (${n})`;
+        const finalTitle = resolveFinalTitle({
+            title: editorState.profile.title,
+            existingTitles,
+            sourceId: src?.id ?? null,
+            sourceTitle: src?.profile?.title ?? null,
+            asNew,
+            target,
+            isDefault: !!src?.isDefault,
+        });
+        if (finalTitle !== editorState.profile.title.trim()) {
             editorState.profile.title = finalTitle;
             const titleDisplay = document.getElementById('editor-title-display');
             if (titleDisplay) titleDisplay.textContent = finalTitle;
@@ -2302,23 +2678,36 @@ async function saveProfile() {
         //    presentation-only change (rename included) or rehashes it (deleting
         //    the old) on a user execution change.
         let saved;
-        if (src?.isDefault && execChanged) {
+        if (target === 'put') {
+            // Presentation-only change (title/author/notes, no execution
+            // change), not a default, not an explicit Save As New — same id,
+            // PUT in place. Renaming a user profile with plain SAVE lands here.
+            saved = await updateProfile(src.id, editorState.profile);
+        } else if (src?.isDefault) {
+            // Forced fork — PUT is rejected server-side for a default. The
+            // default itself stays as the parent/reset point (never hidden).
             saved = await uploadProfileWithParent(editorState.profile, src.id);
             if (forkDeduped(saved, src.id)) {
                 showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
                 return;
             }
-        } else if (!src || (titleChanged && execChanged)) {
+        } else if (!src || asNew) {
+            // New profile / uploaded file, or an explicit Save As New with a
+            // real execution change: a plain POST. src?.id links provenance
+            // (getProfileLineage) but the source's visibility is never
+            // touched — Save As New leaves the original completely untouched.
             saved = await uploadProfileWithParent(editorState.profile, src?.id ?? null);
             if (forkDeduped(saved, src?.id ?? null)) {
                 showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
                 return;
             }
-        } else if (execChanged) {
-            // Overwrite of an existing user profile: keep the prior version as a
-            // hidden, restorable snapshot instead of letting the server drop it on
-            // rehash. The new record links back via parentId, so /lineage returns
-            // the full history the Revert picker reads.
+        } else {
+            // Plain SAVE overwriting an existing user profile with a real
+            // execution change: the content rehashes to a new id, so keep the
+            // prior version as a hidden, restorable snapshot instead of
+            // letting the server drop it on rehash. The new record links back
+            // via parentId, so /lineage returns the full history the Revert
+            // picker reads.
             saved = await uploadProfileWithParent(editorState.profile, src.id);
             // A dedup here would return src itself — flipping it visible then
             // straight back to hidden a few lines down and erasing the user's
@@ -2332,17 +2721,16 @@ async function saveProfile() {
                 saved = await updateProfileVisibility(saved.id, 'visible');
             }
             try { await updateProfileVisibility(src.id, 'hidden'); } catch (_) {}
-        } else {
-            // Presentation-only change (title/author/notes, no execution change)
-            // → same id, PUT in place. Renaming a user profile lands here.
-            saved = await updateProfile(src.id, editorState.profile);
         }
 
         const oldId = editorState.sourceProfileId;
         availableProfiles[saved.id] = saved;
 
-        // Only an in-place user PUT replaces the old hash — follow the favorite then.
-        if (oldId && oldId !== saved.id && !src?.isDefault && !titleChanged) {
+        // Only the plain-overwrite POST (hide+replace, just above) actually
+        // retires the old id — favorites need to follow it there. A default's
+        // fork keeps the default around, and Save As New deliberately leaves
+        // the source alone, so neither should touch a favorite pointed at it.
+        if (oldId && oldId !== saved.id && !src?.isDefault && !asNew) {
             delete availableProfiles[oldId];
             await remapFavorite(oldId, saved.id);
         }
@@ -2364,6 +2752,7 @@ async function saveProfile() {
         editorState.sourceProfileRecord = saved;
         editorState.sourceProfileId = saved.id;
         _baselineProfileJson = JSON.stringify(editorState.profile);
+        updateSaveAsNewButtonState();
 
         finishSaveSuccess(saved.id);
     } catch (err) {
@@ -2595,6 +2984,7 @@ async function openVersionHistory() {
     editorState.profile = normalizeLegacySteps(deepCopy(chosen.profile));
     const titleDisplay = document.getElementById('editor-title-display');
     if (titleDisplay) titleDisplay.textContent = editorState.profile.title || 'Untitled Profile';
+    updateSaveAsNewButtonState();
     // Baseline deliberately not reset: a restored version is unsaved work, so
     // Cancel must still warn before throwing it away.
     setActiveTab(editorState.activeTab || 0);
@@ -2624,25 +3014,27 @@ export async function initializeProfileEditor() {
     editorState.sourceProfileId = profileRecord.id;
     editorState.profile = normalizeLegacySteps(deepCopy(profileRecord.profile));
     editorState.activeTab = 0;
+    editorState.editingStep = null; // every card starts collapsed
     _baselineProfileJson = JSON.stringify(editorState.profile);
     _isNewProfileSession = !profileRecord.id;
     _sessionImportedIds = [];
     _hasImportedInSession = false;
-    // Re-arm the ± hint for each editing session, but not for the re-renders
-    // within one (tab switch, step insert/delete).
-    _hintSteppers = [];
-    _hintsDismissed = false;
-    _activeStepper = null;
 
     // 3. Populate title
     const titleDisplay = document.getElementById('editor-title-display');
     if (titleDisplay) titleDisplay.textContent = editorState.profile.title || 'Untitled Profile';
+    updateSaveAsNewButtonState();
 
     // 4. Render tabs — setActiveTab renders whichever panel it shows.
+    // Paging must be bound before the first renderStepCards() call inside it
+    // (renderStepCards only recomputes disabled states via
+    // updatePagingButtons — the icons and click/scroll listeners live here).
+    initCardPaging(); // idempotent — the router re-mounts this page
     setActiveTab(0);
 
     // 5. Wire event listeners
     initTitleEditing();
+    installOutsideClickHandler(); // idempotent — the router re-mounts this page
 
     // Tab buttons
     document.querySelectorAll('.editor-tab-btn').forEach((btn) => {
@@ -2651,22 +3043,34 @@ export async function initializeProfileEditor() {
         });
     });
 
-    // Save / Cancel
+    // Close / Save / Save As New
     const saveBtn = document.getElementById('editor-save-btn');
-    const cancelBtn = document.getElementById('editor-cancel-btn');
-    if (saveBtn) saveBtn.addEventListener('click', saveProfile);
-    if (cancelBtn) cancelBtn.addEventListener('click', cancelEditor);
-
-    // Version history — only for an already-saved, non-default, non-draft
-    // profile. A draft never reached the server, so it has no lineage to show.
-    const historyBtn = document.getElementById('editor-history-btn');
-    if (historyBtn) {
-        historyBtn.addEventListener('click', openVersionHistory);
-        if (editorState.sourceProfileId && !editorState.sourceProfileRecord?.isDefault && !editorState.sourceProfileRecord?.isDraft) {
-            historyBtn.classList.remove('hidden');
-            historyBtn.classList.add('flex');
-        }
-    }
+    const saveAsBtn = document.getElementById('editor-save-as-btn');
+    const closeBtn = document.getElementById('editor-close-btn');
+    // SAVE and SAVE AS NEW both call saveProfile(), but with an explicit
+    // `asNew` flag rather than inferring the fork-vs-overwrite choice from
+    // whether the title changed — see resolveSaveTarget. SAVE AS NEW is
+    // disabled via updateSaveAsNewButtonState() until the title actually
+    // differs from the source profile's.
+    if (saveBtn) saveBtn.addEventListener('click', () => saveProfile({ asNew: false }));
+    if (saveAsBtn) saveAsBtn.addEventListener('click', () => {
+        if (saveAsBtn.getAttribute('aria-disabled') === 'true') return;
+        saveProfile({ asNew: true });
+    });
+    if (closeBtn) closeBtn.addEventListener('click', cancelEditor);
 
     console.log('Profile Editor: Initialization complete.');
+}
+
+// The router replaces #subpage-host's innerHTML wholesale on every navigation,
+// which tears down every listener bound to elements inside it — but the
+// outside-click handler above is bound to `document`, so it survives that and
+// has to be removed explicitly. Router.js calls this before loading the next
+// page (see cleanupCurrentPage). The paging scroll handler is bound to
+// #editor-steps-container, which normally goes with the rest of the injected
+// HTML — but drop it defensively too, since nothing here guarantees this
+// runs before that element is gone.
+export function cleanupProfileEditor() {
+    removeOutsideClickHandler();
+    removeCardPagingScrollHandler();
 }
