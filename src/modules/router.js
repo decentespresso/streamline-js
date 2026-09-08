@@ -198,8 +198,12 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
             }
         } else if (pageUrl.includes('profile_editor.html')) {
             try {
-                const { initializeProfileEditor } = await import('./profile_editor.js');
+                const { initializeProfileEditor, cleanupProfileEditor } = await import('./profile_editor.js');
                 if (initializeProfileEditor) await initializeProfileEditor();
+                // The CARDS tab's outside-click collapse handler is bound to
+                // `document`, so it outlives the innerHTML swap above and has
+                // to be torn down explicitly before the next page loads.
+                cleanupCurrentPage = cleanupProfileEditor;
             } catch (e) {
                 console.error('Router: Error initializing profile editor:', e);
             }

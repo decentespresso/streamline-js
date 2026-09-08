@@ -1,12 +1,22 @@
 // Check of the no-op guard and save routing in saveProfile() /
 // src/modules/profile_editor.js (mirrored here — the module touches the DOM at
-// import time). Two bugs this pins down:
+// import time). Bugs this pins down:
 //   1. A brand-new profile arrives as a stub record with id null, so treating
 //      the record itself as the source made an untouched new profile look
 //      "unchanged" — Save silently dropped it without ever POSTing.
 //   2. The guard compared the editor's normalised copy against the raw source,
 //      so any profile still carrying legacy fields read as an execution change
 //      the instant it opened and forked itself on a no-op Save.
+//   3. SAVE and SAVE AS NEW used to infer fork-vs-overwrite from whether the
+//      title changed, which meant the one case the buttons exist for — the
+//      title changed, and the user gets to choose — was exactly the case
+//      where both buttons did the identical thing (fork). Routing is now
+//      explicit: SAVE (asNew=false) always overwrites the source record
+//      (whatever changed); SAVE AS NEW (asNew=true) always mints a separate
+//      one, leaving the source untouched — except neither can honor a save
+//      with no execution change at all, where POST would dedup by content
+//      hash and silently drop the new title (a record's id hashes only its
+//      execution fields, not title/author/notes).
 // Run: node test/profile-save-routing.test.mjs
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
@@ -33,11 +43,21 @@ function executionChanged(orig, edited) {
     return strip(orig) !== strip(edited);
 }
 
+// Mirrors resolveSaveTarget() in profile_editor.js: the pure put/post/blocked
+// decision, before saveProfile picks which of the three POST call sites to
+// use (fork-default / plain save-as / hide+replace overwrite).
+function resolveSaveTarget({ hasSource, isDefault, execChanged, asNew }) {
+    if (!hasSource) return 'post';
+    if (!execChanged) return (isDefault || asNew) ? 'blocked' : 'put';
+    return 'post';
+}
+
 // Returns what saveProfile would do: 'noop' | 'post-new' | 'fork-default'
-// | 'overwrite' (hide + POST) | 'put-metadata' | 'blocked-default-rename'.
+// | 'overwrite' (hide + POST) | 'put-metadata' | 'blocked'.
 // `baseline` is _baselineProfileJson — the editor's copy as it stood on load.
 // `imported` is _hasImportedInSession — a file was uploaded into this session.
-function route(record, edited, baseline = null, imported = false) {
+// `asNew` is which button was pressed — false for SAVE, true for SAVE AS NEW.
+function route(record, edited, baseline = null, imported = false, asNew = false) {
     const src = record?.id ? record : null;
     const sourceProfile = src?.profile ? normalizeLegacySteps(deepCopy(src.profile)) : null;
     const sourceProfileJson = sourceProfile ? JSON.stringify(sourceProfile) : null;
@@ -47,15 +67,15 @@ function route(record, edited, baseline = null, imported = false) {
         : (!imported && editedJson === baseline);
     if (unchanged) return 'noop';
 
-    const sourceTitle = (src?.profile?.title || '').trim();
-    const titleChanged = sourceTitle && edited.title.trim() !== sourceTitle;
     const execChanged = !src || executionChanged(sourceProfile, edited);
+    const target = resolveSaveTarget({ hasSource: !!src, isDefault: !!src?.isDefault, execChanged, asNew });
 
-    if (titleChanged && !execChanged && src.isDefault) return 'blocked-default-rename';
-    if (src?.isDefault && execChanged) return 'fork-default';
-    if (!src || (titleChanged && execChanged)) return 'post-new';
-    if (execChanged) return 'overwrite';
-    return 'put-metadata';
+    if (target === 'blocked') return 'blocked';
+    if (target === 'put') return 'put-metadata';
+    // target === 'post' — which of the three POST call sites depends on why.
+    if (src?.isDefault) return 'fork-default';
+    if (!src || asNew) return 'post-new';
+    return 'overwrite';
 }
 
 // A step shaped like the editor emits it, plus the legacy off-pump key the
@@ -122,17 +142,42 @@ renamed.title = 'Londinium v2';
 assert.strictEqual(route(legacy, renamed), 'put-metadata',
     'a rename with no execution change must PUT in place — POST dedups and drops the new name');
 
+// ── 5. SAVE always overwrites in place, whatever changed — titleChanged no
+//      longer routes to a fork on its own. This is the behavior the SAVE AS
+//      NEW button exists to offer an alternative to. ──────────────────────
 const renamedAndEdited = asEdited(legacy);
 renamedAndEdited.title = 'Londinium v2';
 renamedAndEdited.steps[0].flow = 3;
-assert.strictEqual(route(legacy, renamedAndEdited), 'post-new',
-    'renaming alongside an execution change is still the explicit save-as');
+assert.strictEqual(route(legacy, renamedAndEdited), 'overwrite',
+    'plain SAVE overwrites the same record even when the title changed too');
+
+// ── 6. SAVE AS NEW is the explicit fork, and only it reaches 'post-new' for
+//      an existing (non-default) source. ───────────────────────────────────
+assert.strictEqual(route(legacy, renamedAndEdited, null, false, true), 'post-new',
+    'SAVE AS NEW mints a separate record for the same edit that SAVE overwrites in place');
+
+// The core contrast: identical edit, identical source — only the button
+// pressed decides fork vs overwrite.
+assert.notStrictEqual(
+    route(legacy, renamedAndEdited, null, false, false),
+    route(legacy, renamedAndEdited, null, false, true),
+    'SAVE and SAVE AS NEW must differ once the title has changed'
+);
+
+// SAVE AS NEW with no execution change can't mint a genuinely separate record
+// either — POST would dedup back to the same source by content hash and
+// silently drop the new title, same hazard as the default-rename case below.
+assert.strictEqual(route(legacy, renamed, null, false, true), 'blocked',
+    'Save As New with only a rename has nowhere to go — POST would dedup back to the source');
 
 // Defaults reject PUT server-side and dedup on POST, so a rename-only save of a
 // stock default has nowhere to go — it must say so, not report a phantom save.
 assert.strictEqual(route(legacyDefault, { ...asEdited(legacyDefault), title: 'My Londinium' }),
-    'blocked-default-rename',
+    'blocked',
     'renaming a default without changing it must be reported, not silently deduped away');
+assert.strictEqual(route(legacyDefault, { ...asEdited(legacyDefault), title: 'My Londinium' }, null, false, true),
+    'blocked',
+    'Save As New on an unmodified default is blocked the same way SAVE is');
 
 const renoted = asEdited(legacy);
 renoted.notes = 'pulled 18g in';
@@ -143,10 +188,21 @@ const forked = asEdited(legacyDefault);
 forked.steps[0].seconds = 12;
 assert.strictEqual(route(legacyDefault, forked), 'fork-default',
     'editing a default forks it — PUT would be rejected');
+assert.strictEqual(route(legacyDefault, forked, null, false, true), 'fork-default',
+    'a default still forks on an execution change regardless of which save button was pressed');
 
+// ── Structural checks against the real source ───────────────────────────────
+// resolveSaveTarget's own full put/post/blocked matrix is covered in
+// test/profile-editor-cards.test.mjs, alongside the rest of this task's pure
+// routing/state logic — not duplicated here.
 const editorSource = readFileSync(new URL('../src/modules/profile_editor.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-const overwriteStart = editorSource.indexOf('        } else if (execChanged) {');
-const overwriteEnd = editorSource.indexOf('        } else {', overwriteStart + 1);
+
+// The overwrite branch: hides the old visible record only after the
+// replacement exists, and reactivates a deduplicated hidden replacement
+// before hiding the predecessor.
+const overwriteStart = editorSource.indexOf('// Plain SAVE overwriting an existing user profile with a real');
+const overwriteEnd = editorSource.indexOf('const oldId = editorState.sourceProfileId;', overwriteStart);
+assert.ok(overwriteStart >= 0 && overwriteEnd > overwriteStart, 'the overwrite branch not found in profile_editor.js');
 const overwriteBranch = editorSource.slice(overwriteStart, overwriteEnd);
 const uploadIndex = overwriteBranch.indexOf('saved = await uploadProfileWithParent');
 const hideIndex = overwriteBranch.indexOf("await updateProfileVisibility(src.id, 'hidden')");
@@ -170,5 +226,12 @@ assert.strictEqual(visibleReplacement.visibility, 'visible',
     'a deduplicated hidden profile must be reactivated');
 assert.deepStrictEqual(calls, [['profile:a', 'visible']],
     'reactivation must target the deduplicated replacement id');
+
+// Favorites follow the old id only on the plain-overwrite POST — a default's
+// fork keeps the default around, and Save As New leaves the source alone.
+const remapMatch = editorSource.match(/if \(oldId && oldId !== saved\.id[^)]*\) \{[\s\S]*?\r?\n        \}/);
+assert.ok(remapMatch, 'the favorite-remap guard not found in profile_editor.js');
+assert.ok(remapMatch[0].includes('!src?.isDefault') && remapMatch[0].includes('!asNew'),
+    'favorite remap must be gated on both !isDefault and !asNew, not on titleChanged');
 
 console.log('profile-save-routing: all assertions passed');

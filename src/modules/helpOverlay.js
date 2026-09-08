@@ -57,23 +57,24 @@ const PAGES = {
     ],
     profile_editor: [
         { sel: '#editor-title-display', title: 'Profile name', tip: 'Tap the title to rename. Saving under a new name leaves the original untouched and keeps this as a separate profile.', right: true },
-        { sel: '.editor-tab-btn[data-tab="0"]', title: 'Grid view', tip: 'Edit the profile as step cards.' },
-        { sel: '.editor-tab-btn[data-tab="2"]', title: 'Text view', tip: 'Edit the profile as plain sentences, with a graph preview.' },
-        { sel: '.editor-tab-btn[data-tab="1"]', title: 'Settings view', tip: 'Profile-wide settings (dose, yield, temperature…).' },
-        { sel: '#editor-steps-container', title: 'Steps', tip: 'Each column is a step. Tap any value to edit it, or use +/-. The card buttons insert or delete steps.' },
+        { sel: '.editor-tab-btn[data-tab="0"]', title: 'Cards', tip: 'Edit the profile as step cards. Tap a card to expand it.' },
+        { sel: '.editor-tab-btn[data-tab="2"]', title: 'Script', tip: 'Edit the profile as plain sentences, with a graph preview.' },
+        { sel: '.editor-tab-btn[data-tab="1"]', title: 'Settings', tip: 'Profile-wide settings (dose, yield, temperature…).' },
+        { sel: '#editor-steps-container', title: 'Steps', tip: 'Each card is a step. Tap a card to expand it, then tap any value to edit it, or use +/-. The card footer inserts or deletes steps.' },
         { sel: '#editor-row-temp', title: 'Temp', tip: 'Target temperature for the step, and which sensor it follows (Coffee or Water).' },
-        { sel: '#editor-row-pump', title: 'Pump', tip: 'Sets the step’s pressure or flow and how fast it ramps there. “Limit to” caps the opposite value.' },
-        { sel: '#editor-row-max', title: 'Max', tip: 'The longest this step runs before moving to the next one.' },
-        { sel: '#editor-row-exit', title: 'Exit if', tip: 'End the step early when pressure or flow goes over or under a set value.' },
+        { sel: '#editor-row-pump', title: 'Pump', tip: 'Sets the step’s pressure or flow and how fast it ramps there. The limiter caps the opposite value.' },
+        { sel: '#editor-row-max', title: 'Maximum', tip: 'The longest this step runs before moving to the next one.' },
+        { sel: '#editor-row-exit', title: 'Move on if', tip: 'End the step early when pressure or flow goes over or under a set value.' },
         { sel: '#editor-settings-container', title: 'Profile settings', tip: 'Set profile-wide options. Tap a value to change it.' },
         { sel: '#review-steps-list', title: 'Text review', tip: 'Each step in plain words. Tap any blue value to edit it.' },
         { sel: '#review-graph', title: 'Graph preview', tip: 'Live preview of the profile’s pressure / flow curve.' },
         { sel: '#review-settings-list', title: 'Profile settings', tip: 'Profile-wide settings. Tap any blue value to edit it.' },
-        // Hidden (Tailwind `hidden`) on a default or an unsaved profile, so
-        // visibleRect skips this mark on its own — no extra condition needed.
-        { sel: '#editor-history-btn', title: 'Version history', tip: 'Restore an earlier version of this profile.' },
-        { sel: '#editor-cancel-btn', title: 'Cancel', tip: 'Discard changes and exit the editor.' },
-        { sel: '#editor-save-btn', title: 'Save', tip: 'Saves over this profile. To keep the original too, rename it first.' },
+        { sel: '#editor-close-btn', title: 'Close', tip: 'Discard changes and exit the editor.' },
+        // Greyed out (pointer-events-none) until the title differs from the
+        // source profile's — visibleRect doesn't check that, so this mark
+        // shows even while the button is disabled.
+        { sel: '#editor-save-as-btn', title: 'Save As New', tip: 'Save under the new title as a separate profile, leaving the original untouched.' },
+        { sel: '#editor-save-btn', title: 'Save', tip: 'Saves over this profile.' },
     ],
 };
 

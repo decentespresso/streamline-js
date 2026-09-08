@@ -2,29 +2,33 @@
 <div class="bg-base-200 overflow-hidden flex-grow flex flex-col w-[1920px] h-full" role="main" aria-label="Profile Editor">
 
     <!-- Header -->
-    <div id="subpage-header" class="flex justify-between items-center p-6 border-b border-base-300 bg-[var(--box-color)] h-[150px]">
+    <div id="subpage-header" class="flex justify-between items-center p-6 bg-[var(--bg-tertiary)] h-[150px]">
         <div class="flex items-center gap-4 flex-1">
-            <span id="editor-title-display" class="text-[37.5px] font-bold text-[var(--text-primary)] cursor-pointer select-none underline decoration-dashed" style="text-decoration-color: var(--low-contrast-white); text-underline-offset: 6px;">Untitled Profile</span>
-            <input id="editor-title-input" type="text" class="text-[37.5px] font-bold text-[var(--text-primary)] bg-transparent border-b-2 border-[var(--mimoja-blue)] outline-none hidden w-[400px]" />
+            <span id="editor-title-display" class="text-[30px] font-semibold text-[var(--text-primary)] cursor-pointer select-none underline decoration-dashed" style="text-decoration-color: var(--low-contrast-white); text-underline-offset: 6px;">Untitled Profile</span>
+            <input id="editor-title-input" type="text" class="text-[30px] font-semibold text-[var(--text-primary)] bg-transparent border-b-2 border-[var(--mimoja-blue)] outline-none hidden w-[400px]" />
         </div>
-        <div class="flex items-center gap-[22.5px]">
-            <button id="editor-history-btn" class="settings-button hidden justify-center items-center min-h-0 w-[82.5px] h-[82.5px] text-[var(--mimoja-blue)] rounded-[67.5px] font-bold text-[32px]" title="Version" aria-label="Version">↺</button>
-            <button id="editor-cancel-btn" class="settings-button flex justify-center items-center min-h-0 w-[171px] h-[82.5px] whitespace-nowrap text-[var(--text-primary)] rounded-[67.5px] font-bold text-[24px] uppercase" data-i18n-key="Cancel" data-fit-text>CANCEL</button>
-            <button id="editor-save-btn" class="settings-button flex justify-center items-center bg-[var(--mimoja-blue)] text-white min-h-0 w-[240px] h-[82.5px] whitespace-nowrap font-bold text-[24px] rounded-[67.5px] uppercase" data-i18n-key="Save" data-fit-text>SAVE</button>
+        <div class="flex items-center gap-[30px]">
+            <button id="editor-close-btn" class="flex justify-center items-center min-h-0 w-[171px] h-[82.5px] whitespace-nowrap bg-transparent text-[var(--text-primary)] font-bold text-[24px]" data-i18n-key="Close" data-fit-text aria-label="Close">CLOSE</button>
+            <button id="editor-save-as-btn" class="flex justify-center items-center min-h-0 w-[240px] h-[82.5px] whitespace-nowrap bg-[var(--profile-button-background-color)] text-[var(--button-primary-bg)] border-[1.5px] border-[var(--button-primary-bg)] font-bold text-[24px] rounded-[67.5px]" data-i18n-key="Save As New" data-fit-text aria-label="Save As New">SAVE AS NEW</button>
+            <button id="editor-save-btn" class="flex justify-center items-center bg-[var(--button-primary-bg)] text-white min-h-0 w-[240px] h-[82.5px] whitespace-nowrap font-bold text-[24px] rounded-[67.5px]" data-i18n-key="Save" data-fit-text aria-label="Save">SAVE</button>
         </div>
     </div>
 
     <!-- Tab bar -->
-    <div class="flex items-center px-6 h-[82px] border-b border-base-300 bg-[var(--box-color)]">
-        <div class="flex items-center gap-[12px] bg-[var(--box-color)] border-2 border-[var(--border-color)] rounded-[60px] px-[16px] h-[58px]">
-            <button class="editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase" data-tab="0" data-i18n-key="STEP">STEP</button>
-            <button class="editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase" data-tab="2" data-i18n-key="Summary">Summary</button>
-            <button class="editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase" data-tab="1" data-i18n-key="SETTINGS">SETTINGS</button>
+    <div class="flex items-center justify-between px-[37.5px] py-[37.5px] bg-[var(--bg-tertiary)]">
+        <div class="flex items-center gap-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] rounded-[60px] p-[18px] w-[834.75px] h-[105px]">
+            <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="0" data-i18n-key="CARDS" data-fit-text>CARDS</button>
+            <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="2" data-i18n-key="SCRIPT" data-fit-text>SCRIPT</button>
+            <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="1" data-i18n-key="SETTINGS" data-fit-text>SETTINGS</button>
+        </div>
+        <div id="editor-paging-controls" class="flex items-center gap-[22.5px]">
+            <button id="editor-page-prev-btn" type="button" class="flex items-center justify-center w-[120px] h-[72px] rounded-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] cursor-pointer" aria-label="Previous cards"></button>
+            <button id="editor-page-next-btn" type="button" class="flex items-center justify-center w-[120px] h-[72px] rounded-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] cursor-pointer" aria-label="Next cards"></button>
         </div>
     </div>
 
     <!-- Content area -->
-    <div class="flex-1 overflow-hidden bg-[var(--profile-button-background-color)]">
+    <div class="flex-1 overflow-hidden bg-[var(--bg-tertiary)]">
 
         <!-- Tab 0: Steps -->
         <div id="editor-tab-panel-0" class="editor-tab-panel h-full">
