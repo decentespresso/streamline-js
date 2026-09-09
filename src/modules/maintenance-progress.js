@@ -152,6 +152,28 @@ export function isProcedureActive(procedureState) {
     return procedureState?.phase === 'waiting' || procedureState?.phase === 'running';
 }
 
+/**
+ * Descaling pushes descaler through the steam path, so it must not start
+ * against a hot steam boiler: the heater goes off and the boiler has to drop to
+ * this temperature first (Decent's descaling instructions).
+ */
+export const DESCALE_STEAM_MAX_C = 60;
+
+/** How long to wait for the steam boiler to fall before giving up on a descale. */
+export const STEAM_COOLDOWN_TIMEOUT_MS = 20 * 60 * 1000;
+
+/**
+ * Whether the steam boiler is cool enough to descale.
+ *
+ * A missing reading is NOT "still hot": the snapshot carries no steam
+ * temperature at all on some machines, and blocking on a number that will never
+ * arrive would make descaling impossible. Unknown proceeds, like the wake path.
+ */
+export function steamCoolEnoughToDescale(steamTemperature) {
+    return typeof steamTemperature !== 'number' || !Number.isFinite(steamTemperature)
+        || steamTemperature <= DESCALE_STEAM_MAX_C;
+}
+
 /** How long to give the machine to leave `sleeping` before starting anyway. */
 export const WAKE_TIMEOUT_MS = 15000;
 

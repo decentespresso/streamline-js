@@ -1596,6 +1596,14 @@ export async function setTargetSteamDuration(duration) {
     return updateWorkflow({ steamSettings: { duration: value, ...(await steamHeaterFor(value)) } });
 }
 
+// Steam-heater switch for procedures that must not run against a hot steam
+// boiler (descaling). Same remember/restore rule as setTargetSteamDuration:
+// switching off stores the current target, switching back on returns to it.
+// The duration is deliberately untouched, so the user's steam time survives.
+export async function setSteamHeaterEnabled(enabled) {
+    return updateWorkflow({ steamSettings: await steamHeaterFor(enabled ? 1 : 0) });
+}
+
 export async function setTargetSteamFlow(flow) {
     const value = parseFloat(flow);
     await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, value);
