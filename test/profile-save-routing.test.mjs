@@ -171,4 +171,52 @@ assert.strictEqual(visibleReplacement.visibility, 'visible',
 assert.deepStrictEqual(calls, [['profile:a', 'visible']],
     'reactivation must target the deduplicated replacement id');
 
+// ── 5. POST dedup collision after a genuine execution change ────────────────
+// POST /profiles is content-addressed (ProfileController.create): it can hand
+// back an EXISTING record — same id we tried to fork away from, or a totally
+// unrelated profile with a coincidentally matching hash — while still
+// answering 201. saveProfile's forkDeduped() guard is the only thing standing
+// between that and a false "Saved profile" toast, so pin its behaviour
+// directly from the real source rather than a hand-written mirror.
+const forkDedupedSrc = editorSource.match(/const forkDeduped = \(record, avoidId\) => \{[\s\S]*?\n {8}\};/)?.[0];
+assert.ok(forkDedupedSrc, 'forkDeduped guard must exist in the save path');
+const runForkDeduped = new Function('sentTitle', 'record', 'avoidId',
+    `${forkDedupedSrc}\nreturn forkDeduped(record, avoidId);`);
+
+assert.strictEqual(
+    runForkDeduped('My Fork', { id: 'profile:new', profile: { title: 'My Fork' } }, 'profile:old'),
+    false,
+    'a genuinely new record (different id, our title) must not be flagged as deduped');
+assert.strictEqual(
+    runForkDeduped('My Fork', { id: 'profile:old', profile: { title: 'Original' } }, 'profile:old'),
+    true,
+    'the server handing back the record we forked away from must be flagged as deduped');
+assert.strictEqual(
+    runForkDeduped('My Fork', { id: 'profile:other', profile: { title: 'Some Other Profile' } }, 'profile:old'),
+    true,
+    'a hash collision with an unrelated profile (our title not echoed back) must be flagged as deduped');
+assert.strictEqual(
+    runForkDeduped('My Fork', null, 'profile:old'),
+    true,
+    'no record at all must be treated as a failed fork, not a silent success');
+
+// Every uploadProfileWithParent call in the POST branches must be guarded by
+// forkDeduped before the routine touches availableProfiles/editorState or
+// reports success — a branch added later without the guard would reintroduce
+// the false-success bug this fix closes.
+const saveProfileStart = editorSource.indexOf('async function saveProfile()');
+const saveProfileEnd = editorSource.indexOf('\nfunction promptConfirm(', saveProfileStart + 1);
+assert.ok(saveProfileStart >= 0 && saveProfileEnd > saveProfileStart, 'saveProfile() must be found in the editor source');
+const saveProfileSrc = editorSource.slice(saveProfileStart, saveProfileEnd);
+const uploadCallRe = /saved = await uploadProfileWithParent\([^)]*\);/g;
+const uploadCallMatches = [...saveProfileSrc.matchAll(uploadCallRe)];
+assert.strictEqual(uploadCallMatches.length, 3, 'expected exactly three POST (uploadProfileWithParent) call sites in saveProfile');
+uploadCallMatches.forEach((m, i) => {
+    const sliceStart = m.index + m[0].length;
+    const sliceEnd = uploadCallMatches[i + 1]?.index ?? saveProfileSrc.length;
+    const afterCall = saveProfileSrc.slice(sliceStart, sliceEnd);
+    assert.ok(/forkDeduped\(saved,/.test(afterCall),
+        `uploadProfileWithParent call #${i + 1} must be followed by its own forkDeduped() guard before the next branch`);
+});
+
 console.log('profile-save-routing: all assertions passed');

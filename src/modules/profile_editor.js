@@ -1945,6 +1945,15 @@ function executionChanged(orig, edited) {
     return strip(orig) !== strip(edited);
 }
 
+// Shared tail of a successful save (including the no-op "nothing changed"
+// case, which reports success without writing anything): hint the selector to
+// pre-select this profile, toast, and navigate back.
+function finishSaveSuccess(id) {
+    sessionStorage.setItem('lastEditedProfileKey', id);
+    showToast(getTranslation('Saved profile'), 2000, 'success');
+    setTimeout(() => { loadPage('src/profiles/profile_selector.html'); }, 1000);
+}
+
 async function saveProfile() {
     if (!editorState.profile.title?.trim()) {
         showToast(getTranslation('Invalid name'), 3000, 'error');
@@ -1980,23 +1989,25 @@ async function saveProfile() {
 
         // No-op save guard — nothing changed, so there is nothing worth writing.
         // Two shapes of "nothing changed":
-        //  - an existing profile reopened and saved untouched (compare to source);
+        //  - an existing profile reopened and saved untouched: there is nothing
+        //    to write, but the user's intent was "keep this", so report success
+        //    and leave the editor exactly as a real save would.
         //  - a brand-new profile saved straight off the Add Profile template,
         //    which has no source record, so compare to the load-time baseline.
         //    Blocking it keeps a generic "New Profile" of stock defaults out of
-        //    the list; the user still has to name it or edit something.
+        //    the list; the user still has to name it or edit something, so stay
+        //    on the editor — the toast names the way forward (renaming is the
+        //    save-as route, titleChanged below, which does mint a record).
         // An uploaded file also has no source record and also resets the
         // baseline, but saving it verbatim is the whole point of uploading —
         // _hasImportedInSession excludes it from the template check.
-        // Either way stay on the editor rather than bouncing to the selector: the
-        // user pressed Save meaning to keep something, and navigating away reads
-        // as success. The toast names the way forward — renaming is the save-as
-        // route (titleChanged below), which does mint a record.
         const editedJson = JSON.stringify(editorState.profile);
-        const unchanged = sourceProfileJson
-            ? sourceProfileJson === editedJson
-            : (!_hasImportedInSession && editedJson === _baselineProfileJson);
-        if (unchanged) {
+        if (sourceProfileJson) {
+            if (sourceProfileJson === editedJson) {
+                finishSaveSuccess(src.id);
+                return;
+            }
+        } else if (!_hasImportedInSession && editedJson === _baselineProfileJson) {
             showToast(getTranslation('Pick a new name to save'), 3000, 'info');
             return;
         }
@@ -2046,6 +2057,23 @@ async function saveProfile() {
             return;
         }
 
+        // POST /profiles is content-addressed (ProfileController.create): if the
+        // execution hash we submit already matches a stored record — most often
+        // the very default/profile we're forking away from, because our
+        // executionChanged() diff is a raw JSON compare over a wider field set
+        // than the server's hash — it silently hands back that EXISTING record
+        // (its own id, its own title) instead of minting ours. The HTTP response
+        // still reads as success (201 via jsonCreated) either way, so the only
+        // reliable tell from here is comparing what we sent against what we got
+        // back: the returned id landing on the record we're forking away from,
+        // or the returned title silently not being the one we typed.
+        const sentTitle = finalTitle;
+        const forkDeduped = (record, avoidId) => {
+            if (!record) return true;
+            if (avoidId && record.id === avoidId) return true;
+            return (record.profile?.title || '') !== sentTitle;
+        };
+
         // Save routing (REA versioning model):
         //  - default + execution change → POST fork (PUT would be rejected); the
         //    default stays as the parent/reset point.
@@ -2057,14 +2085,30 @@ async function saveProfile() {
         let saved;
         if (src?.isDefault && execChanged) {
             saved = await uploadProfileWithParent(editorState.profile, src.id);
+            if (forkDeduped(saved, src.id)) {
+                showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+                return;
+            }
         } else if (!src || (titleChanged && execChanged)) {
             saved = await uploadProfileWithParent(editorState.profile, src?.id ?? null);
+            if (forkDeduped(saved, src?.id ?? null)) {
+                showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+                return;
+            }
         } else if (execChanged) {
             // Overwrite of an existing user profile: keep the prior version as a
             // hidden, restorable snapshot instead of letting the server drop it on
             // rehash. The new record links back via parentId, so /lineage returns
             // the full history the Revert picker reads.
             saved = await uploadProfileWithParent(editorState.profile, src.id);
+            // A dedup here would return src itself — flipping it visible then
+            // straight back to hidden a few lines down and erasing the user's
+            // only copy of the profile they thought they were editing. Bail
+            // before either visibility call runs.
+            if (forkDeduped(saved, src.id)) {
+                showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+                return;
+            }
             if (saved.visibility !== 'visible') {
                 saved = await updateProfileVisibility(saved.id, 'visible');
             }
@@ -2089,11 +2133,7 @@ async function saveProfile() {
         editorState.sourceProfileId = saved.id;
         _baselineProfileJson = JSON.stringify(editorState.profile);
 
-        // Hint to selector so it pre-selects the profile we just edited.
-        sessionStorage.setItem('lastEditedProfileKey', saved.id);
-
-        showToast(getTranslation('Saved profile'), 2000, 'success');
-        setTimeout(() => { loadPage('src/profiles/profile_selector.html'); }, 1000);
+        finishSaveSuccess(saved.id);
     } catch (err) {
         console.error('Profile save failed:', err);
         // Every failure path here is a write to Rea Prime (POST/PUT), so the

@@ -188,6 +188,14 @@ function formatStateString(text) {
 
 let shotStartTime = null;
 let shotEndedAt = null;
+// Bumped every time a new shot actually starts. shotStartTime itself can't
+// serve as a "same shot?" token: it's nulled by the machine-snapshot feed
+// (leaves ESPRESSO state) independently of the shotState feed's 'stop', so a
+// weight-stop captured while it happened to already be null, followed by a
+// second shot that also starts and ends before a slow 'finalize' arrives,
+// would read as null === null and misidentify the shots as the same one.
+// A counter that only ever increases has no such collision.
+let shotGeneration = 0;
 const SHOT_RESTART_COOLDOWN_MS = 5000;
 let dataTimeout;
 let de1DeviceId = null;
@@ -854,6 +862,7 @@ function handleData(data) {
                     return;
                 }
                 shotStartTime = new Date(data.timestamp);
+                shotGeneration++;
                 // Feed frames during this shot re-assert it; stays false in
                 // gateway mode so the fallback heuristics run at shot end.
                 seqTrackedShot = false;
@@ -1184,8 +1193,23 @@ function shotStateStopMessage(decision, machineHasAutonomousSAW) {
     const reason = canonicalStopReason(decision.reason, {
         machineHasAutonomousSAW, isScaleConnected, weight, targetWeight, totalS, profileSeconds,
     });
-    return formatStopReason(reason, { weight, volume, totalS });
+    return { text: formatStopReason(reason, { weight, volume, totalS }), reason };
 }
+
+// Set once a weight-stop toast has fired for the shot currently settling, so
+// the 'finalize' branch below knows whether a corrected weight is worth
+// fetching. projectedWeight at 'stop' is a live estimate; annotations.actualYield
+// only exists a few seconds later, once the server has measured the decaying
+// post-stop flow and clamped for a removed cup — 'finalize' is exactly that
+// "settling closed" moment, so it's the first point the real number exists.
+// `gen` is the shotGeneration at the moment of the stop: currentShot
+// (shotData.js) has no id of its own, so this stands in for one — if a new
+// shot has started by the time 'finalize' arrives, shotGeneration has moved
+// on and the guard below skips writing a stale shot's yield onto it. A
+// counter, not shotStartTime, because shotStartTime is nulled independently
+// by the machine-snapshot feed and can be null at both capture and check time
+// even after a full extra shot has started and ended in between.
+let seqWeightStop = null; // { shotId, gen } | null
 
 function handleShotStateEvent(frame) {
     if (!frame?.event) return;
@@ -1222,17 +1246,36 @@ function handleShotStateEvent(frame) {
                 : (d.details || `${getTranslation('Shot Stopped')}: ${shotData.getTotalTime().toFixed(1)}s`),
                 4000, 'error');
             break;
-        case 'stop':
-            ui.showToast(shotStateStopMessage(d, frame.machineHasAutonomousSAW), 6000, 'info');
+        case 'stop': {
+            const { text, reason } = shotStateStopMessage(d, frame.machineHasAutonomousSAW);
+            ui.showToast(text, 6000, 'info');
+            seqWeightStop = reason === STOP_TARGET_WEIGHT ? { shotId: frame.shotId, gen: shotGeneration } : null;
             seqRefreshHistory(frame.shotId);
             break;
+        }
         case 'terminal':
             // Abnormal end (error / disconnect).
             ui.showToast(d.details || `${getTranslation('Shot Stopped')}: ${shotData.getTotalTime().toFixed(1)}s`, 6000, 'error');
+            seqWeightStop = null;
             seqRefreshHistory(frame.shotId);
             break;
         case 'finalize':
-            // Post-stop settling closed — the shot record is persisted.
+            // Post-stop settling closed — the shot record is persisted, so
+            // annotations.actualYield now exists if the shot was weight-stopped.
+            // Correct the estimate the 'stop' toast showed, and the shot-total
+            // card, with the real settled figure.
+            if (frame.shotId && seqWeightStop?.shotId === frame.shotId) {
+                const capturedGen = seqWeightStop.gen;
+                seqWeightStop = null;
+                api.getShots({ ids: frame.shotId, limit: 1 }).then(({ items } = {}) => {
+                    const actualYield = items?.[0]?.annotations?.actualYield;
+                    if (!Number.isFinite(actualYield)) return;
+                    ui.showToast(stopReasonText('Stopped by weight:', `${actualYield.toFixed(1)}g`), 4000, 'info');
+                    // Only stamp the card if this is still the same shot —
+                    // a new shot may have started while the fetch was in flight.
+                    if (shotGeneration === capturedGen) shotData.setFinalWeight(actualYield);
+                }).catch(error => logger.warn('Could not fetch actualYield for finalized shot:', error));
+            }
             seqRefreshHistory(frame.shotId);
             break;
         // advance frames: chart already tracks step changes via profileFrame
