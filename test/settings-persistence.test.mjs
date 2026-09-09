@@ -5,7 +5,8 @@
 // Run: node --test test/settings-persistence.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hydrate, installMirror, SYNCED_KEYS, SETTINGS_NAMESPACE } from '../src/modules/settingsSync.js';
+import { readFileSync } from 'node:fs';
+import { hydrate, installMirror, createWriteGate, SYNCED_KEYS, SETTINGS_NAMESPACE } from '../src/modules/settingsSync.js';
 
 // Stand-in for window.localStorage with a shared prototype to patch, matching
 // the browser's Storage/Storage.prototype split.
@@ -138,4 +139,124 @@ test('a KV value of null is treated as absent, not as a wipe', async () => {
     assert.equal(storage.getItem('theme'), 'dark');
     assert.deepEqual(applied, {});
     assert.deepEqual(seeded, { theme: 'dark' });
+});
+
+// ── The write gate ───────────────────────────────────────────────────────────
+// The mirror must never write to KV before it has read it. Without this, a boot
+// that could not reach Decaid (the WebView is up before the webservice is, which
+// is exactly what an app update looks like) pushed post-wipe defaults over the
+// one copy that had survived — so the settings were not merely reset for that
+// session, the durable record of them was destroyed.
+
+test('nothing reaches KV until a hydrate has actually read it', () => {
+    const { storage, proto } = makeStorage();
+    const pushed = [], dropped = [];
+    const gate = createWriteGate({ push: (k, v) => pushed.push([k, v]), drop: k => dropped.push(k) });
+    installMirror(proto, gate.push, gate.drop);
+
+    // Boot on a wiped device with Decaid not answering: these are the writes
+    // initI18n() and initHelpLauncher() make on every single startup.
+    storage.setItem('language', 'en');
+    storage.setItem('streamlineHelpLaunches', '1');
+    storage.removeItem('theme');
+
+    assert.deepEqual(pushed, [], 'a session that never read KV must not write to it');
+    assert.deepEqual(dropped, [], 'nor delete from it');
+    assert.equal(storage.getItem('language'), 'en', 'the local write still happens');
+});
+
+test('once the read succeeds the mirror writes through again', () => {
+    const { storage, proto } = makeStorage();
+    const pushed = [], dropped = [];
+    const gate = createWriteGate({ push: (k, v) => pushed.push([k, v]), drop: k => dropped.push(k) });
+    installMirror(proto, gate.push, gate.drop);
+
+    storage.setItem('theme', 'dark');       // pre-hydrate, suppressed
+    gate.open();
+    storage.setItem('theme', 'light');      // post-hydrate, mirrored
+    storage.removeItem('uiZoom');
+
+    assert.equal(gate.isOpen, true);
+    assert.deepEqual(pushed, [['theme', 'light']]);
+    assert.deepEqual(dropped, ['uiZoom']);
+});
+
+test('a setting changed before a late hydrate is still seeded, not lost', async () => {
+    // The gate drops the push, so the value only survives because hydrate()
+    // seeds every key KV is missing from whatever localStorage holds by then.
+    const { storage, proto } = makeStorage();
+    const pushed = [];
+    const gate = createWriteGate({ push: () => {}, drop: () => {} });
+    installMirror(proto, gate.push, gate.drop);
+
+    storage.setItem('uiZoom', '1.4');       // user changes it while KV is unreachable
+    const { seeded } = await hydrate(storage, {}, proto.setItem, (k, v) => pushed.push([k, v]));
+
+    assert.deepEqual(seeded, { uiZoom: '1.4' });
+    assert.deepEqual(pushed, [['uiZoom', '1.4']]);
+});
+
+test('a late hydrate still lets KV win over a default written this session', async () => {
+    // initI18n() writes language='en' on a wiped device before KV answers. That
+    // write is a fallback, not a choice, so the restored value must beat it —
+    // the documented "KV wins a conflict" rule, which is why the gate discards
+    // pre-hydrate writes rather than replaying them afterwards.
+    const { storage, proto } = makeStorage();
+    const gate = createWriteGate({ push: () => {}, drop: () => {} });
+    installMirror(proto, gate.push, gate.drop);
+
+    storage.setItem('language', 'en');
+    const { applied } = await hydrate(storage, { language: 'de' }, proto.setItem, () => {});
+
+    assert.equal(storage.getItem('language'), 'de');
+    assert.deepEqual(applied, { language: 'de' });
+});
+
+// ── The help button's implicit "hidden" state ────────────────────────────────
+// help-launcher.js imports ui.js, so it cannot be imported here — lift the two
+// pure rules out of the source instead (same trick as settings-sync.test.mjs).
+const helpRules = (() => {
+    const source = readFileSync(new URL('../src/modules/help-launcher.js', import.meta.url), 'utf8');
+    const body = [
+        /export function helpHiddenFrom\(preference, launches\) \{[\s\S]*?\r?\n\}/,
+        /export function shouldPromoteHidden\(preference, launches\) \{[\s\S]*?\r?\n\}/,
+    ].map(pattern => {
+        const match = source.match(pattern);
+        assert.ok(match, `help-launcher.js: no match for ${pattern}`);
+        return match[0].replace('export ', '');
+    }).join('\n');
+    return new Function(`${body}\nreturn { helpHiddenFrom, shouldPromoteHidden };`)();
+})();
+
+test('the help button retires on the 3rd launch and that becomes a real preference', () => {
+    const { helpHiddenFrom, shouldPromoteHidden } = helpRules;
+
+    assert.equal(helpHiddenFrom(null, '1'), false, 'first runs still show it');
+    assert.equal(shouldPromoteHidden(null, '1'), false, 'nothing to record yet');
+
+    assert.equal(helpHiddenFrom(null, '3'), true, 'auto-hidden from the 3rd startup on');
+    assert.equal(shouldPromoteHidden(null, '3'), true, 'the user let it go: write it down');
+});
+
+test('an explicit help-button choice is never overwritten by the launch count', () => {
+    const { helpHiddenFrom, shouldPromoteHidden } = helpRules;
+
+    // Turned back on from Settings, then kept using the app: the counter passes
+    // the threshold but the user's '0' still stands.
+    assert.equal(helpHiddenFrom('0', '99'), false);
+    assert.equal(shouldPromoteHidden('0', '99'), false, 'a real choice is left alone');
+
+    // Already hidden explicitly — nothing to promote.
+    assert.equal(helpHiddenFrom('1', '0'), true);
+    assert.equal(shouldPromoteHidden('1', '0'), false);
+});
+
+test('a wiped launch counter cannot resurrect a help button the user retired', () => {
+    // The bug this closes: after an update localStorage is empty, so the counter
+    // restarts at 0 and the button came back. With the preference promoted it is
+    // in SYNCED_KEYS, so it is restored from KV and still reads as hidden.
+    const { helpHiddenFrom } = helpRules;
+    assert.equal(helpHiddenFrom(null, null), false, 'counter alone: the button is back');
+    assert.equal(helpHiddenFrom('1', null), true, 'the restored preference still hides it');
+    assert.ok(SYNCED_KEYS.includes('streamlineHelpHidden'), 'and it is mirrored into KV');
 });
