@@ -1143,17 +1143,30 @@ function stopReasonText(key, value) {
     return `${getTranslation(key)} ${value}`;
 }
 
+// Weight-stop label with no number (see formatStopReason) — the translated key
+// still ends in a colon meant for an appended value, so drop it rather than
+// show a dangling "Stopped by weight:". Handles the half-width colon used by
+// most languages and the full-width "：" used by the zh rows, each optionally
+// preceded by a space (fr: "poids :").
+function stopReasonLabel(key) {
+    return getTranslation(key).replace(/[:：]\s*$/, '');
+}
+
 // Render a canonical stop reason (see stop-reason.js) as the toast text. Both
 // the shotState feed and the gateway-mode fallback answer in that one
 // vocabulary, so this is the only place the four messages are built.
-function formatStopReason(reason, { weight, volume, totalS }) {
+// `weight` is still computed by both callers — canonicalStopReason/
+// classifyStopReason need it to decide the reason — it is just no longer
+// rendered, so it is not destructured here.
+function formatStopReason(reason, { volume, totalS }) {
     switch (reason) {
-        // decision.data is freeform on the wire (additionalProperties: true), so
-        // projectedWeight can parse to NaN. Say nothing rather than "NaN g" —
-        // the generic message below is still true.
+        // Weight is intentionally not shown for now: projectedWeight is a live
+        // estimate that can read a couple grams off the settled annotations.actualYield,
+        // and showing a number that then silently corrects itself a few seconds
+        // later (see the 'finalize' handling below) read as more confusing than
+        // just naming the reason.
         case STOP_TARGET_WEIGHT:
-            if (!Number.isFinite(weight)) break;
-            return stopReasonText('Stopped by weight:', `${weight.toFixed(1)}g`);
+            return stopReasonLabel('Stopped by weight:');
         case STOP_TARGET_VOLUME:
             return stopReasonText('Stopped by volume:', `${Math.round(volume)}ml`);
         case STOP_PROFILE_ENDED:
@@ -1262,15 +1275,16 @@ function handleShotStateEvent(frame) {
         case 'finalize':
             // Post-stop settling closed — the shot record is persisted, so
             // annotations.actualYield now exists if the shot was weight-stopped.
-            // Correct the estimate the 'stop' toast showed, and the shot-total
-            // card, with the real settled figure.
+            // Correct the shot-total card with the real settled figure. No
+            // toast: the 'stop' toast no longer shows a number to correct
+            // (see formatStopReason), so a second toast here would just repeat
+            // the same text with nothing new to say.
             if (frame.shotId && seqWeightStop?.shotId === frame.shotId) {
                 const capturedGen = seqWeightStop.gen;
                 seqWeightStop = null;
                 api.getShots({ ids: frame.shotId, limit: 1 }).then(({ items } = {}) => {
                     const actualYield = items?.[0]?.annotations?.actualYield;
                     if (!Number.isFinite(actualYield)) return;
-                    ui.showToast(stopReasonText('Stopped by weight:', `${actualYield.toFixed(1)}g`), 4000, 'info');
                     // Only stamp the card if this is still the same shot —
                     // a new shot may have started while the fetch was in flight.
                     if (shotGeneration === capturedGen) shotData.setFinalWeight(actualYield);
