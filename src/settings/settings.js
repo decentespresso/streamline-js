@@ -3656,10 +3656,6 @@ export function renderLedSettings() {
         <button class="border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[56px] px-[28px] rounded-[28px] text-[18px] font-bold self-start"
             onclick="window.ledSeqAddStep()" data-i18n-key="Add step">Add step</button>
 
-        <div class="led-note">
-            <span data-i18n-key="Each step is sent to the machine over Bluetooth, so steps cannot run closer than 500 ms apart. While a sequence plays it takes over the strip; your saved colours come back when it stops.">Each step is sent to the machine over Bluetooth, so steps cannot run closer than 500 ms apart. While a sequence plays it takes over the strip; your saved colours come back when it stops.</span>
-        </div>
-
         <div class="h-0 relative w-full"><hr class="border-t border-[var(--profile-button-outline-color)] w-full" /></div>
         <div class="flex flex-col gap-[12px] w-full">
             <p class="led-label text-[26px]" data-i18n-key="Auto-run">Auto-run</p>
@@ -3672,7 +3668,6 @@ export function renderLedSettings() {
                         data-i18n-key="${s.label}">${getTranslation(s.label)}</button>`;
                 }).join('')}
             </div>
-            <p class="led-muted text-[18px]" data-i18n-key="Sequence changes save as you make them.">Sequence changes save as you make them.</p>
         </div>`;
 
     return `

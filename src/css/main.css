@@ -756,17 +756,6 @@ body {
   color: #fff;
 }
 
-.led-note {
-  padding: 12px 16px;
-  border-radius: 10px;
-  border: 1px solid var(--led-hairline);
-  background-color: var(--box-color);
-  color: var(--led-muted);
-  font-size: 18px;
-  line-height: 1.45;
-  max-width: 78ch;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .led-tab, .led-step, .led-chip { transition: none; }
 }
