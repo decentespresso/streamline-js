@@ -5,6 +5,7 @@
 // Run: node --test test/profile-overrides.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
     OVERRIDES_NAMESPACE,
     setKvClient,
@@ -100,4 +101,35 @@ test('reset removes the override from KV and memory', async () => {
     await clearProfileOverride('profile:abc');
     assert.equal(getProfileOverride('profile:abc'), null);
     assert.deepEqual(kv.store, {});
+});
+
+// Regression: app.js's initMobileValueInputs (the full-screen numpad entry
+// point, gated behind shouldUseNumpad() for mobile/tablet) wires steam
+// duration/flow straight to their api.js setters without ever calling
+// saveContextToActiveProfile — unlike every other field in the same function
+// (dose/drink/temp/grind all go through a ui.js helper that already saves).
+// A value typed via the full-screen numpad landed on the machine but never
+// stuck across a profile switch, while the tile's own +/- and presets (which
+// share ui.js's scheduleSteamApi/preset-click paths) worked fine — the two
+// entry points silently disagreed. app.js touches window/document at import
+// time, so this inspects the real source rather than importing it (same
+// technique as test/profile-save-routing.test.mjs and test/profile-drafts.test.mjs).
+test('the full-screen numpad path for steam duration/flow saves the per-profile override', () => {
+    const appSource = readFileSync(new URL('../src/modules/app.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const fnSrc = appSource.slice(
+        appSource.indexOf('function initMobileValueInputs('),
+        appSource.indexOf('\n// Display-label overrides'));
+    assert.ok(fnSrc.length > 0, 'initMobileValueInputs must exist in app.js');
+
+    const durationBranch = fnSrc.slice(
+        fnSrc.indexOf("else if (type === 'steam-duration')"),
+        fnSrc.indexOf("else if (type === 'steam-flow')"));
+    const flowBranch = fnSrc.slice(
+        fnSrc.indexOf("else if (type === 'steam-flow')"),
+        fnSrc.indexOf("else if (type === 'flush')"));
+
+    assert.match(durationBranch, /saveContextToActiveProfile\?\.\(\{\s*targetSteamDuration:/,
+        'the numpad steam-duration branch must save its value as a per-profile override');
+    assert.match(flowBranch, /saveContextToActiveProfile\?\.\(\{\s*targetSteamFlow:/,
+        'the numpad steam-flow branch must save its value as a per-profile override');
 });

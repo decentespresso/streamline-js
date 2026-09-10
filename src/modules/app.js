@@ -131,6 +131,12 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             const v = (newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal);
                             window.app.ui.updateSteamDisplay({ targetSteamDuration: v });
                             window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v));
+                            // Per-profile save, same call the tile's +/- and presets make
+                            // (ui.js) — this full-screen numpad entry point is mobile/tablet
+                            // only (initMobileValueInputs guards on shouldUseNumpad()) and
+                            // was missing it entirely, so a value typed here never stuck
+                            // across a profile switch even though +/- worked fine.
+                            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: v });
                         } else if (type === 'steam-flow') {
                             // Numpad blanks a bare "0" to ''. Unlike duration, 0 steam
                             // flow has no meaning (steam is gated on duration, not flow),
@@ -140,6 +146,7 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             const v = (newVal === '' || isNaN(parsed) || parsed < 0.4) ? 0.4 : parsed;
                             window.app.ui.updateSteamDisplay({ targetSteamFlow: v });
                             window.app.ui.pushSteamSetting('flow', window.app.api.setTargetSteamFlow(v));
+                            window.app?.saveContextToActiveProfile?.({ targetSteamFlow: v });
                         } else if (type === 'flush') {
                             window.app.ui.updateFlushValue(parseFloat(newVal));
                             window.app.ui.updateFlushDisplay(parseFloat(newVal));
