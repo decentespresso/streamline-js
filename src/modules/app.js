@@ -106,7 +106,7 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                         const tempC = fromDisplayTemp(parseFloat(newVal));
                         el.textContent = type === 'temperature' ? formatTemp(tempC, 0) :
                                         type === 'grind' ? newVal :
-                                        type === 'steam-duration' ? `${newVal}s` :
+                                        type === 'steam-duration' ? window.app.ui.formatSteamDuration((newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal)) :
                                         type === 'steam-flow' ? newVal :
                                         type === 'flush' ? `${newVal}s` :
                                         type === 'hot-water-vol' ? `${newVal}ml` :

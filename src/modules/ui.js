@@ -686,6 +686,17 @@ export function setMilkProbePresent(present) {
     updateSteamPresetDisplay();
 }
 
+// 0s reads as "Off" -- duration 0 already sends the steam-off command
+// (steamHeaterFor in api.js zeroes targetTemperature alongside it), so the
+// tile should say so rather than show a number that looks like a very short
+// steam time.
+export function formatSteamDuration(v) {
+    // Lowercase 'off' (not 'OFF') is the exact CSV key: the translation sheet
+    // carries both, and case-insensitive lookup would resolve to whichever one
+    // parses last (see i18n-parser.js keyIndex), which is not this one.
+    return v === 0 ? getTranslation('off') : `${v}s`;
+}
+
 export function updateSteamDisplay(data) {
     const durationEl = document.getElementById('steam-duration-value');
     const flowEl = document.getElementById('steam-flow-value');
@@ -727,7 +738,7 @@ export function updateSteamDisplay(data) {
         modeTimeEl.className = INACTIVE;
         modeFlowEl.className = INACTIVE;
     } else if (steamMode === 'time') {
-        durationEl.textContent = `${currentSteamDuration}s`;
+        durationEl.textContent = formatSteamDuration(currentSteamDuration);
         durationEl.classList.remove('text-[20px]');
         durationEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
         flowEl.classList.remove('text-[26px]', 'font-bold');
@@ -735,7 +746,7 @@ export function updateSteamDisplay(data) {
         modeTimeEl.className = ACTIVE;
         modeFlowEl.className = INACTIVE;
     } else { // flow mode
-        durationEl.textContent = `${currentSteamDuration}s`;
+        durationEl.textContent = formatSteamDuration(currentSteamDuration);
         flowEl.classList.remove('text-[20px]');
         flowEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
         durationEl.classList.remove('text-[26px]', 'font-bold');
