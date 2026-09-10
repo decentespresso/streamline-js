@@ -2,15 +2,16 @@
 //
 // Unlike the per-machine-state animation concept this module replaces, a step
 // sequence is a REAL capability: the firmware has no animation or per-state
-// palette support (see api.js's ledStrip endpoints), but it DOES accept an
-// on-demand live colour on the strip via `POST /machine/ledStrip/preview`
-// (api.js `previewLedStrip`/`clearLedStripPreview`) — the exact mechanism the
-// Lighting page already uses to preview a colour while editing. A sequence
-// runner is just that same call, made repeatedly on a timer: a real
-// A→B→C→D... pattern actually driven onto the physical strip. It deliberately
-// does NOT go through `setLedStrip` (the stored awake/sleeping palette PUT) —
-// that would conflate "what I'm test-driving right now" with "the colour I
-// want saved", and would fight the existing Save/Reset semantics.
+// palette support, but the strip can be repainted on demand, so a sequence
+// runner is just that write made repeatedly on a timer — a real A→B→C→D...
+// pattern actually driven onto the physical strip.
+//
+// That write is `PUT /machine/ledStrip` (api.js `setLedStrip`), the same call
+// the Save path uses. There is no preview endpoint: the firmware exposes one
+// palette and renders the bank matching the machine's wake state, so painting
+// a colour means writing it into that bank and writing the real palette back
+// when playback stops. See `ledLiveWriteState` in led-color.js for the payload
+// and led-strip-runner.js for the baseline capture/restore that goes with it.
 //
 // This module holds only the DOM-free, testable parts: step validation and
 // normalization, the ordered-list edit operations, JSON (de)serialization for
@@ -26,16 +27,24 @@
 
 import { ledHexToRgb, ledRgbToColor16 } from './led-color.js';
 
-// Curated subset of api.js's `MachineState` values a sequence can trigger on.
-// Kept as plain strings, not imported, so this module stays DOM-free for
-// node:test -- api.js touches `window`/`localStorage` at module scope. Keep
-// these in sync BY HAND with MachineState in ../modules/api.js; states with
-// no ambient-lighting relevance (booting, calibration, selfTest, fwUpgrade,
-// error, …) are deliberately left out, same as the removed led-animation.js.
+// Curated subset of the machine states a sequence can trigger on. Kept as
+// plain strings, not imported, so this module stays DOM-free for node:test --
+// api.js touches `window`/`localStorage` at module scope. Keep these in sync
+// BY HAND with MachineState in ../modules/api.js; states with no ambient-
+// lighting relevance (booting, calibration, selfTest, fwUpgrade, error, …) are
+// deliberately left out, same as the removed led-animation.js.
+//
+// Every id here MUST be a state the machine actually reports. api.js's
+// `MachineState` also carries a synthetic `READY: 'ready'`, flagged in its own
+// comment as "not in the official API doc" and used only by app.js's
+// shot-completion check; the wire enum in rest_v1.yml has no `ready`, and
+// `currentMachineState` is assigned straight from the socket frame, so the
+// trigger path (app.js → ledStripOnMachineStateChange) can never observe it.
+// A sequence mapped to 'ready' could therefore never fire, so it is not
+// offered. `normalizeTriggerStates` drops it from anything already persisted.
 export const LED_TRIGGER_STATES = [
     { id: 'idle', label: 'Idle' },
     { id: 'heating', label: 'Heating' },
-    { id: 'ready', label: 'Ready' },
     { id: 'espresso', label: 'Espresso' },
     { id: 'steam', label: 'Steam' },
     { id: 'hotWater', label: 'Hot Water' },
@@ -202,7 +211,7 @@ export function nextStepIndex(stepCount, currentIndex, loop) {
     return loop ? 0 : null;
 }
 
-/** A normalized step → the 16-bit wire colours for `previewLedStrip(front, back)`. */
+/** A normalized step → the 16-bit wire colours to drive onto the strip. */
 export function stepPreviewColors(step) {
     const s = normalizeStep(step);
     return {

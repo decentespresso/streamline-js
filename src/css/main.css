@@ -569,25 +569,204 @@ body {
   background-color: rgba(255, 255, 255, 0.62);
 }
 
-/* Bengle Lighting settings — colour step-sequence editor/runner.
-   Unlike the CSS-preview animation concept this replaces, the runner (see
-   src/modules/led-sequence.js header) really does drive the physical strip
-   via repeated POST /machine/ledStrip/preview calls, so these classes are
-   just the editor chrome — no CSS keyframe stands in for the machine here. */
-.led-seq-notice {
-  border: 1px dashed var(--profile-button-outline-color);
-  border-radius: 10px;
-  color: var(--text-secondary, var(--text-primary));
-  opacity: 0.8;
+/* ── Bengle Lighting settings ──────────────────────────────────────────────
+   The page holds two different things: a palette that PERSISTS (Static
+   Colours, with Save/Reset) and a sequence that is TRANSIENT (played onto the
+   strip, saved locally as you type). They are split into two tabs because
+   they have different commitment models -- mixing them is what made one long
+   column unreadable, and it left "Save" looking like it applied to the
+   sequence, which it never did.
+
+   No new palette: everything below is built from the tokens already in this
+   file. --led-muted is scoped to this page only because --text-secondary is
+   referenced across settings.js but never defined anywhere; defining it
+   globally would restyle unrelated settings categories. */
+.led-page {
+  --led-muted: #6f7480;
+  --led-tint: rgba(56, 90, 146, 0.12); /* --mimoja-blue @ 12%; color-mix() is unsupported on older embedded WebViews */
+  --led-hairline: var(--profile-button-outline-color);
 }
-.led-seq-step {
-  border: 2px solid var(--profile-button-outline-color);
+[data-theme='dark'] .led-page {
+  --led-muted: #9aa0ad;
+  --led-tint: rgba(65, 89, 150, 0.22);
+}
+.led-muted { color: var(--led-muted); }
+.led-label {
+  color: var(--left-label-text);
+  font-weight: 700;
+}
+
+/* Page-level tabs. A recessed track with one raised active pill, deliberately
+   a different shape from the flat side-by-side Zone/State segments below it,
+   so the two levels of navigation do not read as the same control. */
+.led-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  background-color: var(--box-color);
+  border: 1px solid var(--led-hairline);
+}
+.led-tab {
+  flex: 1;
+  min-height: 64px;
+  padding: 0 32px;
+  border: 0;
   border-radius: 10px;
+  background: transparent;
+  color: var(--led-muted);
+  font-weight: 700;
+  font-size: 26px;
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.led-tab[aria-selected='true'] {
+  background-color: var(--mimoja-blue);
+  color: #fff;
+}
+.led-tab:focus-visible { outline: 3px solid var(--mimoja-blue); outline-offset: 2px; }
+
+/* Transport bar -- the one loud element on the Sequence tab. It carries the
+   play control, the loop switch, and the colours that are on the strip RIGHT
+   NOW, so the page shows what the machine is doing instead of only describing
+   it. The swatches are patched live by ledSeqPaintActiveStep. */
+.led-transport {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background-color: var(--box-color);
+  border: 1px solid var(--led-hairline);
+}
+.led-transport-btn {
+  min-height: 64px;
+  padding: 0 40px;
+  border: 0;
+  border-radius: 32px;
+  background-color: var(--mimoja-blue);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.led-transport-btn[data-mode='stop'] { background-color: var(--status-red-color); }
+.led-transport-btn:disabled { opacity: 0.4; cursor: default; }
+.led-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.led-now-swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 2px solid var(--led-hairline);
+}
+
+/* Step rows. The two colours of a step are the front and rear of ONE moment,
+   so they sit together in a single bordered cell split by a hairline rather
+   than floating as two unrelated inputs. */
+.led-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 2px solid var(--led-hairline);
+  border-left: 6px solid var(--led-hairline);
+  border-radius: 12px;
   transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
 }
 /* Toggled by the runner directly (ledSeqPaintActiveStep), not a re-render --
-   see the settings.js comment on why the playback tick never rebuilds the page. */
-.led-seq-step-active {
+   the playback tick must never rebuild the page under the user's fingers. */
+.led-step.led-seq-step-active {
   border-color: var(--mimoja-blue);
-  background-color: rgba(56, 90, 146, 0.12); /* --mimoja-blue @ 12% -- color-mix() unsupported on older embedded WebViews */
+  border-left-color: var(--mimoja-blue);
+  background-color: var(--led-tint);
+}
+.led-step-index {
+  width: 32px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--led-muted);
+  font-variant-numeric: tabular-nums;
+}
+.led-step-colors {
+  display: flex;
+  border: 2px solid var(--led-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.led-step-colors input[type='color'] {
+  width: 56px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+.led-step-colors input[type='color'] + input[type='color'] {
+  border-left: 2px solid var(--led-hairline);
+}
+.led-step-duration {
+  width: 108px;
+  height: 44px;
+  padding: 0 10px;
+  font-size: 18px;
+  border-radius: 8px;
+  border: 2px solid var(--led-hairline);
+  background-color: var(--profile-button-background-color);
+  color: var(--text-primary);
+}
+.led-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--led-hairline);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.led-icon-btn:disabled { opacity: 0.3; cursor: default; }
+.led-icon-btn[data-variant='remove'] {
+  border-color: var(--status-red-color);
+  color: var(--status-red-color);
+}
+
+/* Auto-run state chips. */
+.led-chip {
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 24px;
+  border: 1px solid var(--led-hairline);
+  background-color: var(--box-color);
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.led-chip[aria-pressed='true'] {
+  background-color: var(--mimoja-blue);
+  border-color: var(--mimoja-blue);
+  color: #fff;
+}
+
+.led-note {
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--led-hairline);
+  background-color: var(--box-color);
+  color: var(--led-muted);
+  font-size: 18px;
+  line-height: 1.45;
+  max-width: 78ch;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-tab, .led-step, .led-chip { transition: none; }
 }

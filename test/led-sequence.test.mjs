@@ -1,10 +1,11 @@
 // Bengle LED strip step-sequence — pure validation, list-edit, and playback
 // state-machine coverage. This drives a REAL capability (repeated
-// POST /machine/ledStrip/preview writes — see led-sequence.js header), so
-// unlike the superseded per-state preset feature these tests lock behaviour
-// that actually reaches the machine, not just a CSS preview.
+// PUT /machine/ledStrip writes — see led-sequence.js header), so unlike the
+// superseded per-state preset feature these tests lock behaviour that actually
+// reaches the machine, not just a CSS preview.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
     MIN_STEP_DURATION_MS,
@@ -201,7 +202,26 @@ test('stepPreviewColors normalizes an invalid/partial step before converting', (
 test('LED_TRIGGER_STATES matches the machine states this feature targets', () => {
     // Kept in sync BY HAND with api.js MachineState -- see the module header.
     assert.deepEqual(LED_TRIGGER_STATES.map((s) => s.id),
-        ['idle', 'heating', 'ready', 'espresso', 'steam', 'hotWater', 'cleaning']);
+        ['idle', 'heating', 'espresso', 'steam', 'hotWater', 'cleaning']);
+});
+
+test('every trigger state is one the machine can actually report', () => {
+    // Regression guard for a trigger the machine can never emit. 'ready' was
+    // offered here for a while: api.js's MachineState carries a synthetic
+    // READY:'ready' for app.js's shot-completion check, but the wire enum has
+    // no such value and `currentMachineState` comes straight off the socket
+    // frame, so a sequence mapped to it could never fire. Checking the ids
+    // against the REST contract catches the next one automatically.
+    const spec = readFileSync(new URL('../rest_v1.yml', import.meta.url), 'utf8');
+    const block = /^ {4}MachineState:\n(?: {6}.*\n| *\n)*? {6}enum:\n {8}\[\n([\s\S]*?)\n {8}\]/m.exec(spec);
+    assert.ok(block, 'could not find the MachineState enum in rest_v1.yml');
+    const wireStates = new Set(block[1].split(',').map((s) => s.trim()).filter(Boolean));
+    assert.ok(wireStates.has('espresso'), 'sanity: enum parsed');
+    assert.equal(wireStates.has('ready'), false, 'sanity: the wire enum has no "ready"');
+
+    for (const { id } of LED_TRIGGER_STATES) {
+        assert.ok(wireStates.has(id), `trigger state "${id}" is not a MachineState the machine reports`);
+    }
 });
 
 test('isValidTriggerState / normalizeTriggerStates', () => {

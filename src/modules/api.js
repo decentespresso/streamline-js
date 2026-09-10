@@ -1753,8 +1753,20 @@ export async function setCupWarmerPrewarm(enabled, leadMinutes) {
 
 // ── Bengle: LED strip ───────────────────────────────────────────────────────
 // State = { frontStrip, backStrip, frontSwitch }, each { awake, sleeping } as a
-// 12-char hex 'RRRRGGGGBBBB'. PUT pushes live (no NVM); commit persists to NVM;
-// reset reloads NVM and returns the refreshed state. 404 on a non-Bengle.
+// 12-char hex 'RRRRGGGGBBBB'. 404 on a non-Bengle.
+//
+// These three are the whole surface -- there is no preview endpoint. Per
+// rest_v1.yml and reaprime's de1handler.dart / led_strip_capability.dart:
+//   PUT    writes the four palette MMR registers straight through. It is
+//          immediate AND persistent; there is no staging latch.
+//   commit is a documented compatibility no-op (202, no side effects). Kept
+//          because it is the contract's "persist" verb, not because it does
+//          anything today.
+//   reset  RE-READS the registers and returns them. It is a truthful reload,
+//          NOT a rollback -- the firmware cannot undo a persisted write.
+// So anything that paints the strip temporarily (a colour preview, a sequence
+// step) must PUT the colour and then PUT the real palette back itself; nothing
+// on the server side will restore it. `frontSwitch` is ignored on write.
 export async function getLedStrip() {
     const response = await fetch(`${API_BASE_URL}/machine/ledStrip`);
     if (!response.ok) throw new Error(`Failed to get LED strip (status ${response.status})`);
@@ -1781,24 +1793,6 @@ export async function resetLedStrip() {
     const response = await fetch(`${API_BASE_URL}/machine/ledStrip/reset`, { method: 'POST' });
     if (!response.ok) throw new Error(`Failed to reset LED strip (status ${response.status})`);
     return response.json();
-}
-
-// Live preview: show `front`/`back` (12-char hex) on the strip now, regardless
-// of awake/sleep, without changing the stored palette. clear -> restore awake.
-export async function previewLedStrip(front, back) {
-    const response = await fetch(`${API_BASE_URL}/machine/ledStrip/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front, back }),
-    });
-    if (!response.ok) throw new Error(`Failed to preview LED (status ${response.status})`);
-    return true;
-}
-
-export async function clearLedStripPreview() {
-    const response = await fetch(`${API_BASE_URL}/machine/ledStrip/preview/clear`, { method: 'POST' });
-    if (!response.ok) throw new Error(`Failed to clear LED preview (status ${response.status})`);
-    return true;
 }
 
 export async function getAppInfo() {
