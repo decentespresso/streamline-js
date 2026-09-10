@@ -528,49 +528,37 @@ body {
   background: rgba(0, 0, 0, 0.55);
 }
 
-/* Profile editor scrollbars. The steps grid scrolls sideways and the summary
-   columns scroll down, but on a touch device Chromium uses overlay scrollbars
-   that fade out — so there was nothing on screen saying the panel scrolls at
-   all. Declaring ::-webkit-scrollbar switches that pane back to a classic
-   space-taking scrollbar, which is what makes the trough permanently visible;
-   the colours just make it legible.
+/* Profile editor scrollbars. The CARDS row scrolls sideways and the SCRIPT
+   tab's Steps Overview scrolls down, but on a touch device Chromium uses
+   overlay scrollbars that fade out — so there was nothing on screen saying the
+   panel scrolls at all. Declaring ::-webkit-scrollbar switches that pane back
+   to a classic space-taking scrollbar, so the thumb stays put.
 
-   Neutral translucent rather than var(--mimoja-blue): dark mode redefines that
-   token to #292c38, which would vanish against a dark panel. These id
+   Both panes draw the redesign's bare thumb on the page ground with no trough,
+   matching the pill the Figma shows on the CARDS and SCRIPT screens (node
+   2662-803's Scroll Bar is --secondary-button-bg, #b6c3d7, exactly). These id
    selectors outrank the app-wide [data-theme="dark"] scrollbar rules in
-   dark-mode.css, so both themes are set here. */
-#review-steps-col,
-#review-right-col {
-  scrollbar-color: rgba(0, 0, 0, 0.42) rgba(0, 0, 0, 0.10); /* Firefox + Chromium 121+ */
-  scrollbar-gutter: stable;
-}
-#editor-steps-container::-webkit-scrollbar,
-#review-steps-col::-webkit-scrollbar,
-#review-right-col::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
-}
-#review-steps-col::-webkit-scrollbar-track,
-#review-right-col::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.10);
-  border-radius: 8px;
-}
-
-/* The CARDS row is the exception: the redesign draws a bare thumb on the page
-   ground with no trough, matching the pill the Figma shows on the SCRIPT and
-   SETTINGS panels. Declaring ::-webkit-scrollbar above still opts this pane
-   out of Chromium's fading overlay scrollbars, so the thumb stays put; only
-   the track is erased. */
-#editor-steps-container {
+   dark-mode.css, and the token carries its own dark-mode value, so no
+   per-theme override is needed here. */
+#editor-steps-container,
+#script-steps-col {
   scrollbar-color: var(--secondary-button-bg) transparent; /* Firefox + Chromium 121+ */
   scrollbar-gutter: stable;
 }
-#editor-steps-container::-webkit-scrollbar-track {
+#editor-steps-container::-webkit-scrollbar,
+#script-steps-col::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+#editor-steps-container::-webkit-scrollbar-track,
+#script-steps-col::-webkit-scrollbar-track {
   background: transparent;
 }
-#editor-steps-container::-webkit-scrollbar-thumb {
+#editor-steps-container::-webkit-scrollbar-thumb,
+#script-steps-col::-webkit-scrollbar-thumb {
   background-color: var(--secondary-button-bg);
   border-radius: 8px;
+  /* Inset the thumb so it reads as a floating pill, not a full-width bar. */
   border: 3px solid transparent;
   background-clip: content-box;
 }

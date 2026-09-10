@@ -242,3 +242,106 @@ test('with nothing to inherit a new limiter takes the DE1 band, not the 0 on scr
     assert.equal(fields['bar-field'].value, 0);
     assert.equal(newLimiterRange('flow'), 0.6);
 });
+
+// ── SCRIPT tab: which sentences a step produces (buildStepScript) ────────────
+// The prose half of the redesigned SCRIPT tab (Figma node 2662-803) decides
+// which lines a step gets, in what order, and with which temperature verb.
+// Extracted the same way as everything above, so it can't drift from what the
+// tab actually renders. readExitDef is passed in rather than duplicated — the
+// exit line's presence is exactly its "is this really off?" answer.
+const scriptStart = source.indexOf('// ─── Pure script-line composition');
+const scriptEnd = source.indexOf('// ─── End pure script-line composition');
+assert.ok(scriptStart !== -1 && scriptEnd !== -1 && scriptEnd > scriptStart, 'pure script-line block not found in profile_editor.js');
+const S = new Function('readExitDef', `${source.slice(scriptStart, scriptEnd)}
+    return { SCRIPT_MAX_FIELDS, temperatureVerb, buildStepScript, scriptValueFormat };`)(readExitDef);
+
+const kinds = (lines) => lines.map((l) => l.kind);
+// A step with nothing optional set: no volume marker, no limiter, no ceilings
+// and no exit — so only the two lines every step always has.
+const bareStep = (over = {}) => ({ pump: 'flow', flow: 6, temperature: 93, ...over });
+
+test('every step opens with its temperature then its pump line', () => {
+    assert.deepEqual(kinds(S.buildStepScript(bareStep(), 0, {}, null)), ['temperature', 'pump']);
+});
+
+test('the opening step Sets its temperature; there is nothing to compare it to', () => {
+    const [temp] = S.buildStepScript(bareStep({ temperature: 93 }), 0, {}, null);
+    assert.equal(temp.verb, 'Set');
+});
+
+test('the verb tracks the previous step: Maintain, Increase, Decrease', () => {
+    const verbFor = (prev, now) => S.buildStepScript(
+        bareStep({ temperature: now }), 1, {}, bareStep({ temperature: prev }),
+    )[0].verb;
+    assert.equal(verbFor(93, 93), 'Maintain');
+    assert.equal(verbFor(88, 93), 'Increase');
+    assert.equal(verbFor(93, 88), 'Decrease');
+});
+
+test('a previous step with no temperature of its own reads as Set, not Maintain', () => {
+    // temperatureVerb takes only a real number as a comparison point —
+    // undefined must not compare equal and claim the target is unchanged.
+    assert.equal(S.temperatureVerb(undefined, 93), 'Set');
+    assert.equal(S.temperatureVerb(null, 93), 'Set');
+    assert.equal(S.temperatureVerb(93, 93), 'Maintain');
+});
+
+test('an unset limiter, ceiling or exit states nothing — the line is left out', () => {
+    const lines = kinds(S.buildStepScript(
+        bareStep({ limiter: { value: 0 }, seconds: 0, volume: 0, weight: 0, exit: null }), 0, {}, null,
+    ));
+    assert.deepEqual(lines, ['temperature', 'pump']);
+});
+
+test('a set limiter and a real exit each add their own line', () => {
+    const lines = kinds(S.buildStepScript(
+        bareStep({ limiter: { value: 3, range: 0.6 }, exit: { type: 'pressure', condition: 'over', value: 4 } }),
+        0, {}, null,
+    ));
+    assert.deepEqual(lines, ['temperature', 'pump', 'limit', 'exit']);
+});
+
+test('an exit that readExitDef calls off adds no line', () => {
+    // The exit line is the only place a step says "move on if", so it has to
+    // agree with readExitDef rather than testing step.exit for truthiness — a
+    // legacy { type: 'weight' } exit is off, but it is not falsy.
+    const lines = kinds(S.buildStepScript(bareStep({ exit: { type: 'weight', value: 30 } }), 0, {}, null));
+    assert.equal(lines.includes('exit'), false);
+});
+
+test('the ceilings collapse into one line, in the CARDS row order, skipping unset ones', () => {
+    assert.deepEqual(S.SCRIPT_MAX_FIELDS.map((f) => f.key), ['weight', 'seconds', 'volume']);
+    const [max] = S.buildStepScript(bareStep({ seconds: 12, volume: 100 }), 0, {}, null)
+        .filter((l) => l.kind === 'maximum');
+    assert.deepEqual(max.keys, ['seconds', 'volume']);
+    const [all] = S.buildStepScript(bareStep({ weight: 36, seconds: 12, volume: 100 }), 0, {}, null)
+        .filter((l) => l.kind === 'maximum');
+    assert.deepEqual(all.keys, ['weight', 'seconds', 'volume']);
+});
+
+// ── Volume-tracking marker placement ────────────────────────────────────────
+// target_volume_count_start is "preinfusion ends after step N", 1-based with
+// 0 meaning none — so the marker belongs on the step AFTER it.
+
+test('the marker lands on the step after the one preinfusion ends on', () => {
+    const profile = { target_volume_count_start: 3 };
+    const at = (i) => kinds(S.buildStepScript(bareStep(), i, profile, bareStep()));
+    assert.equal(at(2).includes('volumeStart'), false); // step 3 itself — still preinfusion
+    assert.equal(at(3)[0], 'volumeStart');              // step 4 — tracking starts here
+    assert.equal(at(4).includes('volumeStart'), false);
+});
+
+test('"none" puts no marker on step 1, which shares its index-0 falsy value', () => {
+    for (const profile of [{}, { target_volume_count_start: 0 }, { target_volume_count_start: null }]) {
+        assert.equal(kinds(S.buildStepScript(bareStep(), 0, profile, null)).includes('volumeStart'), false);
+    }
+});
+
+// ── Value formatting ────────────────────────────────────────────────────────
+
+test('every value keeps one decimal, so a whole number reads 93.0 and not 93', () => {
+    assert.equal(S.scriptValueFormat('°C')(93), '93.0 °C');
+    assert.equal(S.scriptValueFormat('sec')(2), '2.0 sec');
+    assert.equal(S.scriptValueFormat('mL/s')(8.25), '8.3 mL/s');
+    assert.equal(S.scriptValueFormat('')(5), '5.0');
+});

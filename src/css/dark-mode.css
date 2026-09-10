@@ -41,11 +41,6 @@
     border-right-color: black;
 }
 
-/* Profile editor: delete-step / insert-step icon buttons — neutral grey in dark mode */
-[data-theme="dark"] .pe-step-action-btn {
-    color: #959595;
-}
-
 [data-theme="dark"] aside [role="separator"] {
     border-color: black;
 }

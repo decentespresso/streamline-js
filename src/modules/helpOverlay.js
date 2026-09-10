@@ -66,9 +66,8 @@ const PAGES = {
         { sel: '#editor-row-max', title: 'Maximum', tip: 'The longest this step runs before moving to the next one.' },
         { sel: '#editor-row-exit', title: 'Move on if', tip: 'End the step early when pressure or flow goes over or under a set value.' },
         { sel: '#editor-settings-container', title: 'Profile settings', tip: 'Set profile-wide options. Tap a value to change it.' },
-        { sel: '#review-steps-list', title: 'Text review', tip: 'Each step in plain words. Tap any blue value to edit it.' },
-        { sel: '#review-graph', title: 'Graph preview', tip: 'Live preview of the profile’s pressure / flow curve.' },
-        { sel: '#review-settings-list', title: 'Profile settings', tip: 'Profile-wide settings. Tap any blue value to edit it.' },
+        { sel: '#script-steps-col', title: 'Steps Overview', tip: 'Each step in plain words. Tap any blue value or word to edit it.' },
+        { sel: '#script-graph', title: 'Graph preview', tip: 'Live preview of the profile’s pressure / flow curve.' },
         { sel: '#editor-close-btn', title: 'Close', tip: 'Discard changes and exit the editor.' },
         // Greyed out (pointer-events-none) until the title differs from the
         // source profile's — visibleRect doesn't check that, so this mark
