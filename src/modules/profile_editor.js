@@ -52,10 +52,13 @@ function openNumpadForField(currentVal, numpadConfig, onCommit) {
     });
 }
 
-// ─── Review Settings Editable Pill ─────────────────────────────────────────
-// Reusable inline editable value span — dotted blue underline; click opens
-// numpad on tablet or inline edit on desktop. Used in the review tab's
-// settings list under the graph preview.
+// ─── Inline Editable Value Pill ────────────────────────────────────────────
+// Reusable inline editable value span — dashed blue underline; a tap opens the
+// full-screen numpad. This is the editor's one mid-sentence value control; the
+// SCRIPT tab's Steps Overview builds every number in its prose from it.
+// `fieldType` is the numpad's recent-values key, so passing the same one the
+// CARDS tab uses (pe-temp, pe-pump, pe-lim, pe-exit, MAX_NUMPAD's) shares that
+// history between the two tabs rather than splitting it per view.
 
 function createSettingPill({ value, step, unit, min, max, fieldType, title, format, onCommit }) {
     const PILL_CLASS = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none inline-flex underline decoration-dashed underline-offset-[3px] px-[4px] rounded-[4px]';
@@ -69,7 +72,7 @@ function createSettingPill({ value, step, unit, min, max, fieldType, title, form
 
     pill.addEventListener('click', () => {
         openNumpadForField(value, {
-            fieldType: fieldType || 'pe-review-setting',
+            fieldType: fieldType || 'pe-script-value',
             title: title || (unit ? unit.toUpperCase() : 'VALUE'),
             unit: unit || '',
             min: min ?? 0,
@@ -79,9 +82,8 @@ function createSettingPill({ value, step, unit, min, max, fieldType, title, form
             value = val;
             pill.textContent = fmt(value);
             onCommit(value);
-            // Every caller of createSettingPill edits a profile-wide execution
-            // field (tank temperature, target weight/volume, preinfusion step)
-            // — keep SAVE AS NEW's enabled state current.
+            // Every caller of createSettingPill edits an execution field —
+            // keep SAVE AS NEW's enabled state current.
             updateSaveAsNewButtonState();
         });
     });
@@ -230,36 +232,6 @@ function insertStepAfter(index) {
     p.steps.splice(index + 1, 0, makeNewStep());
     const start = p.target_volume_count_start || 0;
     if (start > index + 1) p.target_volume_count_start = start + 1;
-}
-
-// Reorder button for a step. `dir` is -1 (earlier) or +1 (later). At the ends
-// of the run the button stays in place but goes inert, so the footer's button
-// row keeps the same width on every step — a disappearing control would shift
-// delete and insert sideways under the finger.
-function makeMoveBtn(index, dir, total, rerender, big) {
-    // Class strings are literals, not interpolated: Tailwind builds app.css by
-    // scanning source text, so a `w-[${size}px]` would compile to nothing and
-    // silently lose its width.
-    const BOX = big
-        ? 'pe-step-action-btn w-[60px] h-[60px] flex items-center justify-center rounded-[10px]'
-        : 'pe-step-action-btn w-[36px] h-[36px] flex items-center justify-center rounded-[10px]';
-
-    const target = index + dir;
-    const disabled = target < 0 || target >= total;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `${BOX} ${disabled ? 'cursor-default' : 'text-[var(--mimoja-blue)] hover:bg-[var(--button-grey)] cursor-pointer'}`;
-    if (disabled) {
-        btn.style.color = 'var(--low-contrast-white)';
-        btn.style.opacity = '0.35';
-        btn.disabled = true;
-    }
-    const d = dir < 0 ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7';
-    const px = big ? 'h-8 w-8' : 'h-5 w-5';
-    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="${px}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${d}" /></svg>`;
-    btn.setAttribute('aria-label', dir < 0 ? 'Move step earlier' : 'Move step later');
-    if (!disabled) btn.addEventListener('click', () => { if (moveStep(index, target)) rerender(); });
-    return btn;
 }
 
 // Move a step to a new position. Like removeStepAt/insertStepAfter this has to
@@ -999,7 +971,7 @@ function renderStepCards() {
                 format: (v) => `${v}°C`,
                 onChange: (val) => {
                     editorState.profile.steps[index].temperature = val;
-                    renderReviewGraph();
+                    renderScriptGraph();
                 },
             });
 
@@ -1038,7 +1010,7 @@ function renderStepCards() {
                 onChange: (val) => {
                     if (isFlow) editorState.profile.steps[index].flow = val;
                     else editorState.profile.steps[index].pressure = val;
-                    renderReviewGraph();
+                    renderScriptGraph();
                 },
             });
 
@@ -1084,7 +1056,7 @@ function renderStepCards() {
                     const s = editorState.profile.steps[index];
                     if (!s.limiter) s.limiter = { value: val, range: newLimiterRange(s.pump) };
                     else s.limiter.value = val;
-                    renderReviewGraph();
+                    renderScriptGraph();
                 },
             });
 
@@ -1140,7 +1112,7 @@ function renderStepCards() {
                     format: (v) => `${roundTo(v, lim.step)} ${unit}`,
                     onChange: (val) => {
                         editorState.profile.steps[index][key] = val;
-                        renderReviewGraph();
+                        renderScriptGraph();
                     },
                 });
                 mCell.appendChild(controlLine(labelSlot(getTranslation(label)), stepper));
@@ -1177,7 +1149,7 @@ function renderStepCards() {
                 // Remember a real edited value so a later Off-and-back on this
                 // step restores it instead of reseeding a 0.
                 if (patch.value !== undefined) rememberExitValue(step, patch.type, patch.value);
-                renderReviewGraph();
+                renderScriptGraph();
             }
 
             const exitChip = createCycleChip({
@@ -1613,277 +1585,316 @@ function renderSettingsTab() {
     notesWrapper.className = 'flex flex-col gap-[12px] flex-1';
 }
 
-// ─── Review Tab ─────────────────────────────────────────────────────────────
+// ─── Script Tab ─────────────────────────────────────────────────────────────
+// Figma node 2662-803 (2560px canvas, so every dimension below is the design
+// value at 0.75 — the same convention the CARDS tab was built on). The profile
+// read back as prose: the left half is a "Steps Overview" script, one bulleted
+// sentence per thing a step does, and the right half is the graph preview the
+// old Review tab already drew.
+//
+// Two things the review tab had are gone, because the design does not show
+// them. Its third block — a second list of profile-wide settings under the
+// graph — duplicated fields SETTINGS (tab 1) already owns, and the design's
+// right half is the graph alone. Its per-step insert/delete/reorder buttons
+// are gone too: the redesign gave every CARDS card a footer carrying exactly
+// those three controls, and the design draws no step controls on this screen.
+//
+// Values and state words stay tappable, as they were in the review tab and as
+// the design's accent-blue highlights imply.
 
-function describeStep(step, index) {
-    const PROSE_CLASS = 'text-[20px] text-[var(--text-primary)] select-none';
-    const PILL_ACTIVE   = 'text-[var(--button-primary-bg)] text-[20px] font-semibold cursor-pointer select-none inline-flex underline decoration-dashed underline-offset-[3px] px-[4px] rounded-[4px]';
-    const TOGGLE_CLASS  = 'text-[var(--button-primary-bg)] text-[20px] font-semibold cursor-pointer select-none underline decoration-dashed underline-offset-[3px] px-[4px]';
-    // Zero-valued max fields: same pill, muted, so "not set" is legible without
-    // spending a sentence on it.
-    const PILL_MUTED    = 'text-[var(--low-contrast-white)] text-[20px] font-semibold cursor-pointer select-none inline-flex underline decoration-dashed underline-offset-[3px] px-[4px] rounded-[4px]';
+// ─── Pure script-line composition ──────────────────────────────────────────
+// Which sentences a step produces, in what order, and with which verb — kept
+// off the DOM as standalone functions so test/profile-editor.test.mjs can
+// extract and run them the same way it does readExitDef and pushChannel.
 
-    function makeProseSpan(text) {
-        const span = document.createElement('span');
-        span.className = PROSE_CLASS;
-        span.textContent = text;
-        return span;
-    }
+// Ordered as the CARDS "Maximum" row lists them, so the two tabs never
+// disagree about a step's three ceilings.
+const SCRIPT_MAX_FIELDS = [
+    { key: 'weight',  unit: 'g'   },
+    { key: 'seconds', unit: 'sec' },
+    { key: 'volume',  unit: 'ml'  },
+];
 
-    function makeToggle(initialText, onClick) {
-        const span = document.createElement('span');
-        span.className = TOGGLE_CLASS;
-        span.textContent = initialText;
-        span.addEventListener('click', () => { onClick(span); });
-        return span;
-    }
+// "Set ... to 93.0 °C" on the opening step, then "Maintain ... at", "Increase
+// ... to" or "Decrease ... to" relative to the step before it — per the Figma,
+// where step 1 reads "Set", step 2 (same target) "Maintain", and step 3 (lower
+// target) "Decrease". The stored value is an absolute setpoint either way; the
+// verb only describes how it relates to what came before.
+function temperatureVerb(prevTemp, temp) {
+    if (typeof prevTemp !== 'number') return 'Set';
+    if (temp > prevTemp) return 'Increase';
+    if (temp < prevTemp) return 'Decrease';
+    return 'Maintain';
+}
 
-    // An editable value inside a sentence. The dashed underline already says
-    // "tappable", so a tap goes straight to the numpad (tablet) or an inline
-    // input (desktop). No ± here: this is the read-it-as-prose view, and 40px
-    // buttons floated around a word mid-sentence were what overlapped the
-    // neighbouring lines. Fine adjustment lives in the grid, which has real
-    // steppers now.
-    function makeValuePill(initialValue, lim, unit, onCommit, opts = {}) {
-        let value = initialValue;
-
-        const pill = document.createElement('span');
-        pill.addEventListener('mouseenter', () => { pill.style.backgroundColor = 'var(--button-grey)'; });
-        pill.addEventListener('mouseleave', () => { pill.style.backgroundColor = ''; });
-
-        function render() {
-            pill.textContent = `${roundTo(value, lim.step)} ${unit}`;
-            pill.className = (opts.mutedWhenZero && value === 0) ? PILL_MUTED : PILL_ACTIVE;
-        }
-
-        function commit(val) {
-            value = val;
-            render();
-            onCommit(value);
-            updateSaveAsNewButtonState();
-        }
-
-        pill.addEventListener('click', () => {
-            openNumpadForField(value, {
-                fieldType: opts.fieldType || 'pe-review',
-                title: (opts.title || unit || 'VALUE').toUpperCase(),
-                unit,
-                min: lim.min, max: lim.max,
-                label: `${lim.min}–${lim.max}`,
-            }, commit);
-        });
-
-        render();
-        return pill;
-    }
-
-    function makeLine(children) {
-        const span = document.createElement('span');
-        // flex-wrap so longer-language sentence rows wrap to a second line instead
-        // of overflowing the step cell.
-        span.className = 'inline-flex flex-wrap items-center justify-center gap-[6px]';
-        for (const child of children) {
-            if (typeof child === 'string') {
-                span.appendChild(makeProseSpan(child));
-            } else {
-                span.appendChild(child);
-            }
-        }
-        return span;
-    }
-
+function buildStepScript(step, index, profile, prevStep) {
     const lines = [];
     const isFlow = step.pump !== 'pressure';
 
-    // Line 1 — Temperature + sensor
-    {
-        let sensorValue = step.sensor || 'coffee';
-        const sensorToggle = makeToggle(
-            sensorValue === 'water' ? getTranslation('Mix') : getTranslation('Group'),
-            (span) => {
-                sensorValue = sensorValue === 'coffee' ? 'water' : 'coffee';
-                span.textContent = sensorValue === 'coffee' ? getTranslation('Group') : getTranslation('Mix');
-                editorState.profile.steps[index].sensor = sensorValue;
-                renderReviewGraph();
-            }
-        );
+    // profile.target_volume_count_start is "preinfusion ends after step N",
+    // 1-based with 0 meaning none — so volume tracking starts on the step
+    // AFTER it, at 0-based index N. The > 0 guard matters: `|| 0` turns "none"
+    // into 0, which would otherwise put the marker on step 1.
+    const countStart = profile.target_volume_count_start || 0;
+    if (countStart > 0 && countStart === index) lines.push({ kind: 'volumeStart' });
 
-        const tempSpinner = makeValuePill(
-            step.temperature ?? 93, FIELD_LIMITS.temperature, '\u00b0C',
-            (val) => { editorState.profile.steps[index].temperature = val; renderReviewGraph(); },
-            { fieldType: 'pe-review-temp', title: 'TEMPERATURE' }
-        );
+    lines.push({
+        kind: 'temperature',
+        verb: temperatureVerb(
+            typeof prevStep?.temperature === 'number' ? prevStep.temperature : null,
+            step.temperature ?? 93,
+        ),
+    });
 
-        lines.push(makeLine([sensorToggle, getTranslation('to'), tempSpinner]));
-    }
+    lines.push({ kind: 'pump', isFlow });
 
-    // Line 2 — Pump mode + ramp + target
-    {
-        // Mode leads the line for the same reason it has a button in the grid:
-        // it decides the unit, the target's bounds, and which axis the limiter
-        // constrains. The summary used to show a step's most consequential
-        // property as nothing but the unit on its value, with no way to change
-        // it — the one control on the step page with no counterpart here.
-        const modeToggle = makeToggle(
-            isFlow ? getTranslation('Flow') : getTranslation('Pressure'),
-            () => {
-                const s = editorState.profile.steps[index];
-                if (isFlow) {
-                    s.pump = 'pressure';
-                    if (!s.pressure) s.pressure = PUMP_SEED_PRESSURE;
-                    delete s.flow;
-                } else {
-                    s.pump = 'flow';
-                    if (!s.flow) s.flow = PUMP_SEED_FLOW;
-                    delete s.pressure;
-                }
-                // Full tab rebuild, not just the chart: the target pill and the
-                // limiter pill both closed over the old mode's unit and bounds.
-                renderReviewTab();
-            }
-        );
+    // Unlike the CARDS rows, an unset field is left out rather than shown
+    // muted: this half is prose, and "Limit to 0.0 bar" or "For a maximum of
+    // 0.0 g" asserts something the step does not do. Nothing becomes
+    // unreachable — CARDS keeps a permanent row for each of them, which is
+    // where one gets added.
+    if ((step.limiter?.value ?? 0) > 0) lines.push({ kind: 'limit', isFlow });
 
-        let transValue = step.transition || 'fast';
-        const transToggle = makeToggle(
-            transValue === 'fast' ? getTranslation('Quickly') : getTranslation('Slowly'),
-            (span) => {
-                transValue = transValue === 'fast' ? 'smooth' : 'fast';
-                span.textContent = transValue === 'fast' ? getTranslation('Quickly') : getTranslation('Slowly');
-                editorState.profile.steps[index].transition = transValue;
-                renderReviewGraph();
-            }
-        );
+    const maxKeys = SCRIPT_MAX_FIELDS.filter((f) => (step[f.key] ?? 0) > 0).map((f) => f.key);
+    if (maxKeys.length > 0) lines.push({ kind: 'maximum', keys: maxKeys });
 
-        const pumpLim  = isFlow ? FIELD_LIMITS.flow : FIELD_LIMITS.pressure;
-        const pumpUnit = isFlow ? 'mL/s' : 'bar';
-        const pumpSpinner = makeValuePill(
-            (isFlow ? step.flow : step.pressure) ?? 0, pumpLim, pumpUnit,
-            (val) => {
-                if (isFlow) editorState.profile.steps[index].flow = val;
-                else editorState.profile.steps[index].pressure = val;
-                renderReviewGraph();
-            },
-            isFlow
-                ? { fieldType: 'pe-review-flow', title: 'FLOW' }
-                : { fieldType: 'pe-review-pressure', title: 'PRESSURE' }
-        );
-
-        // 'Ramp' is dropped, as it was from the grid: its German (translation
-        // CSV row 1721, 'Sanfter Übergang') means *smooth transition*, so next
-        // to the transition toggle it read 'smooth transition quickly'.
-        lines.push(makeLine([modeToggle, transToggle, getTranslation('to'), pumpSpinner]));
-    }
-
-    // Line 3 — Limiter. Always present, muted at 0, exactly like the Max line
-    // below treats its unset limits. Rendering it only when it was already
-    // non-zero meant a limiter could be edited from the summary but never
-    // added — the grid at least falls back to a '+ Limit' chip.
-    {
-        const limValue = step.limiter?.value ?? 0;
-        const limUnit  = isFlow ? 'bar' : 'mL/s';
-        const limLim   = isFlow ? FIELD_LIMITS.pressureLimit : FIELD_LIMITS.flowLimit;
-        const limSpinner = makeValuePill(
-            limValue, limLim, limUnit,
-            (val) => {
-                const s = editorState.profile.steps[index];
-                if (!s.limiter) s.limiter = { value: val, range: newLimiterRange(s.pump) };
-                else s.limiter.value = val;
-                renderReviewGraph();
-            },
-            { mutedWhenZero: true, fieldType: 'pe-review-limit', title: 'LIMIT' }
-        );
-        lines.push(makeLine([getTranslation('Limit to'), limSpinner]));
-    }
-
-    // Line 4 — Max (weight / seconds / volume)
-    // All three are listed because all three are live: whichever trips first
-    // ends the step. Unset ones are muted rather than hidden, so there is always
-    // somewhere to tap to set them — the old version needed an expanded/
-    // collapsed mode, a "+ max" placeholder, a 2s timer and a focus overlay to
-    // solve that, and floated its pills over the neighbouring lines.
-    {
-        const MAX_FIELDS = [
-            { key: 'weight',  unit: 'g',   lim: FIELD_LIMITS.weight },
-            { key: 'seconds', unit: 'sec', lim: FIELD_LIMITS.seconds },
-            { key: 'volume',  unit: 'ml',  lim: FIELD_LIMITS.volume },
-        ];
-
-        const parts = [getTranslation('Up to')];
-        MAX_FIELDS.forEach(({ key, unit, lim }) => {
-            parts.push(makeValuePill(
-                step[key] ?? 0, lim, unit,
-                (val) => { editorState.profile.steps[index][key] = val; renderReviewGraph(); },
-                { mutedWhenZero: true, fieldType: MAX_NUMPAD[key].fieldType, title: MAX_NUMPAD[key].title }
-            ));
-        });
-
-        lines.push(makeLine(parts));
-    }
-
-    // Line 4 — Exit condition. Always present, 'off' included, so an exit can
-    // be added and cleared from here. It used to render only for a step that
-    // already had one, and its type toggle filtered 'off' out of the cycle —
-    // between them, the summary could reach an exit but never leave one.
-    {
-        const exitDef = readExitDef(step);
-        let exitType = exitDef.type;
-        let exitCond = exitDef.condition;
-        let exitValue = exitDef.value;
-
-        const exitTypeToggle = makeToggle(
-            getTranslation(exitType.charAt(0).toUpperCase() + exitType.slice(1)),
-            () => {
-                exitType = EXIT_TYPES[(EXIT_TYPES.indexOf(exitType) + 1) % EXIT_TYPES.length];
-                // Carry the value into the new type's range: pressure allows
-                // 12 bar, flow only 8 mL/s. 'off' has no ceiling to clamp to.
-                exitValue = clamp(exitValue, 0, EXIT_MAX_MAP[exitType] ?? exitValue);
-                const s = editorState.profile.steps[index];
-                if (!s.exit) s.exit = { type: exitType, condition: exitCond, value: exitValue };
-                else { s.exit.type = exitType; s.exit.value = exitValue; }
-                // Full tab rebuild, not just the chart. The value pill closed
-                // over the old type's unit and bounds when it was built, so
-                // renderReviewGraph() alone left it reading "2.0 bar" on a
-                // flow exit — and still enforcing pressure's ceiling of 12.
-                renderReviewTab();
-            }
-        );
-
-        // 'off' has no condition and no value, so neither control is built —
-        // the same way the grid's Exit cell drops both rather than disabling
-        // them. EXIT_MAX_MAP/EXIT_UNIT_MAP have no 'off' entry to read either.
-        if (exitType === 'off') {
-            lines.push(makeLine([getTranslation('Move on if'), exitTypeToggle]));
-            return lines;
-        }
-
-        const exitCondToggle = makeToggle(
-            getTranslation(exitCond === 'over' ? 'is over' : 'is under'),
-            (span) => {
-                exitCond = exitCond === 'over' ? 'under' : 'over';
-                span.textContent = getTranslation(exitCond === 'over' ? 'is over' : 'is under');
-                if (!editorState.profile.steps[index].exit) editorState.profile.steps[index].exit = { type: exitType, condition: exitCond, value: exitValue };
-                else editorState.profile.steps[index].exit.condition = exitCond;
-                renderReviewGraph();
-            }
-        );
-
-        const exitSpinner = makeValuePill(
-            exitValue,
-            { min: 0, max: EXIT_MAX_MAP[exitType], step: EXIT_STEP_MAP[exitType] },
-            EXIT_UNIT_MAP[exitType],
-            (val) => {
-                exitValue = val;
-                if (!editorState.profile.steps[index].exit) editorState.profile.steps[index].exit = { type: exitType, condition: exitCond, value: val };
-                else editorState.profile.steps[index].exit.value = val;
-                renderReviewGraph();
-            },
-            { fieldType: 'pe-review-exit', title: 'EXIT' }
-        );
-
-        lines.push(makeLine([getTranslation('Move on if'), exitTypeToggle, exitCondToggle, exitSpinner]));
-    }
+    if (readExitDef(step).type !== 'off') lines.push({ kind: 'exit' });
 
     return lines;
+}
+
+// Every number in the script reads to one decimal — "93.0 °C", "2.0 sec",
+// "100.0 ml" — per the Figma. roundTo() collapses a whole number back to "93",
+// so these pills format with toFixed(1) instead of createSettingPill's default.
+function scriptValueFormat(unit) {
+    return (v) => {
+        const n = Number(v).toFixed(1);
+        return unit ? `${n} ${unit}` : n;
+    };
+}
+
+// ─── End pure script-line composition ──────────────────────────────────────
+
+// An inline cycling word — the prose counterpart of the CARDS tab's boxed
+// createCycleChip. Same `states`/`labelFor` contract and the same "every chip
+// cycles an execution field, so refresh SAVE AS NEW" bookkeeping; only the
+// presentation differs, since a 114×72 box cannot sit mid-sentence.
+function createScriptChip({ states, index, labelFor, onChange }) {
+    let i = index;
+    // A real <button>, like createCycleChip — it costs nothing inline (Tailwind
+    // preflight strips the native chrome and inherits the font) and carries
+    // keyboard activation and the button role for free.
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none underline decoration-dashed underline-offset-[3px] px-[4px] rounded-[4px]';
+
+    function render() { chip.textContent = labelFor(states[i], i); }
+    render();
+
+    chip.addEventListener('click', () => {
+        i = (i + 1) % states.length;
+        render();
+        onChange(states[i], i);
+        updateSaveAsNewButtonState();
+    });
+    chip.addEventListener('mouseenter', () => { chip.style.backgroundColor = 'var(--button-grey)'; });
+    chip.addEventListener('mouseleave', () => { chip.style.backgroundColor = ''; });
+
+    return chip;
+}
+
+// One bullet. Children are plain strings (prose) or elements (chips, pills);
+// the inline-flex wrap keeps a long sentence inside the 756px text column
+// instead of overflowing it, which matters most in the longer languages.
+function scriptBullet(children) {
+    const li = document.createElement('li');
+    li.className = 'leading-[1.2] text-[24px] text-[var(--text-primary)]';
+    const line = document.createElement('span');
+    line.className = 'inline-flex flex-wrap items-baseline gap-[6px]';
+    for (const child of children) {
+        if (child == null || child === '') continue;
+        if (typeof child === 'string') {
+            const span = document.createElement('span');
+            span.className = 'select-none';
+            span.textContent = child;
+            line.appendChild(span);
+        } else {
+            line.appendChild(child);
+        }
+    }
+    li.appendChild(line);
+    return li;
+}
+
+// Turns one buildStepScript descriptor into its bullet. Every editable value
+// goes through createSettingPill (the editor's one numpad-backed inline value)
+// and every state word through createScriptChip, so this function only decides
+// wording and wiring — never how a control looks or clamps.
+function renderScriptLine(line, step, index) {
+    // A commit that only changes a number: write it, replot. Anything that
+    // can change the SHAPE of the script calls renderScriptTab() instead.
+    const write = (fn) => (val) => { fn(val); renderScriptGraph(); };
+
+    switch (line.kind) {
+        case 'volumeStart':
+            return scriptBullet([getTranslation('Start tracking water volume')]);
+
+        case 'temperature': {
+            const sensorChip = createScriptChip({
+                states: ['coffee', 'water'],
+                index: (step.sensor || 'coffee') === 'water' ? 1 : 0,
+                // Group/Mix, the same two words the CARDS sensor chip uses —
+                // the design's raw "coffee" is the stored field value, not a
+                // label this app shows anywhere else.
+                labelFor: (s) => getTranslation(s === 'water' ? 'Mix' : 'Group'),
+                onChange: (s) => { editorState.profile.steps[index].sensor = s; },
+            });
+            const lim = FIELD_LIMITS.temperature;
+            return scriptBullet([
+                getTranslation(line.verb),
+                sensorChip,
+                getTranslation('temperature'),
+                getTranslation(line.verb === 'Maintain' ? 'at' : 'to'),
+                createSettingPill({
+                    value: step.temperature ?? 93, min: lim.min, max: lim.max, step: lim.step,
+                    unit: '°C', fieldType: 'pe-temp', title: 'TEMPERATURE',
+                    format: scriptValueFormat('°C'),
+                    // The next step's verb is computed against this value, so
+                    // the whole script is rebuilt rather than just the graph.
+                    onCommit: (v) => { editorState.profile.steps[index].temperature = v; renderScriptTab(); },
+                }),
+            ]);
+        }
+
+        case 'pump': {
+            const lim  = line.isFlow ? FIELD_LIMITS.flow : FIELD_LIMITS.pressure;
+            const unit = line.isFlow ? 'mL/s' : 'bar';
+            const modeChip = createScriptChip({
+                states: PUMP_CYCLE_STATES,
+                index: pumpCycleIndex(line.isFlow ? 'flow' : 'pressure', step.transition || 'fast'),
+                labelFor: pumpChipLabel,
+                onChange: (state) => {
+                    const s = editorState.profile.steps[index];
+                    if (state.pump === 'pressure' && s.pump !== 'pressure') {
+                        s.pump = 'pressure';
+                        if (!s.pressure) s.pressure = PUMP_SEED_PRESSURE;
+                        delete s.flow;
+                    } else if (state.pump === 'flow' && s.pump === 'pressure') {
+                        s.pump = 'flow';
+                        if (!s.flow) s.flow = PUMP_SEED_FLOW;
+                        delete s.pressure;
+                    }
+                    s.transition = state.transition;
+                    // Unit, bounds and the limiter's axis all change with the
+                    // mode, and every pill on this step closed over the old
+                    // ones — rebuild rather than repaint.
+                    renderScriptTab();
+                },
+            });
+            return scriptBullet([
+                modeChip,
+                getTranslation(line.isFlow ? 'at a rate of' : 'to'),
+                createSettingPill({
+                    value: (line.isFlow ? step.flow : step.pressure) ?? 0,
+                    min: lim.min, max: lim.max, step: lim.step, unit,
+                    fieldType: 'pe-pump', title: line.isFlow ? 'FLOW' : 'PRESSURE',
+                    format: scriptValueFormat(unit),
+                    onCommit: write((v) => {
+                        if (line.isFlow) editorState.profile.steps[index].flow = v;
+                        else editorState.profile.steps[index].pressure = v;
+                    }),
+                }),
+            ]);
+        }
+
+        case 'limit': {
+            const lim  = line.isFlow ? FIELD_LIMITS.pressureLimit : FIELD_LIMITS.flowLimit;
+            const unit = line.isFlow ? 'bar' : 'mL/s';
+            return scriptBullet([
+                getTranslation('Limit to'),
+                createSettingPill({
+                    value: step.limiter?.value ?? 0,
+                    min: lim.min, max: lim.max, step: lim.step, unit,
+                    fieldType: 'pe-lim', title: line.isFlow ? 'PRESSURE LIMIT' : 'FLOW LIMIT',
+                    format: scriptValueFormat(unit),
+                    onCommit: (v) => {
+                        const s = editorState.profile.steps[index];
+                        if (!s.limiter) s.limiter = { value: v, range: newLimiterRange(s.pump) };
+                        else s.limiter.value = v;
+                        // Zeroing it retires the sentence entirely.
+                        renderScriptTab();
+                    },
+                }),
+            ]);
+        }
+
+        case 'maximum': {
+            const parts = [getTranslation('For a maximum of')];
+            line.keys.forEach((key, n) => {
+                if (n > 0) parts.push(getTranslation('or'));
+                const { unit } = SCRIPT_MAX_FIELDS.find((f) => f.key === key);
+                const lim = FIELD_LIMITS[key];
+                parts.push(createSettingPill({
+                    value: step[key] ?? 0, min: lim.min, max: lim.max, step: lim.step, unit,
+                    fieldType: MAX_NUMPAD[key].fieldType, title: MAX_NUMPAD[key].title,
+                    format: scriptValueFormat(unit),
+                    // Zeroing one drops it from the sentence, so the line's
+                    // shape — not just its numbers — can change here.
+                    onCommit: (v) => { editorState.profile.steps[index][key] = v; renderScriptTab(); },
+                }));
+            });
+            return scriptBullet(parts);
+        }
+
+        case 'exit': {
+            const exitDef = readExitDef(step);
+            const unit = EXIT_UNIT_MAP[exitDef.type];
+            const exitChip = createScriptChip({
+                // Off is deliberately dropped from the cycle here. This line
+                // only exists while the step HAS an exit, so landing on Off
+                // would delete the very control being tapped, halfway through
+                // its own cycle — CARDS keeps a permanent Move-on-if row, and
+                // that is where an exit gets switched off. The four remaining
+                // states keep their exitCycleIndex slots (Off is last).
+                states: EXIT_CYCLE_STATES.filter((s) => s.type !== 'off'),
+                index: exitCycleIndex(exitDef.type, exitDef.condition),
+                labelFor: exitChipLabel,
+                onChange: (state) => {
+                    // Same lossless swap as the CARDS exit chip: remember the
+                    // value being left behind, and restore it (never reseed a
+                    // 0) on the way back. A live "pressure is over 0 bar" exit
+                    // fires on essentially any pressure at all.
+                    rememberExitValue(step, exitDef.type, exitDef.value);
+                    editorState.profile.steps[index].exit = {
+                        type: state.type, condition: state.condition,
+                        value: recallExitValue(step, state.type),
+                    };
+                    // Bounds and unit are per-type, and the value pill closed
+                    // over the old ones — rebuild rather than repaint.
+                    renderScriptTab();
+                },
+            });
+            return scriptBullet([
+                getTranslation('Move on if'),
+                exitChip,
+                createSettingPill({
+                    value: exitDef.value, min: 0, max: EXIT_MAX_MAP[exitDef.type],
+                    step: EXIT_STEP_MAP[exitDef.type], unit,
+                    fieldType: 'pe-exit', title: `EXIT ${exitDef.type.toUpperCase()}`,
+                    format: scriptValueFormat(unit),
+                    onCommit: write((v) => {
+                        const s = editorState.profile.steps[index];
+                        if (!s.exit) s.exit = { type: exitDef.type, condition: exitDef.condition, value: v };
+                        else s.exit.value = v;
+                        rememberExitValue(step, exitDef.type, v);
+                    }),
+                }),
+            ]);
+        }
+
+        default:
+            return null;
+    }
 }
 
 // 'smooth' is the firmware's Interpolate frame flag (de1app binary.tcl:929):
@@ -1899,8 +1910,8 @@ export function pushChannel(xArr, yArr, startT, endT, prevVal, target, transitio
     yArr.push(transition === 'smooth' ? prevVal : target, target);
 }
 
-function renderReviewGraph() {
-    // Every execution-field edit in the SCRIPT tab (describeStep's toggles —
+function renderScriptGraph() {
+    // Every execution-field edit in the SCRIPT tab (renderScriptLine's chips —
     // sensor, pump mode, transition, exit condition) reaches this function
     // whichever tab is active, so it doubles as the catch-all for those raw
     // toggles — unlike the plotting below, this must run even while another
@@ -1911,7 +1922,7 @@ function renderReviewGraph() {
     // skipping the work while another tab is up loses nothing.
     if (editorState.activeTab !== 2) return;
     const profile = editorState.profile;
-    const graphDiv = document.getElementById('review-graph');
+    const graphDiv = document.getElementById('script-graph');
     if (!graphDiv) return;
 
     const isDark = (localStorage.getItem('theme') || 'light') === 'dark';
@@ -1996,133 +2007,48 @@ function renderReviewGraph() {
     });
 }
 
-function renderReviewTab() {
-    // Collapse any open review spinner since DOM is being rebuilt
-
+function renderScriptTab() {
+    const container = document.getElementById('script-steps-col');
     const profile = editorState.profile;
-    if (!profile) return;
+    if (!container || !profile) return;
+    container.innerHTML = '';
 
-    // ── Steps list ──────────────────────────────────────────────────────────
-    const stepsList = document.getElementById('review-steps-list');
-    if (stepsList) {
-        stepsList.innerHTML = '';
-        const steps = profile.steps || [];
-        const half = Math.ceil(steps.length / 2);
+    const steps = profile.steps || [];
 
-        const leftCol = document.createElement('div');
-        leftCol.className = 'flex flex-col gap-[20px] flex-1';
-        const rightCol = document.createElement('div');
-        rightCol.className = 'flex flex-col gap-[20px] flex-1';
-
-        steps.forEach((step, i) => {
-            const row = document.createElement('div');
-            row.className = 'flex flex-col gap-[6px] text-[var(--text-primary)]';
-
-            const nameRow = document.createElement('div');
-            nameRow.className = 'flex items-center justify-between';
-
-            const nameEl = document.createElement('p');
-            nameEl.className = 'font-semibold text-[20px] leading-[1.3]';
-            nameEl.textContent = `${i + 1}: ${step.name || 'Step'}`;
-
-            const nameActions = document.createElement('div');
-            nameActions.className = 'flex items-center gap-[4px]';
-
-            const reviewDeleteBtn = document.createElement('button');
-            reviewDeleteBtn.type = 'button';
-            reviewDeleteBtn.className = 'pe-step-action-btn w-[36px] h-[36px] flex items-center justify-center text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-grey)] rounded-[10px] cursor-pointer';
-            reviewDeleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>';
-            reviewDeleteBtn.setAttribute('aria-label', 'Delete step');
-            reviewDeleteBtn.addEventListener('click', async () => {
-                if (!await confirmDeleteStep(i)) return;
-                removeStepAt(i);
-                renderReviewTab();
-            });
-
-            const reviewInsertBtn = document.createElement('button');
-            reviewInsertBtn.type = 'button';
-            reviewInsertBtn.className = 'pe-step-action-btn w-[36px] h-[36px] flex items-center justify-center text-[var(--mimoja-blue)] hover:bg-[var(--button-grey)] rounded-[10px] cursor-pointer';
-            reviewInsertBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>';
-            reviewInsertBtn.setAttribute('aria-label', 'Insert step after');
-            reviewInsertBtn.addEventListener('click', () => {
-                insertStepAfter(i);
-                renderReviewTab();
-            });
-
-            nameActions.appendChild(makeMoveBtn(i, -1, steps.length, renderReviewTab, false));
-            nameActions.appendChild(reviewDeleteBtn);
-            nameActions.appendChild(reviewInsertBtn);
-            nameActions.appendChild(makeMoveBtn(i, +1, steps.length, renderReviewTab, false));
-            nameRow.appendChild(nameEl);
-            nameRow.appendChild(nameActions);
-            row.appendChild(nameRow);
-
-            const bulletCol = document.createElement('ul');
-            bulletCol.className = 'flex flex-col gap-[6px] list-disc list-inside text-[20px]';
-            for (const lineEl of describeStep(step, i)) {
-                const li = document.createElement('li');
-                li.appendChild(lineEl);
-                bulletCol.appendChild(li);
-            }
-            row.appendChild(bulletCol);
-            (i < half ? leftCol : rightCol).appendChild(row);
-        });
-
-        stepsList.appendChild(leftCol);
-        stepsList.appendChild(rightCol);
-    }
-
-    // ── Settings list ───────────────────────────────────────────────────────
-    const settingsList = document.getElementById('review-settings-list');
-    if (settingsList) {
-        settingsList.innerHTML = '';
-        const s = (label, val) => {
-            const li = document.createElement('li');
-            li.innerHTML = `${label} <span class="font-semibold text-[var(--button-primary-bg)]">${val}</span>`;
-            settingsList.appendChild(li);
-        };
-        const appendRow = (label, pillEl) => {
-            const li = document.createElement('li');
-            li.append(`${label} `);
-            li.appendChild(pillEl);
-            settingsList.appendChild(li);
-        };
-
-        if (profile.tank_temperature != null) {
-            appendRow(getTranslation('Preheat water tank'), createSettingPill({
-                value: profile.tank_temperature, step: 1, unit: '\u00b0C', min: 0, max: 110,
-                fieldType: 'pe-tank-temp', title: 'TANK TEMPERATURE',
-                onCommit: (v) => { editorState.profile.tank_temperature = v; }
-            }));
+    steps.forEach((step, i) => {
+        // Hairline between steps, drawn between rows rather than as a border on
+        // them, so the first row does not open with a rule and the last does
+        // not close with one (Figma 1008 wide at 0.75).
+        if (i > 0) {
+            const rule = document.createElement('div');
+            rule.className = 'w-[756px] h-0 border-t-[1.5px] border-[var(--border-graph-grid)] shrink-0';
+            container.appendChild(rule);
         }
-        if (profile.target_volume_count_start != null) {
-            const steps = profile.steps || [];
-            appendRow(getTranslation('Track water volume after step'), createSettingPill({
-                value: profile.target_volume_count_start, step: 1, unit: '', min: 0, max: Math.max(steps.length, 1),
-                fieldType: 'pe-vol-count-start', title: 'STEP NUMBER',
-                format: (v) => `${Math.round(v)}`,
-                onCommit: (v) => { editorState.profile.target_volume_count_start = Math.round(v); }
-            }));
-        }
-        if (profile.target_weight != null && profile.target_weight > 0) {
-            appendRow(getTranslation('Stop at weight'), createSettingPill({
-                value: profile.target_weight, step: 0.1, unit: 'g', min: 0, max: 1000,
-                fieldType: 'pe-target-weight', title: 'TARGET WEIGHT',
-                onCommit: (v) => { editorState.profile.target_weight = v; }
-            }));
-        }
-        if (profile.target_volume != null && profile.target_volume > 0) {
-            appendRow(getTranslation('Stop at volume'), createSettingPill({
-                value: profile.target_volume, step: 1, unit: 'ml', min: 0, max: 1000,
-                fieldType: 'pe-target-volume', title: 'TARGET VOLUME',
-                onCommit: (v) => { editorState.profile.target_volume = v; }
-            }));
-        }
-        if (profile.beverage_type) s(getTranslation('Beverage type'), profile.beverage_type);
-    }
 
-    // ── Graph preview ───────────────────────────────────────────────────────
-    renderReviewGraph();
+        const row = document.createElement('div');
+        row.className = 'flex gap-[15px] w-[756px] shrink-0';
+
+        // Fixed 225px name column (Figma 300) so every step's bullets start on
+        // the same left edge regardless of how long its name is.
+        const nameEl = document.createElement('p');
+        nameEl.className = 'w-[225px] shrink-0 text-[24px] font-semibold leading-[1.2] text-[var(--text-primary)] break-words';
+        // Step names are user input; textContent keeps them text.
+        nameEl.textContent = `${i + 1}: ${step.name || getTranslation('Step')}`;
+        row.appendChild(nameEl);
+
+        const bullets = document.createElement('ul');
+        bullets.className = 'flex-1 min-w-0 flex flex-col gap-[18px] list-disc pl-[36px]';
+        const prevStep = i > 0 ? steps[i - 1] : null;
+        for (const line of buildStepScript(step, i, profile, prevStep)) {
+            const li = renderScriptLine(line, step, i);
+            if (li) bullets.appendChild(li);
+        }
+        row.appendChild(bullets);
+
+        container.appendChild(row);
+    });
+
+    renderScriptGraph();
 }
 
 // ─── Tab Management ─────────────────────────────────────────────────────────
@@ -2159,7 +2085,7 @@ function setActiveTab(tabIndex) {
     // next ± tap — silently reverting edits made in another tab.
     if (tabIndex === 0) renderStepCards();
     else if (tabIndex === 1) renderSettingsTab();
-    else if (tabIndex === 2) renderReviewTab();
+    else if (tabIndex === 2) renderScriptTab();
 }
 
 // ─── Title Editing ──────────────────────────────────────────────────────────
@@ -2242,8 +2168,8 @@ function currentExecChanged() {
 // the button in exactly the state where it could never succeed. This has to
 // be re-evaluated on every execution-field edit, not just a title edit: see
 // the updateSaveAsNewButtonState() calls threaded through createGridStepper,
-// createCycleChip, createSettingPill, createSpinner, renderStepCards and
-// renderReviewGraph.
+// createCycleChip, createScriptChip, createSettingPill, createSpinner,
+// renderStepCards and renderScriptGraph.
 function updateSaveAsNewButtonState() {
     const btn = document.getElementById('editor-save-as-btn');
     if (!btn || !editorState.profile) return;

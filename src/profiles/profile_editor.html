@@ -44,25 +44,25 @@
             </div>
         </div>
 
-        <!-- Tab 2: Review -->
-        <div id="editor-tab-panel-2" class="editor-tab-panel h-full hidden overflow-hidden">
-            <div class="flex h-full bg-[var(--box-color)] rounded-[20px] mx-[30px] my-[20px] border-2 border-[var(--border-color)] overflow-hidden">
-                <!-- Left: Steps Review -->
-                <div id="review-steps-col" class="flex-1 border-r-2 border-[var(--border-color)] overflow-y-auto p-[30px] flex flex-col gap-[20px]">
-                    <p class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Summary">Summary</p>
-                    <div id="review-steps-list" class="flex gap-[30px]"></div>
+        <!-- Tab 2: Script (Figma node 2662-803; 2560px canvas at 0.75) -->
+        <!-- Like the CARDS row, the card stops 31.5px short of the content
+             area's bottom edge, leaving a skirt of page ground below it. -->
+        <div id="editor-tab-panel-2" class="editor-tab-panel h-full hidden overflow-hidden pb-[31.5px]">
+            <div class="flex h-full bg-[var(--profile-button-background-color)] rounded-[15px] ml-[37.5px] mr-[39px] border-[1.5px] border-[var(--border-graph-grid)] overflow-hidden">
+                <!-- Left: Steps Overview. Fixed 912px (Figma 1216) so the
+                     divider between the two halves sits where the design puts
+                     it rather than following the step text's own width. -->
+                <div class="w-[912px] shrink-0 flex flex-col gap-[45px] pl-[45px] pt-[45px] border-r-[1.5px] border-[var(--border-graph-grid)] overflow-hidden">
+                    <p class="text-[30px] font-semibold text-[var(--text-primary)] shrink-0" data-i18n-key="Steps Overview">Steps Overview</p>
+                    <!-- Only this half scrolls; the graph is fixed. The 36px
+                         right padding puts the scrollbar where the design draws
+                         its thumb, clear of the 756px text column. -->
+                    <div id="script-steps-col" class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-[45px] pr-[36px] pb-[45px]"></div>
                 </div>
-                <!-- Right: Graph + Settings -->
-                <div id="review-right-col" class="flex-1 overflow-y-auto p-[30px] flex flex-col gap-[20px]">
-                    <div class="flex flex-col gap-[14px]">
-                        <p class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Preview">Preview</p>
-                        <div id="review-graph" class="w-full h-[450px]"></div>
-                    </div>
-                    <div class="h-[2px] bg-[var(--border-color)]"></div>
-                    <div class="flex flex-col gap-[14px]">
-                        <p class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Profile settings">Profile settings</p>
-                        <ul id="review-settings-list" class="flex flex-col gap-[10px] list-disc list-inside text-[20px] text-[var(--text-primary)]"></ul>
-                    </div>
+                <!-- Right: Graph Preview -->
+                <div class="flex-1 min-w-0 flex flex-col gap-[37.5px] pt-[45px] overflow-hidden">
+                    <p class="text-[30px] font-semibold text-[var(--text-primary)] pl-[37.5px] shrink-0" data-i18n-key="Graph Preview">Graph Preview</p>
+                    <div id="script-graph" class="w-full h-[376.5px] shrink-0"></div>
                 </div>
             </div>
         </div>
