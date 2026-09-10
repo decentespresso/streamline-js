@@ -569,74 +569,25 @@ body {
   background-color: rgba(255, 255, 255, 0.62);
 }
 
-/* Bengle Lighting settings — ambient animation preview swatches.
-   Local-preview-only: the firmware has no animation capability (see
-   src/modules/led-animation.js header), so these classes are never applied to
-   anything the machine renders, only to a small CSS-animated circle on the
-   Lighting settings page. `--led-anim-color` is set inline per swatch from the
-   colour being edited. */
-.led-anim-swatch {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  border: 2px solid var(--profile-button-outline-color);
-  background-color: var(--led-anim-color, #385A92);
-  position: relative;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-@keyframes ledAnimPulse {
-  0%, 100% { transform: scale(0.8); opacity: 0.7; }
-  50%      { transform: scale(1);   opacity: 1; }
-}
-.led-anim-pulse { animation: ledAnimPulse 1.1s ease-in-out infinite; }
-
-@keyframes ledAnimBreathe {
-  0%, 100% { opacity: 0.32; }
-  50%      { opacity: 1; }
-}
-.led-anim-breathe { animation: ledAnimBreathe 2.6s ease-in-out infinite; }
-
-@keyframes ledAnimRainbow {
-  from { filter: hue-rotate(0deg) saturate(1.4); }
-  to   { filter: hue-rotate(360deg) saturate(1.4); }
-}
-.led-anim-rainbow { animation: ledAnimRainbow 3.2s linear infinite; }
-
-@keyframes ledAnimChaseSpin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-.led-anim-chase::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: conic-gradient(from 0deg, rgba(255, 255, 255, 0.85) 0deg 24deg, transparent 42deg 360deg);
-  mix-blend-mode: overlay;
-  animation: ledAnimChaseSpin 1.3s linear infinite;
-}
-
-@keyframes ledAnimSparkle {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0) inset; }
-  15%      { box-shadow: 8px -8px 0 -4px rgba(255, 255, 255, 0.95) inset; }
-  40%      { box-shadow: -8px 6px 0 -5px rgba(255, 255, 255, 0.85) inset; }
-  55%      { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0) inset; }
-  78%      { box-shadow: 6px 8px 0 -4px rgba(255, 255, 255, 0.9) inset; }
-}
-.led-anim-sparkle { animation: ledAnimSparkle 1.7s steps(1) infinite; }
-
-/* A stored preference must always render as SOMETHING, even for a viewer who
-   has motion reduced — fall back to the plain static swatch rather than
-   hiding the assignment. */
-@media (prefers-reduced-motion: reduce) {
-  .led-anim-pulse, .led-anim-breathe, .led-anim-rainbow, .led-anim-sparkle { animation: none; }
-  .led-anim-chase::after { animation: none; display: none; }
-}
-
-.led-anim-notice {
+/* Bengle Lighting settings — colour step-sequence editor/runner.
+   Unlike the CSS-preview animation concept this replaces, the runner (see
+   src/modules/led-sequence.js header) really does drive the physical strip
+   via repeated POST /machine/ledStrip/preview calls, so these classes are
+   just the editor chrome — no CSS keyframe stands in for the machine here. */
+.led-seq-notice {
   border: 1px dashed var(--profile-button-outline-color);
   border-radius: 10px;
   color: var(--text-secondary, var(--text-primary));
   opacity: 0.8;
+}
+.led-seq-step {
+  border: 2px solid var(--profile-button-outline-color);
+  border-radius: 10px;
+  transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+/* Toggled by the runner directly (ledSeqPaintActiveStep), not a re-render --
+   see the settings.js comment on why the playback tick never rebuilds the page. */
+.led-seq-step-active {
+  border-color: var(--mimoja-blue);
+  background-color: rgba(56, 90, 146, 0.12); /* --mimoja-blue @ 12% -- color-mix() unsupported on older embedded WebViews */
 }

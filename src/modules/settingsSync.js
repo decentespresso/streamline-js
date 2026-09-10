@@ -48,7 +48,7 @@ export const SYNCED_KEYS = [
     'streamline.dye2Enabled',
     'streamline.dyeStripMode',
     'streamline.ecoSteam',
-    'streamline.ledAnimations',
+    'streamline.ledSequences',
     'streamline.settings.location',
     'tempUnit',
     'visualizerEnabled',
