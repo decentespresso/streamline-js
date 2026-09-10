@@ -11,6 +11,7 @@ import { resolveSteamStopMode, applyMilkProbeGate } from '../modules/steam-mode.
 import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite } from '../modules/led-color.js';
+import { LED_ANIMATION_STATES, LED_ANIMATION_PRESETS, LED_ANIMATIONS_KEY, parseLedAnimations, serializeLedAnimations, setLedAnimation, ledAnimationFor } from '../modules/led-animation.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS } from '../modules/sensor-cal.js';
@@ -3388,6 +3389,12 @@ let ledError = false;
 let ledPreviewActive = false;  // a live colour is being previewed on the strip
 let ledPaletteDirty = false;   // cross-state edits not yet PUT (deferred to a preview-end seam)
 let ledLastLit = {};           // last lit colour per 'zoneKey:state', restored on power-on
+// Ambient animation-per-state assignment (LOCAL PREFERENCE ONLY — see
+// led-animation.js header: the firmware has no per-state or animation
+// capability, so this is never sent to the machine, only rendered as a CSS
+// preview). Loaded lazily so a Settings visit always reflects the latest
+// localStorage value even if another tab/device changed it via KV sync.
+let ledAnimAssignments = null;
 let iroLoadPromise = null;
 let iroLoadFailed = false;
 const LED_DEFAULT_ON = 'FFFFAAAA5555'; // warm white — default colour when powering a zone on with no history
@@ -3412,6 +3419,19 @@ function ledCurrentColor16() { return ledCellColor16(ledZoneKeys(ledSelectedZone
 function ledNormalize(data) {
     const z = (o) => ({ awake: o?.awake || '000000000000', sleeping: o?.sleeping || '000000000000' });
     return { frontStrip: z(data?.frontStrip), backStrip: z(data?.backStrip), frontSwitch: z(data?.frontSwitch) };
+}
+
+// Lazy-load the local animation-per-state preference (see ledAnimAssignments
+// above for why this is never sent to the machine). Re-reads localStorage
+// whenever the in-memory copy is null so a settings re-open after a KV sync
+// from another device picks up the synced value.
+function ledAnimLoadAssignments() {
+    if (ledAnimAssignments === null) {
+        let stored = null;
+        try { stored = localStorage.getItem(LED_ANIMATIONS_KEY); } catch (e) { /* private mode */ }
+        ledAnimAssignments = parseLedAnimations(stored);
+    }
+    return ledAnimAssignments;
 }
 
 export function renderLedSettings() {
@@ -3459,6 +3479,28 @@ export function renderLedSettings() {
         `<button title="${name}" aria-label="${name}" onclick="window.ledApplyPreset('${hex}')"
             class="w-[64px] h-[64px] rounded-full border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${hex}"></button>`
     ).join('');
+
+    // Ambient animations — LOCAL preference only, see led-animation.js header.
+    // The preview swatch animates around the Front/Awake colour (the one the
+    // wheel above is editing) since the firmware has no separate per-state
+    // colour to preview against.
+    const animAssignments = ledAnimLoadAssignments();
+    const animSwatchHex = ledColor16ToHex8(ledCellColor16('frontStrip', 'awake'));
+    const animRow = (state) => {
+        const active = ledAnimationFor(animAssignments, state.id);
+        const chips = LED_ANIMATION_PRESETS.map((preset) => {
+            const isActive = preset.id === active;
+            return `<button aria-pressed="${isActive}" onclick="window.ledAnimSetPreset('${state.id}','${preset.id}')"
+                        class="h-[44px] px-[18px] rounded-full text-[16px] font-['Inter:Bold',sans-serif] font-bold transition-colors duration-200 ${isActive ? 'bg-[var(--mimoja-blue)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}"
+                        data-i18n-key="${preset.label}">${getTranslation(preset.label)}</button>`;
+        }).join('');
+        return `
+            <div class="flex items-center gap-[18px] w-full flex-wrap">
+                <div class="led-anim-swatch led-anim-${active}" style="--led-anim-color: ${animSwatchHex}"></div>
+                <p class="text-[var(--text-primary)] text-[22px] font-semibold w-[160px]" data-i18n-key="${state.label}">${getTranslation(state.label)}</p>
+                <div class="flex gap-[8px] flex-wrap flex-1">${chips}</div>
+            </div>`;
+    };
 
     return `
         <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
@@ -3518,6 +3560,19 @@ export function renderLedSettings() {
                         <div id="led-current-swatch" class="w-[56px] h-[56px] rounded-[10px] border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${ledColor16ToHex8(ledCurrentColor16())}"></div>
                         <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[24px]">${isOn ? ledColor16ToHex8(ledCurrentColor16()) : 'Off'}</span>
                     </div>
+                </div>
+            </div>
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[#c9c9c9] w-full" /></div>
+            <div class="flex flex-col gap-[20px] w-full">
+                <div class="flex flex-col gap-[10px] w-full">
+                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="Ambient Animations">Ambient Animations</p>
+                    <div class="led-anim-notice flex items-center px-[16px] py-[10px] text-[18px]">
+                        <span data-i18n-key="Preview only — not sent to the machine yet. Saved here for when animated lighting ships.">Preview only — not sent to the machine yet. Saved here for when animated lighting ships.</span>
+                    </div>
+                </div>
+                <div class="flex flex-col gap-[16px] w-full">
+                    ${LED_ANIMATION_STATES.map(animRow).join('')}
                 </div>
             </div>
 
@@ -3812,6 +3867,16 @@ window.ledSetPower = function(on) {
     });
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
     ledCommitEdit();
+};
+// Ambient animation-per-state assignment — LOCAL preference only (see
+// led-animation.js header). Persisted straight to localStorage (mirrored to
+// KV by settingsSync.js) rather than going through the machine write chain
+// above: there is nothing on the wire for this yet.
+window.ledAnimSetPreset = function(stateId, presetId) {
+    const next = setLedAnimation(ledAnimLoadAssignments(), stateId, presetId);
+    ledAnimAssignments = next;
+    try { localStorage.setItem(LED_ANIMATIONS_KEY, serializeLedAnimations(next)); } catch (e) { /* private mode — in-memory state still updates */ }
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
 window.ledSave = async function() {
     // Chaseless PUT, then commit, then clear — the PUT's FW re-apply and the
