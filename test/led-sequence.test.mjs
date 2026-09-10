@@ -11,6 +11,9 @@ import {
     MAX_STEP_DURATION_MS,
     DEFAULT_STEP_DURATION_MS,
     LED_SEQUENCE_KEY,
+    LED_TRIGGER_STATES,
+    isValidTriggerState,
+    normalizeTriggerStates,
     clampStepDurationMs,
     isValidHex8,
     normalizeStep,
@@ -23,6 +26,8 @@ import {
     removeStep,
     updateStep,
     moveStep,
+    toggleTriggerState,
+    resolveTriggerSequence,
     nextStepIndex,
     stepPreviewColors,
 } from '../src/modules/led-sequence.js';
@@ -190,4 +195,78 @@ test('stepPreviewColors converts hex8 colours to the 16-bit wire format', () => 
 test('stepPreviewColors normalizes an invalid/partial step before converting', () => {
     assert.deepEqual(stepPreviewColors({ frontColor: 'nope' }),
         { front: '000000000000', back: '000000000000' });
+});
+
+// ── Machine-state trigger resolution ─────────────────────────────────────
+test('LED_TRIGGER_STATES matches the machine states this feature targets', () => {
+    // Kept in sync BY HAND with api.js MachineState -- see the module header.
+    assert.deepEqual(LED_TRIGGER_STATES.map((s) => s.id),
+        ['idle', 'heating', 'ready', 'espresso', 'steam', 'hotWater', 'cleaning']);
+});
+
+test('isValidTriggerState / normalizeTriggerStates', () => {
+    assert.equal(isValidTriggerState('espresso'), true);
+    assert.equal(isValidTriggerState('booting'), false); // curated subset excludes internal states
+    assert.equal(isValidTriggerState(''), false);
+    assert.equal(isValidTriggerState(undefined), false);
+
+    assert.deepEqual(normalizeTriggerStates(['idle', 'espresso', 'not-a-state', 'idle']), ['idle', 'espresso']); // dedup + drop invalid
+    assert.deepEqual(normalizeTriggerStates(null), []);
+    assert.deepEqual(normalizeTriggerStates('garbage'), []);
+});
+
+test('normalizeSequence normalizes triggerStates alongside steps/loop', () => {
+    const out = normalizeSequence({ triggerStates: ['idle', 'nope', 'idle', 'steam'] });
+    assert.deepEqual(out.triggerStates, ['idle', 'steam']);
+    assert.deepEqual(normalizeSequence({}).triggerStates, []);
+});
+
+test('toggleTriggerState adds and removes without touching steps/loop', () => {
+    const base = normalizeSequence({ steps: [{ frontColor: '#ff0000' }], loop: true, triggerStates: ['idle'] });
+    const added = toggleTriggerState(base, 'espresso', true);
+    assert.deepEqual(added.triggerStates, ['idle', 'espresso']);
+    assert.equal(added.loop, true);
+    assert.equal(added.steps.length, 1);
+
+    const removed = toggleTriggerState(added, 'idle', false);
+    assert.deepEqual(removed.triggerStates, ['espresso']);
+});
+
+test('toggleTriggerState ignores an invalid state id', () => {
+    const base = normalizeSequence({ triggerStates: ['idle'] });
+    assert.deepEqual(toggleTriggerState(base, 'not-a-state', true), base);
+});
+
+test('toggleTriggerState is idempotent (adding twice, removing twice)', () => {
+    let seq = normalizeSequence({});
+    seq = toggleTriggerState(seq, 'steam', true);
+    seq = toggleTriggerState(seq, 'steam', true);
+    assert.deepEqual(seq.triggerStates, ['steam']);
+    seq = toggleTriggerState(seq, 'steam', false);
+    seq = toggleTriggerState(seq, 'steam', false);
+    assert.deepEqual(seq.triggerStates, []);
+});
+
+test('resolveTriggerSequence returns { steps, loop } when the state is mapped and steps exist', () => {
+    const sequence = { steps: [{ frontColor: '#ff0000' }], loop: true, triggerStates: ['espresso'] };
+    assert.deepEqual(resolveTriggerSequence(sequence, 'espresso'),
+        { steps: normalizeSteps(sequence.steps), loop: true });
+});
+
+test('resolveTriggerSequence returns null for an unmapped state', () => {
+    const sequence = { steps: [{ frontColor: '#ff0000' }], loop: false, triggerStates: ['espresso'] };
+    assert.equal(resolveTriggerSequence(sequence, 'idle'), null);
+    assert.equal(resolveTriggerSequence(sequence, 'not-a-real-state'), null);
+});
+
+test('resolveTriggerSequence returns null when mapped but there are no steps', () => {
+    const sequence = { steps: [], loop: true, triggerStates: ['espresso'] };
+    assert.equal(resolveTriggerSequence(sequence, 'espresso'), null);
+});
+
+test('resolveTriggerSequence never hands back the trigger list itself', () => {
+    const sequence = { steps: [{ frontColor: '#ff0000' }], loop: false, triggerStates: ['idle'] };
+    const resolved = resolveTriggerSequence(sequence, 'idle');
+    assert.equal(resolved.triggerStates, undefined);
+    assert.deepEqual(Object.keys(resolved).sort(), ['loop', 'steps']);
 });

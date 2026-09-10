@@ -14,14 +14,45 @@
 //
 // This module holds only the DOM-free, testable parts: step validation and
 // normalization, the ordered-list edit operations, JSON (de)serialization for
-// the `streamline.ledSequences` synced preference, and the pure step-advance/
-// loop state machine. The Lighting settings page (src/settings/settings.js)
-// owns the timer, the machine writes, and DOM.
+// the `streamline.ledSequences` synced preference, the pure step-advance/loop
+// state machine, and machine-state trigger resolution. The runner in
+// src/modules/led-strip-runner.js (a browser module, not DOM-free -- it talks
+// to api.js) owns the timer, the machine writes, and cross-owner arbitration
+// between a manual test run (Settings) and a state-triggered run (app.js);
+// src/settings/settings.js owns the editor DOM.
 //
 // DOM-free on purpose so node:test can import it directly
 // (test/led-sequence.test.mjs).
 
 import { ledHexToRgb, ledRgbToColor16 } from './led-color.js';
+
+// Curated subset of api.js's `MachineState` values a sequence can trigger on.
+// Kept as plain strings, not imported, so this module stays DOM-free for
+// node:test -- api.js touches `window`/`localStorage` at module scope. Keep
+// these in sync BY HAND with MachineState in ../modules/api.js; states with
+// no ambient-lighting relevance (booting, calibration, selfTest, fwUpgrade,
+// error, …) are deliberately left out, same as the removed led-animation.js.
+export const LED_TRIGGER_STATES = [
+    { id: 'idle', label: 'Idle' },
+    { id: 'heating', label: 'Heating' },
+    { id: 'ready', label: 'Ready' },
+    { id: 'espresso', label: 'Espresso' },
+    { id: 'steam', label: 'Steam' },
+    { id: 'hotWater', label: 'Hot Water' },
+    { id: 'cleaning', label: 'Cleaning' },
+];
+const TRIGGER_STATE_IDS = new Set(LED_TRIGGER_STATES.map((s) => s.id));
+
+/** True when `id` is one of the states a sequence can be set to trigger on. */
+export function isValidTriggerState(id) {
+    return TRIGGER_STATE_IDS.has(id);
+}
+
+/** Arbitrary value → a deduped array of valid trigger-state ids only. */
+export function normalizeTriggerStates(list) {
+    if (!Array.isArray(list)) return [];
+    return [...new Set(list.filter(isValidTriggerState))];
+}
 
 /** Step-rate floor: a BLE-backed REST round trip realistically takes on the
  *  order of 100-300ms; going much faster than this risks steps overlapping
@@ -73,12 +104,39 @@ export function normalizeSteps(steps) {
     return Array.isArray(steps) ? steps.map(normalizeStep) : [];
 }
 
-export const DEFAULT_SEQUENCE = Object.freeze({ steps: [], loop: false });
+export const DEFAULT_SEQUENCE = Object.freeze({ steps: [], loop: false, triggerStates: [] });
 
-/** Arbitrary value → a complete { steps, loop } sequence. */
+/** Arbitrary value → a complete { steps, loop, triggerStates } sequence. */
 export function normalizeSequence(raw) {
     const src = (raw && typeof raw === 'object') ? raw : {};
-    return { steps: normalizeSteps(src.steps), loop: src.loop === true };
+    return {
+        steps: normalizeSteps(src.steps),
+        loop: src.loop === true,
+        triggerStates: normalizeTriggerStates(src.triggerStates),
+    };
+}
+
+/** Pure toggle: add/drop `stateId` from a sequence's trigger list. Invalid ids are ignored. */
+export function toggleTriggerState(sequence, stateId, enabled) {
+    const s = normalizeSequence(sequence);
+    if (!isValidTriggerState(stateId)) return s;
+    const set = new Set(s.triggerStates);
+    if (enabled) set.add(stateId); else set.delete(stateId);
+    return { ...s, triggerStates: normalizeTriggerStates([...set]) };
+}
+
+/**
+ * The machine just entered `stateId` -- does this sequence auto-run for it?
+ * Returns `{ steps, loop }` (never the raw sequence, so a caller can't
+ * accidentally hand the trigger list itself off to the playback runner) when
+ * the state is in `triggerStates` AND there is at least one step to play,
+ * otherwise `null`.
+ */
+export function resolveTriggerSequence(sequence, stateId) {
+    const s = normalizeSequence(sequence);
+    if (!s.steps.length) return null;
+    if (!s.triggerStates.includes(stateId)) return null;
+    return { steps: s.steps, loop: s.loop };
 }
 
 /** Stored JSON string → normalized sequence. Malformed/missing JSON → empty, never throws. */
@@ -129,8 +187,8 @@ export function moveStep(steps, fromIndex, toIndex) {
 }
 
 // ── Playback state machine ───────────────────────────────────────────────
-// The runner (settings.js) owns the timer; this decides what index plays
-// next given how many steps exist, what is playing now, and the loop flag.
+// led-strip-runner.js owns the timer; this decides what index plays next
+// given how many steps exist, what is playing now, and the loop flag.
 
 /**
  * `currentIndex` → the next step index to play, or `null` when playback

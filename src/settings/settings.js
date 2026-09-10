@@ -11,7 +11,8 @@ import { resolveSteamStopMode, applyMilkProbeGate } from '../modules/steam-mode.
 import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite } from '../modules/led-color.js';
-import { LED_SEQUENCE_KEY, MIN_STEP_DURATION_MS, MAX_STEP_DURATION_MS, parseLedSequence, serializeLedSequence, addStep, removeStep, updateStep, moveStep, nextStepIndex, stepPreviewColors } from '../modules/led-sequence.js';
+import { LED_SEQUENCE_KEY, MIN_STEP_DURATION_MS, MAX_STEP_DURATION_MS, LED_TRIGGER_STATES, parseLedSequence, serializeLedSequence, addStep, removeStep, updateStep, moveStep, toggleTriggerState } from '../modules/led-sequence.js';
+import { requestStart as ledRunRequestStart, requestStop as ledRunRequestStop, forceStop as ledRunForceStop, onRunChange as ledRunOnChange, getRunState as ledRunGetState, onMachineStateChange as ledRunOnMachineStateChange } from '../modules/led-strip-runner.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS } from '../modules/sensor-cal.js';
@@ -447,10 +448,11 @@ function updateSettingsContentArea(category) {
     maintenanceCleanup = null;
     // Leaving the Lighting page → flush any deferred cross-state palette PUT,
     // THEN stop previewing (flush-before-clear: one strip transition, and the
-    // edit persists exactly as the old always-PUT behaviour did). Also stop
-    // any running colour sequence -- it must not keep pushing to the strip
-    // once the page that started it is gone.
-    if (category !== 'ledstrip') { ledFlushDirty(); ledClearPreview(); ledSeqStopInternal(); }
+    // edit persists exactly as the old always-PUT behaviour did). Also release
+    // this page's 'manual' sequence-run ownership -- a state-triggered run
+    // (led-strip-runner.js, driven from app.js) is untouched by this and keeps
+    // running on whatever page the user goes to next.
+    if (category !== 'ledstrip') { ledFlushDirty(); ledClearPreview(); ledSeqReleaseManual(); }
     // Leaving the Load Cells page → hand the scale WS back to the main page.
     if (category !== 'calib_loadcell' && calWsClaimed) calReleaseScaleWs();
     if (category !== 'calib_sensors') {
@@ -3391,18 +3393,19 @@ let ledError = false;
 let ledPreviewActive = false;  // a live colour is being previewed on the strip
 let ledPaletteDirty = false;   // cross-state edits not yet PUT (deferred to a preview-end seam)
 let ledLastLit = {};           // last lit colour per 'zoneKey:state', restored on power-on
-// Colour step-sequence editor + runner (REAL capability — see
-// led-sequence.js header: repeated previewLedStrip() calls, not a CSS
-// stand-in). ledSeqSteps/ledSeqLoop are the persisted editor state, loaded
-// lazily on first render; the rest is pure runtime state for the playback
-// loop and is never persisted.
-let ledSeqSteps = null;        // null until first loaded from localStorage
+// Colour step-sequence editor (REAL capability — see led-sequence.js header:
+// repeated previewLedStrip() calls, not a CSS stand-in). The ACTUAL playback
+// timer/writes/ownership arbitration live in led-strip-runner.js, shared with
+// app.js's machine-state trigger -- this page only edits the persisted
+// sequence and drives the runner's 'manual' owner slot. ledSeqSteps/Loop/
+// TriggerStates are the persisted editor state, loaded lazily on first
+// render; ledSeqRunSnapshot mirrors the shared runner's state for painting.
+let ledSeqSteps = null;
 let ledSeqLoop = false;
-let ledSeqRunning = false;
-let ledSeqIndex = -1;          // step currently on the strip, -1 = not running
-let ledSeqTimer = null;        // setTimeout handle for the next step
-let ledSeqFailures = 0;        // consecutive push failures -- stop rather than hammer a dead link
-const LED_SEQ_MAX_CONSECUTIVE_FAILURES = 3;
+let ledSeqTriggerStates = [];
+let ledSeqLoaded = false;
+let ledSeqRunUnsubscribe = null; // set once subscribed to led-strip-runner.js's onRunChange
+let ledSeqRunSnapshot = { owner: null, running: false, index: -1 };
 let iroLoadPromise = null;
 let iroLoadFailed = false;
 const LED_DEFAULT_ON = 'FFFFAAAA5555'; // warm white — default colour when powering a zone on with no history
@@ -3429,23 +3432,52 @@ function ledNormalize(data) {
     return { frontStrip: z(data?.frontStrip), backStrip: z(data?.backStrip), frontSwitch: z(data?.frontSwitch) };
 }
 
-// Lazy-load the persisted step sequence (steps + loop flag). Re-reads
-// localStorage whenever the in-memory copy is null so a settings re-open
-// after a KV sync from another device picks up the synced value.
+// Lazy-load the persisted step sequence (steps + loop + trigger states).
+// Re-reads localStorage whenever the in-memory copy hasn't been loaded yet
+// so a settings re-open after a KV sync from another device picks up the
+// synced value.
 function ledSeqLoad() {
-    if (ledSeqSteps === null) {
+    if (!ledSeqLoaded) {
         let stored = null;
         try { stored = localStorage.getItem(LED_SEQUENCE_KEY); } catch (e) { /* private mode */ }
         const sequence = parseLedSequence(stored);
         ledSeqSteps = sequence.steps;
         ledSeqLoop = sequence.loop;
+        ledSeqTriggerStates = sequence.triggerStates;
+        ledSeqLoaded = true;
     }
     return ledSeqSteps;
 }
 
 function ledSeqPersist() {
-    try { localStorage.setItem(LED_SEQUENCE_KEY, serializeLedSequence({ steps: ledSeqSteps || [], loop: ledSeqLoop })); }
-    catch (e) { /* private mode — in-memory state still updates */ }
+    try {
+        localStorage.setItem(LED_SEQUENCE_KEY, serializeLedSequence({
+            steps: ledSeqSteps || [], loop: ledSeqLoop, triggerStates: ledSeqTriggerStates,
+        }));
+    } catch (e) { /* private mode — in-memory state still updates */ }
+}
+
+// Mirror led-strip-runner.js's shared run state (owner/index) into this page
+// so the active-step highlight and Start/Stop buttons reflect it, including a
+// trigger run that started while the user happens to be on this page. Wired
+// once per Settings visit; ledSeqReleaseManual() below tears it down at every
+// exit seam.
+function ledSeqEnsureSubscribed() {
+    if (ledSeqRunUnsubscribe) return;
+    ledSeqRunSnapshot = ledRunGetState();
+    ledSeqRunUnsubscribe = ledRunOnChange((snapshot) => {
+        ledSeqRunSnapshot = snapshot;
+        ledSeqPaintActiveStep();
+    });
+}
+
+// Release this page's 'manual' ownership (a no-op if 'manual' doesn't
+// currently own the strip -- e.g. only a trigger run, or nothing, is
+// active) and drop the run-state subscription. Stopping a manual run hands
+// control back to the state trigger -- see led-strip-runner.js.
+function ledSeqReleaseManual() {
+    ledRunRequestStop('manual');
+    if (ledSeqRunUnsubscribe) { ledSeqRunUnsubscribe(); ledSeqRunUnsubscribe = null; }
 }
 
 export function renderLedSettings() {
@@ -3476,6 +3508,7 @@ export function renderLedSettings() {
     if (ledError || !ledState) {
         return renderErrorState(getTranslation('Lighting'), getTranslation('Failed to load lighting settings'));
     }
+    ledSeqEnsureSubscribed();
 
     const isOn = ledCurrentColor16() !== '000000000000';
     const seg = (value, label, current, handler) => {
@@ -3499,7 +3532,7 @@ export function renderLedSettings() {
     // previewLedStrip() the wheel above uses, on a per-step timer.
     const seqSteps = ledSeqLoad();
     const seqStepRow = (step, index) => `
-        <div class="led-seq-step flex items-center gap-[14px] w-full flex-wrap px-[14px] py-[10px]" data-led-seq-step="${index}">
+        <div class="led-seq-step ${ledSeqRunSnapshot.index === index ? 'led-seq-step-active' : ''} flex items-center gap-[14px] w-full flex-wrap px-[14px] py-[10px]" data-led-seq-step="${index}">
             <span class="text-[var(--text-secondary)] text-[18px] font-semibold w-[28px]">${index + 1}</span>
             <input type="color" aria-label="${getTranslation('Front')}" value="${step.frontColor}"
                 onchange="window.ledSeqUpdateStep(${index}, { frontColor: this.value })"
@@ -3605,12 +3638,29 @@ export function renderLedSettings() {
                 </div>
                 <div class="flex items-center justify-between w-full flex-wrap gap-[16px]">
                     <button class="border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[56px] px-[28px] rounded-[28px] text-[18px] font-bold" onclick="window.ledSeqAddStep()" data-i18n-key="Add Step">Add Step</button>
-                    <div class="flex gap-[12px]">
-                        <button id="led-seq-start-btn" ${ledSeqRunning || !seqSteps.length ? 'disabled' : ''} onclick="window.ledSeqStart()"
+                    <div class="flex items-center gap-[12px] flex-wrap">
+                        ${ledSeqRunSnapshot.running
+                            ? `<span class="text-[16px] font-semibold ${ledSeqRunSnapshot.owner === 'manual' ? 'text-[var(--mimoja-blue)]' : 'text-[var(--text-secondary)]'}" data-i18n-key="${ledSeqRunSnapshot.owner === 'manual' ? 'Playing (manual)' : 'Playing (auto)'}">${getTranslation(ledSeqRunSnapshot.owner === 'manual' ? 'Playing (manual)' : 'Playing (auto)')}</span>`
+                            : ''}
+                        <button id="led-seq-start-btn" ${!seqSteps.length ? 'disabled' : ''} onclick="window.ledSeqStart()"
                             class="bg-[var(--mimoja-blue)] text-white h-[56px] px-[32px] rounded-[28px] text-[18px] font-bold disabled:opacity-40" data-i18n-key="Start">Start</button>
-                        <button id="led-seq-stop-btn" ${ledSeqRunning ? '' : 'disabled'} onclick="window.ledSeqStop()"
+                        <button id="led-seq-stop-btn" ${ledSeqRunSnapshot.owner === 'manual' ? '' : 'disabled'} onclick="window.ledSeqStop()"
                             class="border-2 border-[var(--status-red-color)] text-[var(--status-red-color)] h-[56px] px-[32px] rounded-[28px] text-[18px] font-bold disabled:opacity-40" data-i18n-key="Stop">Stop</button>
                     </div>
+                </div>
+            </div>
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[#c9c9c9] w-full" /></div>
+            <div class="flex flex-col gap-[12px] w-full">
+                <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="Auto-Run">Auto-Run</p>
+                <p class="text-[var(--text-secondary)] text-[18px]" data-i18n-key="Runs this sequence automatically when the machine reaches:">Runs this sequence automatically when the machine reaches:</p>
+                <div class="flex flex-wrap gap-[10px]">
+                    ${LED_TRIGGER_STATES.map((s) => {
+                        const active = ledSeqTriggerStates.includes(s.id);
+                        return `<button type="button" aria-pressed="${active}" onclick="window.ledSeqToggleTriggerState('${s.id}', ${!active})"
+                            class="h-[44px] px-[18px] rounded-full text-[16px] font-['Inter:Bold',sans-serif] font-bold transition-colors duration-200 ${active ? 'bg-[var(--mimoja-blue)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}"
+                            data-i18n-key="${s.label}">${getTranslation(s.label)}</button>`;
+                    }).join('')}
                 </div>
             </div>
 
@@ -3851,7 +3901,7 @@ function ledClearPreview() {
 window.addEventListener('popstate', () => {
     ledFlushDirty();
     ledClearPreview();
-    ledSeqStopInternal();
+    ledSeqReleaseManual();
     activeSettingsCategory = null;
 });
 
@@ -3907,18 +3957,16 @@ window.ledSetPower = function(on) {
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
     ledCommitEdit();
 };
-// ── Colour step-sequence editor + runner ─────────────────────────────────
-// A REAL capability (see led-sequence.js header): Start repeatedly calls the
-// SAME previewLedStrip() the wheel above uses for its live preview, on the
-// step's own timer, routed through the SAME ledEnqueue chain so a sequence
-// step can never interleave with (or get knocked off the strip by) a
-// concurrent palette PUT/preview from the wheel.
-//
-// Edits (add/remove/reorder/update/loop) are structural -- they re-render the
-// whole category, same as every other control on this page. The playback
-// TICK does not: rebuilding the DOM every ~500ms-60s would tear down the iro
-// wheel and any in-progress edit for no reason, so ledSeqPaintActiveStep()
-// patches just the active-step highlight and the Start/Stop button state.
+// ── Colour step-sequence editor ──────────────────────────────────────────
+// A REAL capability (see led-sequence.js header). Editing is local to this
+// page: every edit persists to localStorage and re-renders the category, same
+// as every other control here. Playback itself -- the timer, the actual
+// previewLedStrip() writes, and arbitration against app.js's machine-state
+// trigger -- lives entirely in led-strip-runner.js, shared with app.js, so it
+// can keep running on the main page after the user leaves Settings. This page
+// only drives that shared runner's 'manual' owner slot (ledSeqEnsureSubscribed/
+// ledSeqReleaseManual above) and mirrors its state to paint the active-step
+// highlight and Start/Stop buttons -- see ledSeqPaintActiveStep.
 
 function ledSeqEdit(next) {
     ledSeqSteps = next;
@@ -3929,7 +3977,6 @@ window.ledSeqAddStep = function() {
     ledSeqEdit(addStep(ledSeqLoad(), { frontColor: '#FFAA55', rearColor: '#FFAA55' }));
 };
 window.ledSeqRemoveStep = function(index) {
-    if (ledSeqRunning && index === ledSeqIndex) ledSeqStopInternal(); // don't edit out from under a live playback
     ledSeqEdit(removeStep(ledSeqLoad(), index));
 };
 window.ledSeqUpdateStep = function(index, patch) {
@@ -3942,78 +3989,45 @@ window.ledSeqSetLoop = function(checked) {
     ledSeqLoop = !!checked;
     ledSeqPersist();
 };
+// Which machine states auto-run this sequence (app.js's trigger, via
+// led-strip-runner.js). Re-resolving immediately against the machine's
+// CURRENT state makes toggling feel live instead of waiting for the next
+// state change -- a no-op if 'manual' currently owns the strip (it always
+// wins) or the current state isn't the one just toggled.
+window.ledSeqToggleTriggerState = function(stateId, enabled) {
+    ledSeqLoad();
+    const next = toggleTriggerState({ steps: ledSeqSteps, loop: ledSeqLoop, triggerStates: ledSeqTriggerStates }, stateId, enabled);
+    ledSeqTriggerStates = next.triggerStates;
+    ledSeqPersist();
+    ledRunOnMachineStateChange(currentMachineState);
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+};
 
 // Patch just the active-step highlight + Start/Stop buttons -- no re-render.
+// ledSeqRunSnapshot reflects led-strip-runner.js's shared state, so this
+// highlights whichever step is ACTUALLY on the strip right now, even if a
+// trigger run (not this page) put it there.
 function ledSeqPaintActiveStep() {
     document.querySelectorAll('[data-led-seq-step]').forEach((el) => {
-        el.classList.toggle('led-seq-step-active', Number(el.dataset.ledSeqStep) === ledSeqIndex);
+        el.classList.toggle('led-seq-step-active', Number(el.dataset.ledSeqStep) === ledSeqRunSnapshot.index);
     });
     const startBtn = document.getElementById('led-seq-start-btn');
     const stopBtn = document.getElementById('led-seq-stop-btn');
-    if (startBtn) startBtn.disabled = ledSeqRunning || !ledSeqSteps?.length;
-    if (stopBtn) stopBtn.disabled = !ledSeqRunning;
+    if (startBtn) startBtn.disabled = !ledSeqSteps?.length;
+    if (stopBtn) stopBtn.disabled = ledSeqRunSnapshot.owner !== 'manual';
 }
 
-// Push one step's colours to the live strip. Routed through the shared
-// ledEnqueue chain (see the write-sequencing block above) so it can never
-// land between two halves of a palette write. A dropped write is not fatal
-// on its own -- the NEXT step's write corrects the strip -- but repeated
-// failures mean the link is actually down, not a one-off, so we stop rather
-// than hammer a machine that is no longer listening.
-function ledSeqPushStep(index) {
-    const step = ledSeqSteps[index];
-    if (!step) return;
-    const { front, back } = stepPreviewColors(step);
-    ledEnqueue(async () => {
-        try {
-            await previewLedStrip(front, back);
-            ledPreviewActive = true;
-            ledSeqFailures = 0;
-        } catch (e) {
-            ledSeqFailures += 1;
-            if (ledSeqFailures >= LED_SEQ_MAX_CONSECUTIVE_FAILURES) {
-                logger.warn('LED sequence: stopping after repeated preview-write failures (machine unreachable?)');
-                window.ledSeqStop();
-            }
-        }
-    });
-}
-
-function ledSeqAdvance() {
-    ledSeqTimer = null;
-    if (!ledSeqRunning) return;
-    const next = nextStepIndex(ledSeqSteps.length, ledSeqIndex, ledSeqLoop);
-    if (next === null) { window.ledSeqStop(); return; }
-    ledSeqIndex = next;
-    ledSeqPushStep(ledSeqIndex);
-    ledSeqPaintActiveStep();
-    ledSeqTimer = setTimeout(ledSeqAdvance, ledSeqSteps[ledSeqIndex].durationMs);
-}
-
+// 'manual' always preempts whatever is running (including a trigger run) --
+// see led-strip-runner.js. A no-op if there are no steps.
 window.ledSeqStart = function() {
     ledSeqLoad();
-    if (ledSeqRunning || !ledSeqSteps.length) return;
-    ledSeqRunning = true;
-    ledSeqIndex = -1;
-    ledSeqFailures = 0;
-    ledSeqAdvance();
+    ledRunRequestStart(ledSeqSteps, ledSeqLoop, 'manual');
 };
-
-// Internal stop -- clears the timer/run state and restores the strip's real
-// palette, but does NOT touch the DOM (callers that already know they are
-// about to re-render, or are tearing the page down, would just repaint work
-// that is being thrown away).
-function ledSeqStopInternal() {
-    if (ledSeqTimer) { clearTimeout(ledSeqTimer); ledSeqTimer = null; }
-    const wasRunning = ledSeqRunning;
-    ledSeqRunning = false;
-    ledSeqIndex = -1;
-    ledSeqFailures = 0;
-    if (wasRunning) ledClearPreview(); // hand the strip back to its real awake/sleeping palette
-}
+// Stops only if THIS page's manual run currently owns the strip; hands
+// control back to the trigger for the machine's current state if it does.
+// A no-op while a trigger run (started from app.js) is what's active.
 window.ledSeqStop = function() {
-    ledSeqStopInternal();
-    ledSeqPaintActiveStep();
+    ledRunRequestStop('manual');
 };
 window.ledSave = async function() {
     // Chaseless PUT, then commit, then clear — the PUT's FW re-apply and the
@@ -7433,11 +7447,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             resetPendingChanges();
             // Exiting settings straight from the Lighting page must not leave a
             // preview colour latched on the strip — and a deferred cross-state
-            // palette PUT flushes first (flush → clear, one transition). A
-            // running colour sequence must stop too, for the same reason.
+            // palette PUT flushes first (flush → clear, one transition). Also
+            // release this page's manual sequence run (a state-triggered run
+            // is untouched -- it belongs to app.js, not this page).
             ledFlushDirty();
             ledClearPreview();
-            ledSeqStopInternal();
+            ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
             calReleaseScaleWs();
@@ -7464,11 +7479,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             ui.showToast('Settings updated', 3000, 'success');
             // Exiting settings straight from the Lighting page must not leave a
             // preview colour latched on the strip — and a deferred cross-state
-            // palette PUT flushes first (flush → clear, one transition). A
-            // running colour sequence must stop too, for the same reason.
+            // palette PUT flushes first (flush → clear, one transition). Also
+            // release this page's manual sequence run (a state-triggered run
+            // is untouched -- it belongs to app.js, not this page).
             ledFlushDirty();
             ledClearPreview();
-            ledSeqStopInternal();
+            ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
             calReleaseScaleWs();
@@ -9193,7 +9209,7 @@ export function cleanupSettings() {
     clearTimeout(ledPutTimer);
     ledPutTimer = null;
     ledClearPreview();
-    ledSeqStopInternal();
+    ledSeqReleaseManual();
     if (calWsClaimed) calReleaseScaleWs();
 }
 
@@ -9228,11 +9244,10 @@ export function initDeviceWebSocket() {
         // onDisconnect callback
         () => {
             logger.warn('Device WebSocket disconnected');
-            // A running colour sequence has nothing to talk to any more --
-            // stop rather than keep queuing writes that can only fail. The
-            // per-write failure counter in ledSeqPushStep covers the case
-            // where the socket stays up but the machine link itself drops.
-            ledSeqStopInternal();
+            // The Decaid link is down -- any run (manual OR trigger) has
+            // nothing to talk to any more. Unconditional: a dead link is not
+            // a routine exit, so there is no hand-back to attempt.
+            ledRunForceStop();
             if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
         }
     );

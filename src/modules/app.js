@@ -13,6 +13,7 @@ import { loadPage, initRouter, isSubPage, prefetchSettingsPage } from './router.
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
+import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
 import { setMachineModel, isBengleMachine, setRefillKitPresent, isRefillKitPresent } from './machine.js';
 import { classifyStopReason, canonicalStopReason, STOP_TARGET_WEIGHT, STOP_TARGET_VOLUME, STOP_PROFILE_ENDED } from './stop-reason.js';
@@ -829,6 +830,21 @@ function handleData(data) {
             history.refreshToNewestShot(previousNewestId);
         })();
     }
+
+    // Bengle LED colour-sequence trigger (led-strip-runner.js): reacts to the
+    // SAME snapshot stream this function already owns rather than opening a
+    // second subscription -- only on an actual state change, not every frame
+    // at ~10 Hz. A no-op for non-Bengle machines (the Lighting settings page
+    // that configures triggerStates is Bengle-only, so there is nothing to
+    // resolve) and for a machine with no sequence mapped to this state. On
+    // ERROR (the machine link itself is down, per isDe1Connected above) stop
+    // unconditionally -- manual or trigger -- rather than resolve a trigger
+    // for a state nothing should ever be mapped to.
+    if (state !== previousState.state) {
+        if (state === MachineState.ERROR) ledStripForceStop();
+        else ledStripOnMachineStateChange(state);
+    }
+
     previousState = data.state; // Update previous state
 
     // Update GHC stop button opacity: active (not idle/sleeping/error) = fully opaque
