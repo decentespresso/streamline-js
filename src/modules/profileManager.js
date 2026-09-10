@@ -1,5 +1,5 @@
 import { logger } from './logger.js';
-import { updateWorkflow,sendProfile, getWorkflow, getValueFromStore, setValueInStore, getProfiles, deleteProfile, updateProfileVisibility, uploadProfile, uploadProfileWithParent, updateProfile, updateProfileMetadata, getShots, getKVKeys, getKVValue, deleteKVValue } from './api.js';
+import { updateWorkflow,sendProfile, getWorkflow, getValueFromStore, setValueInStore, getProfiles, deleteProfile, updateProfileVisibility, uploadProfile, uploadProfileWithParent, updateProfile, updateProfileMetadata, getShots, getKVKeys, getKVValue, deleteKVValue, setTargetSteamDuration, setTargetSteamFlow } from './api.js';
 import { updateProfileName, updateTemperatureDisplay, updateDrinkOut, updateDrinkRatio, updateDoseInDisplay, updateGrindDisplay, updateSteamDisplay, updateHotWaterDisplay, updateFlushDisplay, showToast, setupPressAndHold} from './ui.js';
 import { openContextMenu } from './context-menu.js';
 import { openDB, getSetting, setSetting } from './idb.js';
@@ -54,9 +54,17 @@ const UPLOADED_PROFILES_KEY = 'uploaded-profiles';
 const DEFAULT_PROFILES_KEY = 'default-profiles';
 const DEFAULT_PROFILES_MIGRATED_KEY = 'default-profiles-migrated';
 const PROFILES_CACHE_KEY = 'available-profiles-cache';
+const DRAFTS_KEY = 'profile-drafts';
 let favoriteButtons = [];
 export let availableProfiles = {};
 export let favoriteAssignments = {};
+// Local-only "copy now, edit later" profiles: kept in the streamline-app KV
+// bucket instead of POST /profiles, because POST is content-addressed
+// (ProfileController.create) and a duplicate with unedited content would just
+// dedup back onto the profile it was copied from (see forkDeduped in
+// profile_editor.js). A draft only reaches the server once its content
+// actually diverges and the user saves.
+export let profileDrafts = {};
 let activeProfileId = null;
 
 function validateButtonIndices() {
@@ -182,6 +190,12 @@ export async function loadAvailableProfiles() {
 
         logger.info(`Successfully loaded ${Object.keys(availableProfiles).length} profiles from API.`);
 
+        // Local-only duplicates, merged in before overrides are folded on — a
+        // draft's saved tile edits are keyed to its draft id, so the record
+        // has to already be in availableProfiles or applyOverridesToRecords
+        // below has nothing to attach them to.
+        await loadProfileDrafts();
+
         // The user's tile edits live in KV, not on the record — fold them on so
         // every `record.metadata.targetDoseWeight` read below sees them.
         await loadProfileOverrides();
@@ -200,6 +214,7 @@ export async function loadAvailableProfiles() {
             const profilesFromCache = await getSetting(PROFILES_CACHE_KEY);
             if (profilesFromCache && Object.keys(profilesFromCache).length > 0) {
                 availableProfiles = profilesFromCache;
+                await loadProfileDrafts();
                 await loadProfileOverrides();
                 applyOverridesToRecords(availableProfiles);
                 logger.info(`Successfully loaded ${Object.keys(availableProfiles).length} profiles from IndexedDB cache.`);
@@ -215,6 +230,90 @@ export async function loadAvailableProfiles() {
             return { profilesFrom: 'NONE' };
         }
     }
+}
+
+// --- Local profile drafts (copy now, edit later) ---
+
+// crypto.randomUUID() needs a secure context, which some WebView builds don't
+// grant even on 127.0.0.1 — this app targets both, so stay with a plain
+// timestamp+random id (same style as handleProfileClick's callId above).
+function newDraftId() {
+    return `draft:${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function draftRecord({ id, profile, parentId }) {
+    return { id, profile, parentId: parentId ?? null, isDraft: true, isDefault: false, visibility: 'visible' };
+}
+
+async function persistDrafts() {
+    await setValueInStore(SETTINGS_NAMESPACE, DRAFTS_KEY, profileDrafts);
+}
+
+export async function loadProfileDrafts() {
+    try {
+        const stored = await getValueFromStore(SETTINGS_NAMESPACE, DRAFTS_KEY);
+        profileDrafts = (stored && typeof stored === 'object') ? stored : {};
+    } catch (e) {
+        logger.warn('Could not load profile drafts from KV:', e);
+        profileDrafts = {};
+    }
+    for (const [id, record] of Object.entries(profileDrafts)) {
+        availableProfiles[id] = record;
+    }
+}
+
+// Suffix `baseTitle` with " (n)" until it no longer collides with any known
+// profile or draft title (excluding `excludeId`, so renaming a record in
+// place doesn't collide with itself).
+export function uniqueProfileTitle(baseTitle, excludeId) {
+    const taken = new Set(
+        Object.entries(availableProfiles)
+            .filter(([id]) => id !== excludeId)
+            .map(([, r]) => r.profile?.title)
+            .filter(Boolean)
+    );
+    if (!taken.has(baseTitle)) return baseTitle;
+    let n = 2;
+    while (taken.has(`${baseTitle} (${n})`)) n++;
+    return `${baseTitle} (${n})`;
+}
+
+// Duplicate an existing profile (real or already a draft) into a brand-new
+// local-only draft. Give it a distinct title up front so it doesn't render as
+// an exact duplicate of its source in the list before the user has touched it.
+export async function duplicateProfileAsDraft(sourceId) {
+    const source = availableProfiles[sourceId];
+    if (!source?.profile) throw new Error('Profile not found');
+    const id = newDraftId();
+    // No excludeId: this is a new record, so the source's own title counts as
+    // taken too — otherwise an untouched duplicate would keep its exact title.
+    const title = uniqueProfileTitle(source.profile.title || 'Untitled', null);
+    const profile = { ...JSON.parse(JSON.stringify(source.profile)), title };
+    // Chain to the nearest real (server-backed) ancestor, not an intermediate
+    // draft — draft ids aren't valid parentIds once this is eventually POSTed.
+    const parentId = source.isDraft ? (source.parentId ?? null) : sourceId;
+    const record = draftRecord({ id, profile, parentId });
+    profileDrafts[id] = record;
+    availableProfiles[id] = record;
+    await persistDrafts();
+    return record;
+}
+
+// Create a new draft, or overwrite an existing one in place (draftId given),
+// from the editor's "Save as Draft" action.
+export async function createOrUpdateDraft({ draftId, profile, parentId }) {
+    const id = draftId || newDraftId();
+    const record = draftRecord({ id, profile, parentId });
+    profileDrafts[id] = record;
+    availableProfiles[id] = record;
+    await persistDrafts();
+    return record;
+}
+
+export async function deleteProfileDraft(draftId) {
+    delete profileDrafts[draftId];
+    delete availableProfiles[draftId];
+    await persistDrafts();
 }
 
 function isValidAssignments(v) {
@@ -398,14 +497,14 @@ function mutateProfileOverrides(profileId, fields) {
 // Drop every saved override for `profileId`: KV first, then the cached record.
 // Numbers written by an older build still sit in the profile's server-side
 // metadata, so strip those too or the reset comes back on the next reload.
-const OVERRIDE_METADATA_KEYS = ['targetDoseWeight', 'targetYield', 'grinderSetting', 'brewTemperature'];
+const OVERRIDE_METADATA_KEYS = ['targetDoseWeight', 'targetYield', 'grinderSetting', 'brewTemperature', 'targetSteamDuration', 'targetSteamFlow'];
 function dropProfileOverrides(profileId) {
     return queueMetadataWrite(async () => {
         await clearProfileOverride(profileId);
         const record = availableProfiles[profileId];
         if (!record) return null;
         const meta = record.metadata || {};
-        const { targetDoseWeight, targetYield, grinderSetting, brewTemperature, ...rest } = meta;
+        const { targetDoseWeight, targetYield, grinderSetting, brewTemperature, targetSteamDuration, targetSteamFlow, ...rest } = meta;
         record.metadata = rest;
         if (OVERRIDE_METADATA_KEYS.some(key => key in meta)) {
             try {
@@ -661,6 +760,34 @@ async function handleProfileClick(index) {
             } else {
                 const grindEl = document.getElementById('grind-value');
                 if (grindEl) grindEl.textContent = '0';
+            }
+
+            // Steam duration/flow aren't profile fields (they live on the
+            // workflow, not profile.steps), so unlike dose/yield/grind they
+            // can't ride along in the updateWorkflow call above — they need
+            // their own setter calls, which also carry the heater on/off side
+            // effect for duration (see setTargetSteamDuration). Only push when
+            // this profile actually has a saved value; with no record, leave
+            // whatever the machine is currently set to alone.
+            const savedSteamDuration = meta.targetSteamDuration;
+            const savedSteamFlow = meta.targetSteamFlow;
+            if (savedSteamDuration != null || savedSteamFlow != null) {
+                try {
+                    // Sequential, not Promise.all: both PUT the same workflow
+                    // record's steamSettings sub-object, and duration's own
+                    // write already does a read-modify-write of targetTemperature
+                    // (steamHeaterFor) — running them concurrently risks one
+                    // write clobbering the other depending on Decaid's merge
+                    // order. One extra await here is once per profile switch.
+                    if (savedSteamDuration != null) await setTargetSteamDuration(savedSteamDuration);
+                    if (savedSteamFlow != null) await setTargetSteamFlow(savedSteamFlow);
+                    updateSteamDisplay({
+                        ...(savedSteamDuration != null && { targetSteamDuration: savedSteamDuration }),
+                        ...(savedSteamFlow != null && { targetSteamFlow: savedSteamFlow }),
+                    });
+                } catch (e) {
+                    logger.warn(`Failed to apply saved steam settings for profile (callId: ${callId}):`, e);
+                }
             }
 
             activeProfileId = profileKey;

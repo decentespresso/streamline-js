@@ -219,4 +219,69 @@ uploadCallMatches.forEach((m, i) => {
         `uploadProfileWithParent call #${i + 1} must be followed by its own forkDeduped() guard before the next branch`);
 });
 
+// ── 6. Draft save routing (copy now, edit later) ────────────────────────────
+// A draft (profileManager.js duplicateProfileAsDraft / createOrUpdateDraft)
+// lives only in the streamline-app KV bucket until its content actually
+// diverges from what it was copied with — see saveDraftEdit in
+// profile_editor.js. Mirrors the same execChanged split saveProfile uses,
+// so a rename-only edit of a draft never round-trips to the server.
+function routeDraft(draftRecord, edited) {
+    const sourceProfile = normalizeLegacySteps(deepCopy(draftRecord.profile));
+    return executionChanged(sourceProfile, edited) ? 'promote' : 'stay-draft';
+}
+
+const draft = { id: 'draft:1', parentId: 'profile:parent', profile: mkProfile('Rao Allongé (2)', [flowStep()]) };
+assert.strictEqual(routeDraft(draft, asEdited(draft)), 'stay-draft',
+    'opening a draft and saving it untouched must not reach the server');
+
+const draftRenamed = asEdited(draft);
+draftRenamed.title = 'Rao Allongé (3)';
+assert.strictEqual(routeDraft(draft, draftRenamed), 'stay-draft',
+    'renaming a draft with no execution change must update the KV copy in place, not POST');
+
+const draftEdited = asEdited(draft);
+draftEdited.steps[0].flow = 3;
+assert.strictEqual(routeDraft(draft, draftEdited), 'promote',
+    'a real execution change on a draft must promote it to a server-backed profile');
+
+// Pin saveDraftEdit's own dedup guard directly from the source (same
+// technique as forkDeduped above) rather than a hand-written mirror.
+const draftEditStart = editorSource.indexOf('async function saveDraftEdit(draftRecord) {');
+assert.ok(draftEditStart >= 0, 'saveDraftEdit must exist in the editor source');
+const draftDedupedSrc = editorSource.match(/const deduped = !saved\n[\s\S]*?;\n/)?.[0];
+assert.ok(draftDedupedSrc, 'saveDraftEdit dedup guard must exist');
+const runDraftDeduped = new Function('saved', 'draftRecord', 'sentTitle',
+    `${draftDedupedSrc}\nreturn deduped;`);
+
+assert.strictEqual(
+    runDraftDeduped({ id: 'profile:new', profile: { title: 'My Draft' } }, { parentId: 'profile:parent' }, 'My Draft'),
+    false, 'a genuinely new record must not be flagged as deduped');
+assert.strictEqual(
+    runDraftDeduped({ id: 'profile:parent', profile: { title: 'Original' } }, { parentId: 'profile:parent' }, 'My Draft'),
+    true, 'the server handing back the draft\'s own parent must be flagged as deduped');
+assert.strictEqual(
+    runDraftDeduped({ id: 'profile:other', profile: { title: 'Some Other Profile' } }, { parentId: 'profile:parent' }, 'My Draft'),
+    true, 'a hash collision with an unrelated profile must be flagged as deduped');
+assert.strictEqual(
+    runDraftDeduped(null, { parentId: 'profile:parent' }, 'My Draft'),
+    true, 'no record at all must be treated as a failed promotion');
+
+// Pin profileManager.js's uniqueProfileTitle directly from source.
+const pmSource = readFileSync(new URL('../src/modules/profileManager.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const uniqueTitleSrc = pmSource.match(/function uniqueProfileTitle\(baseTitle, excludeId\) \{[\s\S]*?\n\}/)?.[0];
+assert.ok(uniqueTitleSrc, 'uniqueProfileTitle must exist in profileManager.js');
+const runUniqueTitle = new Function('availableProfiles', 'baseTitle', 'excludeId',
+    `${uniqueTitleSrc}\nreturn uniqueProfileTitle(baseTitle, excludeId);`);
+
+const existing = {
+    a: { profile: { title: 'Rao Allongé' } },
+    b: { profile: { title: 'Rao Allongé (2)' } },
+};
+assert.strictEqual(runUniqueTitle(existing, 'Londinium', null), 'Londinium',
+    'a title with no collision is returned unchanged');
+assert.strictEqual(runUniqueTitle(existing, 'Rao Allongé', null), 'Rao Allongé (3)',
+    'a collision skips past every already-taken suffix');
+assert.strictEqual(runUniqueTitle(existing, 'Rao Allongé', 'a'), 'Rao Allongé',
+    'a record keeping its own title is excluded from its own collision check');
+
 console.log('profile-save-routing: all assertions passed');

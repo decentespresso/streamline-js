@@ -1954,6 +1954,91 @@ function finishSaveSuccess(id) {
     setTimeout(() => { loadPage('src/profiles/profile_selector.html'); }, 1000);
 }
 
+// Save routing for a profile opened from a local-only draft (see
+// profileManager.js duplicateProfileAsDraft / createOrUpdateDraft). Never
+// throws — called from saveProfile without an await, so an escaped rejection
+// here would be an unhandled promise rejection rather than the usual toast.
+async function saveDraftEdit(draftRecord) {
+    try {
+        const { uniqueProfileTitle } = await import('./profileManager.js');
+        // Same auto-suffix saveProfile applies before minting/renaming a real
+        // record — a draft can otherwise be renamed (or promoted) onto a title
+        // another profile or draft already holds, which then confuses any
+        // title-keyed lookup (resolveProfileKeyByTitle and friends).
+        const currentTitle = editorState.profile.title.trim();
+        const dedupedTitle = uniqueProfileTitle(currentTitle, draftRecord.id);
+        if (dedupedTitle !== currentTitle) {
+            editorState.profile.title = dedupedTitle;
+            const titleDisplay = document.getElementById('editor-title-display');
+            if (titleDisplay) titleDisplay.textContent = dedupedTitle;
+        }
+
+        const sourceProfile = normalizeLegacySteps(deepCopy(draftRecord.profile));
+        const execChanged = executionChanged(sourceProfile, editorState.profile);
+
+        if (!execChanged) {
+            // Rename-only (or literally untouched): stays a local draft, no
+            // server round trip — same content still dedups against whatever
+            // it was copied from.
+            const { createOrUpdateDraft } = await import('./profileManager.js');
+            const updated = await createOrUpdateDraft({
+                draftId: draftRecord.id,
+                profile: editorState.profile,
+                parentId: draftRecord.parentId,
+            });
+            editorState.sourceProfileRecord = updated;
+            _baselineProfileJson = JSON.stringify(editorState.profile);
+            finishSaveSuccess(updated.id);
+            return;
+        }
+
+        // Real content change — promote out of the draft bucket into a real,
+        // server-backed profile. Same content-addressed dedup risk as any
+        // other fork (see forkDeduped in saveProfile below): if the edit still
+        // hashes the same as an existing record, POST hands that back instead
+        // of minting a new one.
+        const { uploadProfileWithParent } = await import('./api.js');
+        const { availableProfiles, remapFavorite, deleteProfileDraft } = await import('./profileManager.js');
+        const sentTitle = editorState.profile.title.trim();
+        const saved = await uploadProfileWithParent(editorState.profile, draftRecord.parentId);
+        // Same tell as forkDeduped in saveProfile: a POST that lands back on the
+        // parent, or comes back under a title we didn't send, means the server
+        // silently deduped it onto an existing record instead of minting ours.
+        const deduped = !saved
+            || (draftRecord.parentId && saved.id === draftRecord.parentId)
+            || (saved.profile?.title || '') !== sentTitle;
+        if (deduped) {
+            showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+            return;
+        }
+
+        await deleteProfileDraft(draftRecord.id);
+        await remapFavorite(draftRecord.id, saved.id);
+
+        // Tile edits (dose/yield/grind/brew-temp/steam) made while this draft
+        // was the active profile were saved to KV keyed to its draft id —
+        // carry them over to the new id or they're orphaned in KV forever.
+        const { getProfileOverride, saveProfileOverride, clearProfileOverride } = await import('./profile-overrides.js');
+        const carriedOverride = getProfileOverride(draftRecord.id);
+        if (carriedOverride) {
+            const merged = await saveProfileOverride(saved.id, carriedOverride);
+            await clearProfileOverride(draftRecord.id);
+            saved.metadata = { ...(saved.metadata || {}), ...merged };
+        }
+
+        availableProfiles[saved.id] = saved;
+
+        editorState.sourceProfileRecord = saved;
+        editorState.sourceProfileId = saved.id;
+        _baselineProfileJson = JSON.stringify(editorState.profile);
+
+        finishSaveSuccess(saved.id);
+    } catch (err) {
+        console.error('Draft save failed:', err);
+        showToast(`${getTranslation('Upload failed!')} ${err.message}`, 4000, 'error');
+    }
+}
+
 async function saveProfile() {
     if (!editorState.profile.title?.trim()) {
         showToast(getTranslation('Invalid name'), 3000, 'error');
@@ -1978,6 +2063,13 @@ async function saveProfile() {
         // record: with the stub as `src` the no-op guard below saw the untouched
         // defaults as "unchanged" and silently dropped the whole profile.
         const src = editorState.sourceProfileRecord?.id ? editorState.sourceProfileRecord : null;
+
+        // Editing a local-only draft (see profileManager.js duplicateProfileAsDraft
+        // / createOrUpdateDraft) follows a completely separate routing: it only
+        // reaches the server once its content actually diverges from the draft.
+        if (src?.isDraft) {
+            return saveDraftEdit(src);
+        }
 
         // Compare against the source put through the same normalisation the
         // editor ran on load (initializeProfileEditor). Without it every profile
@@ -2425,11 +2517,12 @@ export async function initializeProfileEditor() {
     if (saveBtn) saveBtn.addEventListener('click', saveProfile);
     if (cancelBtn) cancelBtn.addEventListener('click', cancelEditor);
 
-    // Version history — only for an already-saved, non-default profile.
+    // Version history — only for an already-saved, non-default, non-draft
+    // profile. A draft never reached the server, so it has no lineage to show.
     const historyBtn = document.getElementById('editor-history-btn');
     if (historyBtn) {
         historyBtn.addEventListener('click', openVersionHistory);
-        if (editorState.sourceProfileId && !editorState.sourceProfileRecord?.isDefault) {
+        if (editorState.sourceProfileId && !editorState.sourceProfileRecord?.isDefault && !editorState.sourceProfileRecord?.isDraft) {
             historyBtn.classList.remove('hidden');
             historyBtn.classList.add('flex');
         }

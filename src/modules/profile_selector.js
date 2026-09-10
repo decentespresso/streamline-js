@@ -1,4 +1,4 @@
-import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, handleProfileUpload , verifyProfileChange, renameProfile, applyWorkflowToMainPageUI, withSavedBrewTemp } from './profileManager.js';
+import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, handleProfileUpload , verifyProfileChange, renameProfile, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft } from './profileManager.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
@@ -569,14 +569,22 @@ async function unhideProfileEntry(key) {
 
 function showProfileContextMenu(key, profileRecord, anchorEl) {
     const isHidden = profileRecord.visibility === 'hidden';
+    const isDraft = profileRecord.isDraft === true;
 
     async function doHide() {
-        await deleteOrHideProfile(key, { forceHide: true });
+        if (isDraft) {
+            // A draft never reached the server — nothing to hide there, and
+            // deleteOrHideProfile would 404 trying. Just drop the local copy.
+            await deleteProfileDraft(key);
+        } else {
+            await deleteOrHideProfile(key, { forceHide: true });
+        }
         const container = document.getElementById('profile-list');
         if (container) {
             const item = container.querySelector(`[data-profile-key="${key}"]`);
             if (item) item.click(); else updateSelectedProfileView(null);
         }
+        if (isDraft) document.dispatchEvent(new CustomEvent('profiles-updated'));
     }
 
     async function doAssign(slotIndex) {
@@ -601,7 +609,7 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
     }
 
     const items = [
-        ...(!isHidden ? [{ label: getTranslation('Hide'), onSelect: doHide }] : []),
+        ...(!isHidden ? [{ label: getTranslation(isDraft ? 'Delete' : 'Hide'), danger: isDraft, onSelect: doHide }] : []),
         { divider: true },
         ...Array.from({ length: FAV_COUNT }, (_, i) => ({
             label: getTranslation('Assign to favourite {n}').replace('{n}', i + 1),
@@ -613,6 +621,19 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
             onSelect: () => {
                 window.__pendingEditProfile = profileRecord;
                 loadPage('src/profiles/profile_editor.html');
+            },
+        },
+        {
+            label: getTranslation('Duplicate'),
+            onSelect: async () => {
+                try {
+                    const draft = await duplicateProfileAsDraft(key);
+                    document.dispatchEvent(new CustomEvent('profiles-updated'));
+                    showToast(`${getTranslation('Duplicated')}: ${translateProfileTitle(draft.profile.title)}`, 3000, 'success');
+                } catch (e) {
+                    logger.warn('Duplicate profile failed:', e);
+                    showToast(getTranslation('Duplicate failed'), 3000, 'error');
+                }
             },
         },
     ];
@@ -965,7 +986,14 @@ function initDeleteButton() {
         console.log('initDeleteButton: Proceeding with delete/hide operation');
         const keyToActOn = selectedProfileKey; // Preserve key
 
-        await deleteOrHideProfile(keyToActOn);
+        if (profileRecord.isDraft) {
+            // A draft never reached the server — deleteOrHideProfile would
+            // 404 trying to DELETE/hide an id that was never POSTed.
+            await deleteProfileDraft(keyToActOn);
+            document.dispatchEvent(new CustomEvent('profiles-updated'));
+        } else {
+            await deleteOrHideProfile(keyToActOn);
+        }
 
         // Re-rendering is handled by the 'profiles-updated' event.
         // Now, find the element and re-establish selection to update the UI state.

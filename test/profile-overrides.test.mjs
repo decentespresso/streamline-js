@@ -1,6 +1,7 @@
-// Per-profile tile edits (dose / yield / grind / brew temp) live in Decaid's KV
-// store, not on the profile record's metadata: Decaid replaces that map when it
-// re-seeds a bundled profile, which silently wiped the user's numbers.
+// Per-profile tile edits (dose / yield / grind / brew temp / steam duration /
+// steam flow) live in Decaid's KV store, not on the profile record's metadata:
+// Decaid replaces that map when it re-seeds a bundled profile, which silently
+// wiped the user's numbers.
 // Run: node --test test/profile-overrides.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -41,13 +42,14 @@ test('later edits merge rather than replace', async () => {
     assert.deepEqual(merged, { targetDoseWeight: 18, targetYield: 36, grinderSetting: '1.40' });
 });
 
-test('only the four tile values are stored — never Decaid\'s own metadata', async () => {
+test('only known tile values are stored — never Decaid\'s own metadata', async () => {
     fakeKv();
     await loadProfileOverrides();
     const saved = await saveProfileOverride('profile:abc', {
-        targetDoseWeight: 18, brewTemperature: 92, source: 'bundled', filename: 'x.json', targetYield: undefined,
+        targetDoseWeight: 18, brewTemperature: 92, targetSteamDuration: 20, targetSteamFlow: 1.2,
+        source: 'bundled', filename: 'x.json', targetYield: undefined,
     });
-    assert.deepEqual(saved, { targetDoseWeight: 18, brewTemperature: 92 });
+    assert.deepEqual(saved, { targetDoseWeight: 18, brewTemperature: 92, targetSteamDuration: 20, targetSteamFlow: 1.2 });
 });
 
 test('keys come back percent-encoded from Decaid and are decoded on load', async () => {
