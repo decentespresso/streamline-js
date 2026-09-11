@@ -67,7 +67,7 @@ function openNumpadForField(currentVal, numpadConfig, onCommit) {
 // history between the two tabs rather than splitting it per view.
 
 function createSettingPill({ value, step, unit, min, max, fieldType, title, format, onCommit }) {
-    const PILL_CLASS = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none inline-flex underline decoration-dashed underline-offset-[3px] px-[4px] rounded-[4px]';
+    const PILL_CLASS = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none inline-flex px-[4px] rounded-[4px]';
     const fmt = format || ((v) => unit ? `${roundTo(v, step || 1)} ${unit}` : `${roundTo(v, step || 1)}`);
 
     const pill = document.createElement('span');
@@ -1796,7 +1796,7 @@ function createScriptChip({ states, index, labelFor, onChange }) {
     // keyboard activation and the button role for free.
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none underline decoration-dashed underline-offset-[3px] px-[4px] rounded-[4px]';
+    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none px-[4px] rounded-[4px]';
 
     function render() { chip.textContent = labelFor(states[i], i); }
     render();
