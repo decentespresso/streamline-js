@@ -578,7 +578,29 @@ export async function saveContextToActiveProfile(fields) {
 // Used by the wake-lock "load profile on wake" setting, so it targets an
 // arbitrary profileId rather than activeProfileId.
 export async function loadProfileForWake(profileId) {
-    const profile = availableProfiles[profileId]?.profile;
+    let profile = availableProfiles[profileId]?.profile;
+
+    // The stored id can go stale: editing a profile hides the source record and
+    // promotes a new id for the edited copy (profile_editor.js's save flow), and
+    // loadAvailableProfiles() filters hidden records out of availableProfiles.
+    // Resolve forward by title instead of silently giving up, same fallback
+    // active-profile.js uses for the same id-churn problem.
+    if (!profile) {
+        try {
+            const allRecords = await getProfiles(); // includeHidden=true
+            const staleTitle = allRecords.find(r => r.id === profileId)?.profile?.title;
+            const resolvedKey = staleTitle && resolveProfileKeyByTitle(availableProfiles, staleTitle, translateProfileTitle);
+            if (resolvedKey) {
+                profile = availableProfiles[resolvedKey].profile;
+                logger.info(`Wake profile ${profileId} was superseded by an edit; resolved by title to ${resolvedKey}.`);
+                profileId = resolvedKey;
+                localStorage.setItem('wakeProfileId', profileId);
+            }
+        } catch (error) {
+            logger.warn('Failed to resolve superseded wake profile by title:', error);
+        }
+    }
+
     if (!profile) {
         logger.warn(`Wake profile ${profileId} not found — skipping.`);
         return false;
