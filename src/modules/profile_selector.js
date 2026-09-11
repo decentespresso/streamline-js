@@ -1258,10 +1258,13 @@ function filterProfiles(searchTerm) {
         if (!profileRecord.profile) return false;
 
         const profileTitle = profileRecord.profile.title ? profileRecord.profile.title.toLowerCase() : '';
-        const isHidden = profileRecord.visibility === 'hidden';
 
-        // Only show profiles that match the search term and are visible (unless showing hidden profiles)
-        return profileTitle.includes(searchTerm) && (isShowingHidden || !isHidden);
+        // A search is a deliberate look for a specific profile by name, hidden
+        // ones included -- unlike the plain list, which still respects the
+        // isShowingHidden toggle. A hidden match renders in the same lighter
+        // text (and with the same unhide button) as the toggled-on list view,
+        // below, so it reads as distinct without needing the toggle first.
+        return profileTitle.includes(searchTerm);
     });
 
     // Sort the filtered profiles
