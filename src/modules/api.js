@@ -1531,18 +1531,28 @@ export async function resyncIfDrifted(key, fetchedValue, pushFn) {
     return remembered;
 }
 
+// KV first, machine second, for the same reason as setTargetSteamDuration: the
+// store is the record of intent, and everything else compares against it.
+//
+// Storing after the PUT resolved (and without awaiting the store write) left a
+// window in which the workflow and the machine already held the NEW value while
+// the store still held the OLD one. Hot water is echoed straight back by a
+// shotSettings frame, so resyncDriftedShotSettings runs inside that window,
+// reads the stale store, and treats the user's own change as drift -- pushing
+// the OLD value back over the machine and the workflow. The tile flashed the
+// new number, the echo of the re-pushed old one repainted it, and the setting
+// was gone. Intermittent rather than constant only because RESYNC_COOLDOWN_MS
+// suppresses the check for 30s after it fires.
 export async function setTargetHotWaterVolume(volume) {
     const value = parseFloat(volume);
-    const result = await updateWorkflow({ hotWaterData: { volume: value } });
-    persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, value);
-    return result;
+    await persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, value);
+    return updateWorkflow({ hotWaterData: { volume: value } });
 }
 
 export async function setTargetHotWaterTemp(temp) {
     const value = parseFloat(temp);
-    const result = await updateWorkflow({ hotWaterData: { targetTemperature: value } });
-    persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, value);
-    return result;
+    await persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, value);
+    return updateWorkflow({ hotWaterData: { targetTemperature: value } });
 }
 
 export async function setTargetHotWaterDuration(duration) {
@@ -1583,13 +1593,13 @@ async function steamHeaterFor(duration) {
     return remembered > 0 ? { targetTemperature: Math.round(remembered) } : {};
 }
 
-// KV first, machine second -- deliberately the reverse order of the hot-water
-// setters above. PUT /workflow can sit in Rea's request queue for 30s and come
-// back 503 (decaid#634), and persisting only on success leaves the store
-// holding the OLD value: the boot resync would then push that stale value back
-// over what the user asked for, and the tile's number would be the only trace
-// of their intent left anywhere. Writing it first makes the store the record of
-// intent, which is what resyncSteamFromStore replays when a push doesn't land.
+// KV first, machine second, like the hot-water setters above. PUT /workflow can
+// sit in Rea's request queue for 30s and come back 503 (decaid#634), and
+// persisting only on success leaves the store holding the OLD value: the boot
+// resync would then push that stale value back over what the user asked for,
+// and the tile's number would be the only trace of their intent left anywhere.
+// Writing it first makes the store the record of intent, which is what
+// resyncSteamFromStore replays when a push doesn't land.
 export async function setTargetSteamDuration(duration) {
     const value = parseFloat(duration);
     await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, value);
