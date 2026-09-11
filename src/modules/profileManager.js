@@ -612,6 +612,10 @@ export async function loadProfileForWake(profileId) {
     try {
         await updateWorkflow({ profile, context: { targetDoseWeight: defaultDose, targetYield: displayYield, grinderSetting: null } });
         setActiveProfile(profileId);
+        // Don't rely on the racy, unawaited loadInitialData() call app.js fires
+        // alongside this one to catch #profile-name up — its GET /workflow can
+        // resolve before this PUT commits and paint the pre-sleep title.
+        updateProfileName(translateProfileTitle(profile.title));
         logger.info(`Wake profile loaded: ${profileId}`);
         return true;
     } catch (error) {
