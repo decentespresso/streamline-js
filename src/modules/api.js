@@ -2572,6 +2572,15 @@ export function isWakeLockEnabled() {
     return stored === null ? true : stored === 'true';
 }
 
+/** Load a chosen profile onto the machine when it wakes from sleep. Default OFF. */
+export function isWakeProfileEnabled() {
+    return localStorage.getItem('wakeProfileEnabled') === 'true';
+}
+
+export function getWakeProfileId() {
+    return localStorage.getItem('wakeProfileId') || '';
+}
+
 export async function enableWakeLock() {
     try {
         const response = await fetch(`${API_BASE_URL}/display/wakelock`, {

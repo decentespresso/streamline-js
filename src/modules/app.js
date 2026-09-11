@@ -753,6 +753,11 @@ function handleData(data) {
         logger.info('Machine woke from sleep. Reloading initial data.');
         loadInitialData();
 
+        if (api.isWakeProfileEnabled()) {
+            const wakeProfileId = api.getWakeProfileId();
+            if (wakeProfileId) profileManager.loadProfileForWake(wakeProfileId);
+        }
+
         // Hold off "[Reconnect]" — REA fires devices ws scanning ~3s after wake.
         // Show "Scanning..." until grace window expires or scanning flag arrives.
         if (!isScaleConnected) {

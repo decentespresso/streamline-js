@@ -1,6 +1,7 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
+import { availableProfiles, translateProfileTitle } from '../modules/profileManager.js';
 import { initScaling } from '../modules/scaling.js';
 import { getSupportedLanguages, getCurrentLanguage, setLanguage, translatePage, getTranslation } from '../modules/i18n.js';
 import { getTempUnit, setTempUnit, formatTemp, fromDisplayTemp, boundToDisplay } from '../modules/units.js';
@@ -2088,6 +2089,11 @@ export function renderWakeLockSettings() {
     // display-socket listener below for why that distinction matters.
     const wakeLockEnabled = displayStateCache?.wakeLockOverride
         ?? isWakeLockEnabled();
+    const wakeProfileEnabled = isWakeProfileEnabled();
+    const wakeProfileId = getWakeProfileId();
+    const profileOptions = Object.values(availableProfiles)
+        .map(record => `<option value="${escapeHtml(record.id)}" ${record.id === wakeProfileId ? 'selected' : ''}>${escapeHtml(translateProfileTitle(record.profile?.title) || record.id)}</option>`)
+        .join('');
 
     return `
         <div class="space-y-6 px-[60px] py-[80px]">
@@ -2113,6 +2119,32 @@ export function renderWakeLockSettings() {
                         <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
                         <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
                     </label>
+                </div>
+            </div>
+
+            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Load Profile on Wake">Load Profile on Wake</label>
+                        <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Automatically load a chosen profile when the machine wakes from sleep">
+                            Automatically load a chosen profile when the machine wakes from sleep
+                        </p>
+                    </div>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="wake-profile-toggle" class="sr-only peer"
+                               ${wakeProfileEnabled ? 'checked' : ''}
+                               onchange="handleWakeProfileToggle(this.checked)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
+                </div>
+                <div id="wake-profile-select-row" class="mt-4" ${wakeProfileEnabled ? '' : 'hidden'}>
+                    <select id="wake-profile-select"
+                            class="select select-bordered w-full max-w-xs text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
+                            onchange="handleWakeProfileSelect(this.value)">
+                        <option value="" data-i18n-key="Select a profile">Select a profile</option>
+                        ${profileOptions}
+                    </select>
                 </div>
             </div>
 
@@ -9580,6 +9612,19 @@ window.handleWakeLockToggle = async function(enabled) {
         console.error('Error toggling wake lock:', error);
         ui.showToast('Failed to toggle wake lock', 5000, 'error');
     }
+};
+
+window.handleWakeProfileToggle = function(enabled) {
+    localStorage.setItem('wakeProfileEnabled', enabled ? 'true' : 'false');
+    const row = document.getElementById('wake-profile-select-row');
+    if (row) row.hidden = !enabled;
+    if (enabled && !localStorage.getItem('wakeProfileId')) {
+        ui.showToast('Select a profile to load on wake', 3000, 'info');
+    }
+};
+
+window.handleWakeProfileSelect = function(profileId) {
+    localStorage.setItem('wakeProfileId', profileId);
 };
 
 // Presence Detection handlers

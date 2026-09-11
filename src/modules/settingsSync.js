@@ -39,6 +39,8 @@ export const SYNCED_KEYS = [
     'screensaverCycleSeconds',
     'blackScreenSaver',
     'wakeLockEnabled',
+    'wakeProfileEnabled',
+    'wakeProfileId',
     'waterTankUnit',
     'waterRefillLevel',
     'keyboardBindings',
