@@ -316,6 +316,30 @@ export async function deleteProfileDraft(draftId) {
     await persistDrafts();
 }
 
+// A share-code (or other) import dedupes on the backend by content hash: if the
+// imported profile's content matches one already on the device, REA silently
+// returns that EXISTING record instead of creating a new one -- including one
+// that is currently 'hidden' (a superseded revision kept for the editor's undo
+// history) or 'deleted' (soft-deleted). loadAvailableProfiles() filters both
+// out of `availableProfiles`, so a dedup hit on either would otherwise look
+// exactly like "profile not found" to the importer even though nothing failed.
+// Restore it to 'visible' and return it instead of leaving it invisible.
+export async function resolveImportedProfile(profileId) {
+    if (availableProfiles[profileId]) return availableProfiles[profileId];
+
+    const allRecords = await getProfiles(); // includeHidden=true, see getProfiles()
+    const record = allRecords.find((r) => r.id === profileId);
+    if (!record) return null;
+
+    const resolved = (record.visibility === 'hidden' || record.visibility === 'deleted')
+        ? await updateProfileVisibility(profileId, 'visible')
+        : record;
+
+    availableProfiles[profileId] = resolved;
+    await setSetting(PROFILES_CACHE_KEY, availableProfiles);
+    return resolved;
+}
+
 function isValidAssignments(v) {
     return v && typeof v === 'object' && !Array.isArray(v);
 }

@@ -1306,9 +1306,9 @@ function renderSettingsTab() {
                         : msg;
                     return;
                 }
-                const { init: initPM, availableProfiles } = await import('./profileManager.js');
+                const { init: initPM, resolveImportedProfile } = await import('./profileManager.js');
                 await initPM();
-                const rec = availableProfiles[result.profileId];
+                const rec = await resolveImportedProfile(result.profileId);
                 if (!rec) throw new Error('Profile not found after import');
                 reloadEditorWithProfile(rec.profile, rec);
                 showToast(`Imported: ${rec.profile.title}`, 2500, 'success');
