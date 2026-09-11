@@ -1,0 +1,97 @@
+{
+  "title": "Mild und süßlich",
+  "author": "Decent",
+  "notes": "Hier handelt es sich um ein Kaffeeprofil, mit dem man sehr einfach erfolgreich guten Kaffee machen kann. Wir empfehlen es daher all jenen, die Schwierigkeiten haben, gute Kaffee zu machen. Der Druck steigt auf lediglich 6 Bar an und sinkt dann langsam auf 4 Bar. Das Resultat dürfte frei von Problemen mit Kanalbildung sein, einen niedrigen Säuregehalt haben und ziemlich angenehm zum Trinken mit oder ohne Milch sein.\n\nDownloaded from Visualizer",
+  "beverage_type": "espresso",
+  "steps": [
+    {
+      "exit": {
+        "type": "pressure",
+        "value": "4.0",
+        "condition": "over"
+      },
+      "flow": "8.0",
+      "name": "preinfusion temp boost",
+      "pump": "flow",
+      "sensor": "coffee",
+      "volume": "0",
+      "weight": "0",
+      "seconds": "2",
+      "pressure": "1",
+      "transition": "fast",
+      "temperature": "88.0"
+    },
+    {
+      "exit": {
+        "type": "pressure",
+        "value": "4.0",
+        "condition": "over"
+      },
+      "flow": "8.0",
+      "name": "preinfusion",
+      "pump": "flow",
+      "sensor": "coffee",
+      "volume": "0",
+      "weight": "0",
+      "seconds": "18",
+      "pressure": "1",
+      "transition": "fast",
+      "temperature": "88.0"
+    },
+    {
+      "flow": "",
+      "name": "forced rise without limit",
+      "pump": "pressure",
+      "sensor": "coffee",
+      "volume": "0",
+      "weight": "0",
+      "seconds": "3",
+      "pressure": "6.0",
+      "transition": "fast",
+      "temperature": "88.0"
+    },
+    {
+      "flow": "",
+      "name": "rise and hold",
+      "pump": "pressure",
+      "sensor": "coffee",
+      "volume": "0",
+      "weight": "0",
+      "limiter": {
+        "range": "1.0",
+        "value": "4.0"
+      },
+      "seconds": "13",
+      "pressure": "6.0",
+      "transition": "fast",
+      "temperature": "88.0"
+    },
+    {
+      "flow": "",
+      "name": "decline",
+      "pump": "pressure",
+      "sensor": "coffee",
+      "volume": "0",
+      "weight": "0",
+      "limiter": {
+        "range": "1.0",
+        "value": "4.0"
+      },
+      "seconds": "30",
+      "pressure": "4.0",
+      "transition": "smooth",
+      "temperature": "88.0"
+    }
+  ],
+  "tank_temperature": "0",
+  "target_weight": "40.0",
+  "target_volume": "36",
+  "target_volume_count_start": "2",
+  "legacy_profile_type": "settings_2a",
+  "type": "pressure",
+  "lang": "de",
+  "hidden": "0",
+  "reference_file": "Gentle and sweet",
+  "changes_since_last_espresso": "",
+  "version": "2"
+}

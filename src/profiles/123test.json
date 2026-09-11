@@ -1,0 +1,29 @@
+{
+    "version": "2",
+    "title": "123 Rao Allongé  DA Earthworld o.bourbon",
+    "notes": " coarse espresents cause big pressure changes. An advanced technique, allongé averages 24% extraction.",
+    "author": "Decent",
+    "beverage_type": "espresso",
+    "steps": [
+      {
+        "name": "hold at 4.5 ml/s",
+        "pump": "flow",
+        "transition": "fast",
+        "exit": null,
+        "volume": 500,
+        "seconds": 60,
+        "weight": 0,
+        "temperature": 88,
+        "sensor": "coffee",
+        "flow": 4.5,
+        "limiter": {
+          "value": 8.6,
+          "range": 0.6
+        }
+      }
+    ],
+    "target_volume": 0,
+    "target_weight": 95,
+    "target_volume_count_start": 0,
+    "tank_temperature": 0
+  }

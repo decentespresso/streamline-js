@@ -1,0 +1,16 @@
+/*!
+ * Font Awesome 4.7.0 by Dave Gandy - http://fontawesome.io
+ * Font: SIL OFL 1.1, CSS: MIT License
+ */
+@font-face{font-family:FontAwesome;src:url('./fonts/fontawesome-webfont.woff2') format('woff2');font-weight:normal;font-style:normal}
+.fa{display:inline-block;font:normal normal normal 14px/1 FontAwesome;font-size:inherit;text-rendering:auto;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+.fa-bold:before{content:"\f032"}
+.fa-italic:before{content:"\f033"}
+.fa-minus:before{content:"\f068"}
+.fa-eye:before{content:"\f06e"}
+.fa-link:before{content:"\f0c1"}
+.fa-list-ul:before{content:"\f0ca"}
+.fa-list-ol:before{content:"\f0cb"}
+.fa-columns:before{content:"\f0db"}
+.fa-quote-left:before{content:"\f10d"}
+.fa-header:before{content:"\f1dc"}

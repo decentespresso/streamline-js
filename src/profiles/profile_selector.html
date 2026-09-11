@@ -1,0 +1,144 @@
+<div id="scaled-content">
+<div class="bg-base-200 overflow-hidden flex-grow flex flex-col" role="dialog" aria-labelledby="page_title">
+    <div id="subpage-header" class="flex justify-between items-center p-6 border-b border-base-300 bg-[var(--box-color)] h-[150px]">
+        <h1 id="page_title" class="text-[37.5px] font-bold text-[var(--text-primary)] no-select" data-i18n-key="Profiles">Profiles</h1>
+        <div class="flex items-center gap-[22.5px]">
+            <button id="cancel-profile-btn" class="settings-button  flex justify-center items-center min-h-0 w-[171px] h-[82.5px] whitespace-nowrap text-[var(--text-primary)] rounded-[67.5px] font-bold text-[24px]" data-i18n-key="CANCEL" data-fit-text>CANCEL</button>
+            <button id="confirm-profile-btn" title="Pull next shot with this profile." class="relative settings-button items-center flex justify-center bg-[var(--mimoja-blue)] text-white min-h-0 w-[240px] h-[82.5px] whitespace-nowrap font-bold text-[24px] rounded-[67.5px]" data-i18n-key="CONFIRM"  data-fit-text>CONFIRM</button>
+        </div>
+        <button id="fullscreen-toggle-btn" title="Toggle fullscreen" class="absolute -top-1 -right-1 w-12 h-12 flex items-center justify-center text-[var(--mimoja-blue)]" aria-label="Toggle Fullscreen">
+            <svg class="enter-fullscreen-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+            <svg class="exit-fullscreen-icon" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+        </button>
+    </div>
+
+    <div class="grid h-full overflow-hidden" style="grid-template-columns: minmax(0, 5fr) auto minmax(0, 7fr);" id="profile-editor-grid">
+        <div id="left-panel" class="flex flex-col border-r border-base-300 bg-[var(--box-color)]" aria-label="Profile Management">
+            <div class="flex justify-between items-center px-6 border-b border-base-300 h-[121.5px]">
+                <div class="flex items-center gap-[30px]">
+                    <button id="add_profile" class="w-[82.5px] h-[82.5px] border-2 border-[var(--border-color)] bg-[var(--profile-button-background-color)] rounded-[15px] flex items-center justify-center" aria-label="Add New Profile">
+                        <svg class="w-[36px] h-[36px]" aria-hidden="true" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button id="view_profile" class="w-[82.5px] h-[82.5px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] flex items-center justify-center" aria-label="View All Profiles">
+                        <svg class="w-[36px] h-[36px]" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M29.5156 13.9596C35.9214 13.1962 42.4011 14.5503 47.965 17.8152C53.529 21.0801 57.8715 26.0763 60.3294 32.0408C60.5586 32.6583 60.5586 33.3374 60.3294 33.9548C59.3172 36.4043 57.9816 38.7072 56.3584 40.8023M38.7309 38.9351C37.1749 40.4379 35.0909 41.2694 32.9278 41.2506C30.7647 41.2319 28.6955 40.3642 27.1659 38.8346C25.6363 37.305 24.7686 35.2358 24.7498 33.0726C24.731 30.9095 25.5626 28.8256 27.0654 27.2696" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M48.0672 48.1223C44.4193 50.2831 40.3492 51.634 36.1332 52.0833C31.9171 52.5326 27.6538 52.0698 23.6324 50.7262C19.611 49.3826 15.9257 47.1897 12.8265 44.2963C9.72731 41.4029 7.28675 37.8767 5.67043 33.957C5.44124 33.3396 5.44124 32.6604 5.67043 32.043C8.10866 26.1301 12.3988 21.1674 17.8969 17.8997M5.49993 5.5L60.4999 60.5" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button id="search_profile" class="w-[82.5px] h-[82.5px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] flex items-center justify-center" aria-label="Search Profiles">
+                        <svg class="w-[36px] h-[36px]" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M57.7498 57.7508L45.9248 45.9258" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <a id="ai_generate_profile" href="http://localhost:8080/api/v1/plugins/decent-profile.reaplugin/ui?layout=baseline" class="w-[82.5px] h-[82.5px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] flex items-center justify-center" aria-label="AI Generate Profile">
+                        <img src="src/ui/ai-generate-icon-artificial-intelligence-black-and-white-icon-modern-minimal-design-for-your-futuristic-website-or-application-image-generator-with-ai-vector.svg" class="w-[36px] h-[36px]" aria-hidden="true" />
+                    </a>
+                </div>
+                <button class="w-[82.5px] h-[82.5px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] flex items-center justify-center" id ='delete_profile' aria-label="Delete Profile">
+                    <svg class="w-[36px] h-[36px]" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8.25 16.5H57.75M52.25 16.5V55C52.25 57.75 49.5 60.5 46.75 60.5H19.25C16.5 60.5 13.75 57.75 13.75 55V16.5M22 16.5V11C22 8.25 24.75 5.5 27.5 5.5H38.5C41.25 5.5 44 8.25 44 11V16.5M27.5 30.25V46.75M38.5 30.25V46.75" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="profile-list" class=" p-3 space-y-1.5 text-[30px] text-[var(--text-primary)] overflow-y-auto min-h-0 h-[850px]" role="listbox" aria-label="Available Profiles">
+            </div>
+            <div class="p-6 border-t border-base-300 flex items-center space-x-[22px]">
+                <button id='assign-fav-btn-0' aria-label="Assign to Favorite 1" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">1</button>
+                <button id='assign-fav-btn-1' aria-label="Assign to Favorite 2" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">2</button>
+                <button id='assign-fav-btn-2' aria-label="Assign to Favorite 3" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">3</button>
+                <button id='assign-fav-btn-3' aria-label="Assign to Favorite 4" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">4</button>
+                <button id='assign-fav-btn-4' aria-label="Assign to Favorite 5" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">5</button>
+                <span class="text-[var(--mimoja-blue)] font-semibold text-xl ml-2" data-i18n-key="Assign favourite" aria-hidden="true">Assign favourite</span>
+            </div>
+        </div>
+        <div id="separator" class="cursor-col-resize w-px bg-gray-300 hover:bg-blue-500 transition-colors z-10" style="position: relative;" aria-hidden="true"></div>
+        <div id="right-panel" class="flex flex-col bg-[var(--profile-button-background-color)]" role="main" aria-label="Profile Details">
+            <div class="flex justify-between items-center profile-selector-bg pl-[54px] pr-[30px]">
+                <div class="flex items-center gap-4 h-[121.5px]">
+                    <h2 class="text-[30px] font-bold text-[var(--mimoja-blue)]" id = 'selected_profile_name' aria-live="polite">Pick a profile</h2>
+                </div>
+                <div class="flex space-x-4">
+                    <button id = "reset_btn" class="bg-[var(--profile-button-background-color)] border-2 border-[#c9c9c9] text-[var(--mimoja-blue)] font-semibold rounded-[15px] text-[19.5px] w-[150px] h-[82.5px] px-[45px] py-[15px] flex items-center justify-center" data-i18n-key="RESET">RESET</button>
+                    <button id='edit_profile' class="bg-[var(--profile-button-background-color)] border-2 border-[#c9c9c9] text-[var(--mimoja-blue)] font-semibold rounded-[15px] text-[19.5px] w-[150px] h-[82.5px] px-[45px] py-[15px] flex items-center justify-center" data-i18n-key="EDIT">EDIT</button>
+                </div>
+            </div>
+            <div id="profile-chart-wrap" class="border-t profile-selector-bg border-b  p-4">
+                <div class=" w-full  rounded-lg p-4 relative h-[675px]" id="plotly-chart" role="img" aria-label="Profile graph">
+                </div>
+            </div>
+            <div class=" p-4 text-2xl profile-selector-bg overflow-y-auto h-[275px]" id="profile_notes" aria-label="Profile Notes">
+            </div>
+    </div>
+    <dialog id="reset-profile-modal" class="modal">
+        <div class="modal-box bg-[var(--box-color)] max-w-[500px] rounded-[20px] p-8 flex flex-col gap-6">
+            <h3 class="font-bold text-[28px] text-[var(--text-primary)]">Reset profile?</h3>
+            <p id="reset-profile-msg" class="text-[20px] text-gray-500 leading-relaxed"></p>
+            <div class="flex justify-end gap-4 mt-2">
+                <button id="reset-profile-cancel" class="h-[60px] px-8 border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] font-bold rounded-[15px] text-[18px]">KEEP</button>
+                <button id="reset-profile-confirm" class="h-[60px] px-8 bg-red-400 text-white font-bold rounded-[15px] text-[18px]" data-i18n-key="RESET">RESET</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <dialog id="add-profile-modal" class="modal">
+    <div class="modal-box bg-[var(--box-color)] max-w-[500px] rounded-[20px] p-8">
+        <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-6">Add Profile</h3>
+        <div class="flex flex-col gap-4">
+            <button id="upload-local-btn" class="w-full h-[80px] bg-[var(--mimoja-blue)] text-white text-[22px] font-bold rounded-[15px] flex items-center justify-center gap-3 hover:opacity-90">
+                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+                </svg>
+                Upload Local File
+            </button>
+            <button id="import-share-code-btn" class="w-full h-[80px] border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] text-[22px] font-bold rounded-[15px] flex items-center justify-center gap-3 hover:bg-[var(--mimoja-blue)] hover:text-white transition-colors">
+                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                </svg>
+                Import from Share Code
+            </button>
+        </div>
+        <button id="add-profile-modal-close" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 text-[var(--text-primary)]">✕</button>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="share-code-modal" class="modal">
+    <div class="modal-box bg-[var(--box-color)] max-w-[450px] rounded-[20px] p-8">
+        <h3 class="font-bold text-[26px] text-[var(--text-primary)] mb-4">Import from Visualizer</h3>
+        <p class="text-[18px] text-[var(--text-primary)] mb-6">Enter the 4-character share code from visualizer.coffee</p>
+        <input type="text" id="share-code-input" maxlength="4" placeholder="ABCD" autocomplete="off" class="w-full h-[70px] text-[36px] text-center font-bold tracking-[20px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] focus:outline-none focus:border-[var(--mimoja-blue)] mb-4 placeholder-gray-400" style="color: black;"/>
+        <p id="share-code-error" class="text-[16px] text-red-500 mb-4 hidden"></p>
+        <div class="flex gap-4">
+            <button id="share-code-cancel-btn" class="flex-1 h-[60px] border-2 border-[var(--border-color)] text-[var(--text-primary)] text-[20px] font-bold rounded-[15px]" data-i18n-key="Cancel">Cancel</button>
+            <button id="share-code-import-btn" class="flex-1 h-[60px] bg-[var(--mimoja-blue)] text-white text-[20px] font-bold rounded-[15px]" data-i18n-key="Import">Import</button>
+        </div>
+        <button id="share-code-modal-close" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 text-[var(--text-primary)]">✕</button>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
+<dialog id="login-required-modal" class="modal">
+    <div class="modal-box bg-[var(--box-color)] max-w-[450px] rounded-[20px] p-8">
+        <h3 class="font-bold text-[26px] text-[var(--text-primary)] mb-4">Login Required</h3>
+        <p class="text-[18px] text-[var(--text-primary)] mb-6">You need to configure your Visualizer credentials first to profiles from import share codes.</p>
+        <div class="flex gap-4">
+            <button id="login-modal-cancel-btn" class="flex-1 h-[60px] border-2 border-[var(--border-color)] text-[var(--text-primary)] text-[20px] font-bold rounded-[15px]" data-i18n-key="Cancel">Cancel</button>
+            <button id="login-modal-go-btn" class="flex-1 h-[60px] bg-[var(--mimoja-blue)] text-white text-[20px] font-bold rounded-[15px]">Go to Settings</button>
+        </div>
+        <button id="login-required-modal-close" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 text-[var(--text-primary)]">✕</button>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+</div>
+<input type="file" id="profile-upload-input" class="hidden" accept=".json" />
+<script src="src/modules/profile_selector.js" type="module" defer></script>
+<script type="module">
+    import { initScaling } from 'src/modules/scaling.js';
+    initScaling();
+</script>
+</body>
+</html>
