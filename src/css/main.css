@@ -553,9 +553,11 @@ body {
 }
 #editor-steps-container::-webkit-scrollbar,
 #script-steps-col::-webkit-scrollbar {
-  /* Node 2662-818's Scroll Bar is 60px wide. */
-  width: 60px;
-  height: 60px;
+  /* Node 2662-818's Scroll Bar is 60px wide at the 1920x1200 design
+     viewport; scaled 0.75 below that so it doesn't overwhelm smaller
+     screens. */
+  width: 45px;
+  height: 45px;
 }
 #editor-steps-container::-webkit-scrollbar-track,
 #script-steps-col::-webkit-scrollbar-track {
@@ -568,6 +570,22 @@ body {
   /* Inset the thumb so it reads as a floating pill, not a full-width bar. */
   border: 3px solid transparent;
   background-clip: content-box;
+}
+/* SCRIPT's thumb is a fixed 159px pill in the Figma, not the browser's
+   usual proportional length — explicit height on ::-webkit-scrollbar-thumb
+   overrides native sizing entirely. */
+#script-steps-col::-webkit-scrollbar-thumb {
+  height: 119.25px;
+}
+@media (min-width: 1920px) and (min-height: 1200px) {
+  #editor-steps-container::-webkit-scrollbar,
+  #script-steps-col::-webkit-scrollbar {
+    width: 60px;
+    height: 60px;
+  }
+  #script-steps-col::-webkit-scrollbar-thumb {
+    height: 159px;
+  }
 }
 
 /* Profile editor CARDS icons — SVGs rendered as a CSS mask so the glyph picks
