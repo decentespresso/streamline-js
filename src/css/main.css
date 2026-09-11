@@ -538,15 +538,24 @@ body {
    per-theme override is needed here. */
 #editor-steps-container,
 #script-steps-col {
-  scrollbar-color: var(--secondary-button-bg) transparent; /* Firefox + Chromium 121+ */
   scrollbar-gutter: stable;
+}
+/* scrollbar-color is Chromium 121+'s standardized styling API, but setting it
+   alongside ::-webkit-scrollbar switches Chromium to its standard renderer for
+   width purposes too: the thumb collapses to the OS-default ~19px regardless
+   of the width/border-radius set below. Firefox has no ::-webkit-scrollbar
+   support at all, so gate scrollbar-color to browsers that lack it. */
+@supports not selector(::-webkit-scrollbar) {
+  #editor-steps-container,
+  #script-steps-col {
+    scrollbar-color: var(--secondary-button-bg) transparent;
+  }
 }
 #editor-steps-container::-webkit-scrollbar,
 #script-steps-col::-webkit-scrollbar {
-  /* Node 2662-818's Scroll Bar is 60px wide, Figma-px * 0.75 like the rest
-     of this file's dimensions. */
-  width: 45px;
-  height: 45px;
+  /* Node 2662-818's Scroll Bar is 60px wide. */
+  width: 60px;
+  height: 60px;
 }
 #editor-steps-container::-webkit-scrollbar-track,
 #script-steps-col::-webkit-scrollbar-track {
