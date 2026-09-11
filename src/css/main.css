@@ -543,8 +543,10 @@ body {
 }
 #editor-steps-container::-webkit-scrollbar,
 #script-steps-col::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+  /* Node 2662-818's Scroll Bar is 60px wide, Figma-px * 0.75 like the rest
+     of this file's dimensions. */
+  width: 45px;
+  height: 45px;
 }
 #editor-steps-container::-webkit-scrollbar-track,
 #script-steps-col::-webkit-scrollbar-track {
@@ -553,7 +555,7 @@ body {
 #editor-steps-container::-webkit-scrollbar-thumb,
 #script-steps-col::-webkit-scrollbar-thumb {
   background-color: var(--secondary-button-bg);
-  border-radius: 8px;
+  border-radius: 9999px;
   /* Inset the thumb so it reads as a floating pill, not a full-width bar. */
   border: 3px solid transparent;
   background-clip: content-box;
