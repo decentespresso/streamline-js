@@ -577,14 +577,27 @@ body {
 #script-steps-col::-webkit-scrollbar-thumb {
   height: 119.25px;
 }
+/* CARDS scrolls sideways, so its bar is 24px thick (::-webkit-scrollbar
+   height) with a fixed 242px pill (::-webkit-scrollbar-thumb width) —
+   narrower and shorter than SCRIPT's, per the CARDS-tab spec. */
+#editor-steps-container::-webkit-scrollbar {
+  height: 18px;
+}
+#editor-steps-container::-webkit-scrollbar-thumb {
+  width: 181.5px;
+}
 @media (min-width: 1920px) and (min-height: 1200px) {
-  #editor-steps-container::-webkit-scrollbar,
   #script-steps-col::-webkit-scrollbar {
     width: 60px;
-    height: 60px;
   }
   #script-steps-col::-webkit-scrollbar-thumb {
     height: 159px;
+  }
+  #editor-steps-container::-webkit-scrollbar {
+    height: 24px;
+  }
+  #editor-steps-container::-webkit-scrollbar-thumb {
+    width: 242px;
   }
 }
 
