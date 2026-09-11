@@ -73,6 +73,33 @@ test('credentials and the hostname stay out of the KV store', () => {
         'the legacy namespace is a migration source profileManager deletes keys out of');
 });
 
+test('wake-profile toggle and selection are synced and survive a wipe', async () => {
+    // "Load Profile on Wake" (settings.js renderWakeLockSettings) writes these
+    // two keys straight to localStorage; persistence depends entirely on them
+    // being in SYNCED_KEYS, not on any code of their own.
+    assert.ok(SYNCED_KEYS.includes('wakeProfileEnabled'));
+    assert.ok(SYNCED_KEYS.includes('wakeProfileId'));
+
+    const { storage, proto } = makeStorage();
+    const pushed = [];
+    installMirror(proto, (k, v) => pushed.push([k, v]), () => {});
+    storage.setItem('wakeProfileEnabled', 'true');
+    storage.setItem('wakeProfileId', 'profile-123');
+    assert.deepEqual(pushed, [['wakeProfileEnabled', 'true'], ['wakeProfileId', 'profile-123']]);
+
+    // Simulate the wipe-and-restore a Decaid update triggers: fresh localStorage,
+    // KV still holding what was pushed above.
+    const fresh = makeStorage();
+    const { applied } = await hydrate(
+        fresh.storage,
+        { wakeProfileEnabled: 'true', wakeProfileId: 'profile-123' },
+        fresh.proto.setItem, () => {},
+    );
+    assert.equal(fresh.storage.getItem('wakeProfileEnabled'), 'true');
+    assert.equal(fresh.storage.getItem('wakeProfileId'), 'profile-123');
+    assert.deepEqual(applied, { wakeProfileEnabled: 'true', wakeProfileId: 'profile-123' });
+});
+
 test('clear() also clears the durable copy', () => {
     // Otherwise a reset the user asked for comes straight back on the next boot.
     const { storage, proto } = makeStorage({ theme: 'dark' });
