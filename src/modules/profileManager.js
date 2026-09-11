@@ -574,6 +574,30 @@ export async function saveContextToActiveProfile(fields) {
     }
 }
 
+// Push a stored profile onto the machine using its own dose/yield defaults.
+// Used by the wake-lock "load profile on wake" setting, so it targets an
+// arbitrary profileId rather than activeProfileId.
+export async function loadProfileForWake(profileId) {
+    const profile = availableProfiles[profileId]?.profile;
+    if (!profile) {
+        logger.warn(`Wake profile ${profileId} not found — skipping.`);
+        return false;
+    }
+    const parsedDose = parseFloat(profile.dose_weight);
+    const defaultDose = isNaN(parsedDose) ? 18 : parsedDose;
+    const parsedYield = parseFloat(profile.target_weight);
+    const displayYield = isNaN(parsedYield) ? 0 : parsedYield;
+    try {
+        await updateWorkflow({ profile, context: { targetDoseWeight: defaultDose, targetYield: displayYield, grinderSetting: null } });
+        setActiveProfile(profileId);
+        logger.info(`Wake profile loaded: ${profileId}`);
+        return true;
+    } catch (error) {
+        logger.error('Failed to load wake profile:', error);
+        return false;
+    }
+}
+
 // Strip the user's saved overrides (dose/yield/grind) from the active profile's
 // metadata and re-apply the profile's own baked-in numbers to the machine + UI.
 export async function resetActiveProfileToDefaults() {
