@@ -542,7 +542,6 @@ body {
    per-theme override is needed here. */
 #editor-steps-container,
 #script-steps-col,
-#editor-settings-form-card,
 #editor-settings-notes-col {
   scrollbar-gutter: stable;
 }
@@ -554,33 +553,30 @@ body {
 @supports not selector(::-webkit-scrollbar) {
   #editor-steps-container,
   #script-steps-col,
-  #editor-settings-form-card,
   #editor-settings-notes-col {
     scrollbar-color: var(--secondary-button-bg) transparent;
   }
 }
-/* These are design-canvas px, like every other dimension in this file:
-   #scaled-content (scaling.js) already transform-scales the whole 1920x1200
-   canvas to fit the real viewport, so a real-viewport media query here would
-   double-apply (and, worse, key off the unscaled window size — a plain
-   1920x1080 desktop fails a naive "min-height:1200px" check and would wrongly
-   get the small size). No breakpoint needed; the canvas transform is it. */
+/* Every figure below is the Figma value at 0.75, the same convention the rest
+   of the profile editor is built on: the designs sit on a 2560px canvas and
+   the shell is 1920px. #scaled-content (scaling.js) then transform-scales that
+   whole 1920x1200 canvas to the real viewport, so no media query belongs here
+   — a real-viewport breakpoint would double-apply, and would key off the
+   unscaled window size besides (a plain 1920x1080 desktop fails a naive
+   "min-height:1200px" check). The canvas transform is the only scaling. */
 #editor-steps-container::-webkit-scrollbar,
 #script-steps-col::-webkit-scrollbar,
-#editor-settings-form-card::-webkit-scrollbar,
 #editor-settings-notes-col::-webkit-scrollbar {
-  /* Node 2662-818's Scroll Bar is 60px wide. */
-  width: 60px;
+  /* Node 2662-818's Scroll Bar is 60px wide on the canvas. */
+  width: 45px;
 }
 #editor-steps-container::-webkit-scrollbar-track,
 #script-steps-col::-webkit-scrollbar-track,
-#editor-settings-form-card::-webkit-scrollbar-track,
 #editor-settings-notes-col::-webkit-scrollbar-track {
   background: transparent;
 }
 #editor-steps-container::-webkit-scrollbar-thumb,
 #script-steps-col::-webkit-scrollbar-thumb,
-#editor-settings-form-card::-webkit-scrollbar-thumb,
 #editor-settings-notes-col::-webkit-scrollbar-thumb {
   background-color: var(--secondary-button-bg);
   border-radius: 9999px;
@@ -588,25 +584,25 @@ body {
   border: 3px solid transparent;
   background-clip: content-box;
 }
-/* SCRIPT's thumb is a fixed 159px pill in the Figma, not the browser's usual
-   proportional length — explicit height on ::-webkit-scrollbar-thumb
-   overrides native sizing entirely. SETTINGS' Description column (node
-   2662:1644) draws the identical 60x159 pill, so it gets the same fixed
-   height; the SETTINGS form card isn't specced with a scrollbar at all (its
-   content fits) so its thumb is left proportional for whatever overflow the
-   new-profile-only upload/import block adds below the redesigned fields. */
+/* SCRIPT's thumb is a fixed pill in the Figma (159px on the canvas), not the
+   browser's usual proportional length — explicit height on
+   ::-webkit-scrollbar-thumb overrides native sizing entirely. SETTINGS'
+   Description column (node 2662:1644) draws the identical pill, so it gets the
+   same fixed height. The SETTINGS form card is deliberately absent here: the
+   design gives it no scrollbar, so guttering it would inset its rows by a
+   bar's width for nothing. */
 #script-steps-col::-webkit-scrollbar-thumb,
 #editor-settings-notes-col::-webkit-scrollbar-thumb {
-  height: 159px;
+  height: 119.25px;
 }
-/* CARDS scrolls sideways, so its bar is 24px thick (::-webkit-scrollbar
-   height) with a fixed 242px pill (::-webkit-scrollbar-thumb width) —
-   narrower and shorter than SCRIPT's, per the CARDS-tab spec. */
+/* CARDS scrolls sideways, so its bar is the thinner one (24px on the canvas,
+   ::-webkit-scrollbar height) with its own fixed 242px pill
+   (::-webkit-scrollbar-thumb width), per the CARDS-tab spec. */
 #editor-steps-container::-webkit-scrollbar {
-  height: 24px;
+  height: 18px;
 }
 #editor-steps-container::-webkit-scrollbar-thumb {
-  width: 242px;
+  width: 181.5px;
 }
 
 #review-steps-col::-webkit-scrollbar-thumb,
