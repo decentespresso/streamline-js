@@ -345,3 +345,34 @@ test('every value keeps one decimal, so a whole number reads 93.0 and not 93', (
     assert.equal(S.scriptValueFormat('mL/s')(8.25), '8.3 mL/s');
     assert.equal(S.scriptValueFormat('')(5), '5.0');
 });
+
+// ── CARDS row trailing track ────────────────────────────────────────────────
+// The row snaps each card flush against the sticky label gutter. Without a
+// trailing dead track the row ends flush right, so the far-right scroll clamp
+// lands off-snap and slices whichever card is leftmost. The tail exists only
+// when the row actually overflows — adding it to a row that already fits would
+// invent a scrollbar for nothing.
+const tailMatch = source.match(/const LABEL_GUTTER[\s\S]*?\nfunction cardRowTailTrack\(numSteps\) \{[\s\S]*?\r?\n\}/);
+assert.ok(tailMatch, 'cardRowTailTrack not found in profile_editor.js');
+const cardRowTailTrack = new Function(
+    `const CARD_WIDTH = 450, CARD_GAP = 15;\n${tailMatch[0]}\nreturn cardRowTailTrack;`
+)();
+
+test('a row that already fits gets no tail, so it never becomes scrollable', () => {
+    for (const n of [0, 1, 2, 3]) {
+        assert.equal(cardRowTailTrack(n), '', `${n} steps should need no tail`);
+    }
+});
+
+test('the row grows a tail as soon as it overflows the canvas', () => {
+    // 192.75 gutter + 4*450 + 3*15 = 2037.75, past the 1920 canvas; 3 steps is 1572.75.
+    for (const n of [4, 5, 8, 20]) {
+        assert.equal(cardRowTailTrack(n), ' calc(100% - 450px)', `${n} steps should carry a tail`);
+    }
+});
+
+test('the tail is a percentage, so it tracks the scrollbar gutter rather than assuming 1920', () => {
+    // A fixed px tail computed from the 1920 canvas would be 45px too wide:
+    // scrollbar-gutter reserves the vertical bar, leaving a 1875 content box.
+    assert.match(cardRowTailTrack(6), /^ calc\(100% - \d+px\)$/);
+});

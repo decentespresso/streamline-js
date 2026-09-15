@@ -549,6 +549,39 @@ const CARD_GAP = 15;
 const CARD_PITCH = CARD_WIDTH + CARD_GAP;
 // Skirt of page ground left visible below the card row (Figma 42 at 0.75).
 const CARD_BOTTOM_GAP = 31.5;
+// Width of the sticky label rail pinned over the row's left edge.
+const LABEL_GUTTER = 192.75;
+// The shell is a fixed-width design canvas (scaling.js scales the whole thing
+// to the real viewport), so the row's own widths can be reasoned about against
+// this rather than measured — which also means the tail below is decided
+// correctly even when CARDS is re-rendered while hidden and clientWidth is 0.
+const CANVAS_WIDTH = 1920;
+
+// Trailing dead grid track for the card row, so the LAST card can still reach
+// the "flush against the sticky gutter" snap position. Without it the row ends
+// flush right: scrolling clamps at scrollWidth - clientWidth, which is not a
+// snap position, so whichever card is leftmost there gets sliced by the gutter.
+// The tail buys back exactly the slack that clamp was eating, and the row now
+// ends in empty page ground rather than a cut card.
+//
+// Sized as a percentage rather than off CANVAS_WIDTH because a grid track's %
+// resolves against the container's content box — the canvas less whatever
+// scrollbar-gutter reserves for the vertical bar (1875, not 1920) — which is
+// the same box the scroll clamp is computed from.
+//
+// The strict minimum is 100% - (gutter + card). It is overshot by the gutter's
+// own width on purpose: at the exact minimum Chromium still stopped ~30px short
+// of the last card's snap position, resting off-snap with a 15px sliver of the
+// previous card showing past the gutter. The surplus is unreachable — mandatory
+// snap pulls back to the last real snap position — so it costs nothing.
+//
+// Returns '' unless the row actually overflows (4+ cards at this canvas width):
+// adding a tail to a row that already fits would invent a scrollbar, and with
+// nothing to scroll past, the leftmost card was never at risk to begin with.
+function cardRowTailTrack(numSteps) {
+    const naturalRowWidth = LABEL_GUTTER + numSteps * CARD_WIDTH + Math.max(0, numSteps - 1) * CARD_GAP;
+    return naturalRowWidth > CANVAS_WIDTH ? ` calc(100% - ${CARD_WIDTH}px)` : '';
+}
 
 // Which end-chevron is disabled for a header at `index` of `total` cards —
 // shared by the header's own reorder chevrons.
@@ -762,10 +795,11 @@ function renderStepCards() {
     // zero-step profile reserves one bare track instead, for the empty-state
     // "insert a step" button below.
     const stepCols = numSteps > 0 ? ` repeat(${numSteps}, ${CARD_WIDTH}px)` : ` ${CARD_WIDTH}px`;
+    const tailCol = cardRowTailTrack(numSteps);
     // Fixed 450px tracks, not 1fr: cards must not stretch to fill the row —
     // with few steps the row leaves empty space on the right ("cards snap to
     // the left"), which is the point of the horizontal scroll-snap below.
-    container.style.gridTemplateColumns = `192.75px${stepCols}`;
+    container.style.gridTemplateColumns = `${LABEL_GUTTER}px${stepCols}${tailCol}`;
     // Header/footer stay content-sized; the four data rows are proportional
     // so they absorb the rest of the container's height — `auto` rows
     // stopped short of the bottom, leaving a bg-tertiary gap under the cards
@@ -803,7 +837,7 @@ function renderStepCards() {
     // snapped card underneath the gutter instead of flush against it.
     // scroll-padding insets the snapport by exactly the gutter's width so
     // snap positions account for the pinned overlay.
-    container.style.scrollPaddingLeft = '192.75px';
+    container.style.scrollPaddingLeft = `${LABEL_GUTTER}px`;
 
     function mkCell(row, col, className) {
         const el = document.createElement('div');
