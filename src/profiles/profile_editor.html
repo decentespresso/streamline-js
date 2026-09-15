@@ -37,10 +37,22 @@
             </div>
         </div>
 
-        <!-- Tab 1: Settings -->
-        <div id="editor-tab-panel-1" class="editor-tab-panel h-full hidden">
-            <div id="editor-settings-container" class="p-[40px] flex gap-[40px] h-full">
-                <!-- Settings fields rendered by JS -->
+        <!-- Tab 1: Settings (Figma node 2662-1507; 2560px canvas at 0.75) -->
+        <div id="editor-tab-panel-1" class="editor-tab-panel h-full hidden overflow-hidden pb-[31.5px]">
+            <div class="flex h-full gap-[15px] ml-[37.5px] mr-[37.5px]">
+                <div id="editor-settings-form-card" class="w-[1070.25px] shrink-0 bg-[var(--profile-button-background-color)] rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] overflow-y-auto overflow-x-hidden">
+                    <!-- Settings fields rendered by JS -->
+                </div>
+                <div class="flex-1 min-w-0 bg-[var(--profile-button-background-color)] rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between px-[36px] pt-[36px] shrink-0">
+                        <p class="text-[30px] font-bold text-[var(--text-primary)]" data-i18n-key="Description">Description</p>
+                        <div class="w-[36px] h-[36px] rounded-full border-[1.5px] border-[var(--border-color)] flex items-center justify-center text-[18px] font-bold text-[var(--text-primary)] shrink-0 select-none">?</div>
+                    </div>
+                    <div class="h-0 border-t-[1.5px] border-[var(--border-graph-grid)] mx-[36px] mt-[27px] shrink-0"></div>
+                    <div id="editor-settings-notes-col" class="flex-1 overflow-y-auto overflow-x-hidden px-[36px] py-[27px]">
+                        <!-- Notes content rendered by JS -->
+                    </div>
+                </div>
             </div>
         </div>
 

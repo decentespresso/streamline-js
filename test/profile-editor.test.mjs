@@ -137,22 +137,22 @@ test('a real exit still survives the same round trip', () => {
 // none; and a limiter added from a step card inherits the profile's tolerance
 // instead of a hardcoded 0.6.
 const limiterMatch = source.match(/const DEFAULT_LIMITER_RANGE[\s\S]*?\nfunction newLimiterRange\(pump\) \{[\s\S]*?\r?\n\}/);
-const toleranceMatch = source.match(/const toleranceField = \(pump, label, unit\) => \{[\s\S]*?\r?\n        \};/);
+const toleranceMatch = source.match(/const rangeControl = \(pump, unit\) => \{[\s\S]*?\r?\n        \};/);
 assert.ok(limiterMatch && toleranceMatch, 'limiter tolerance source not found in profile_editor.js');
 
-// The tab builds the field through addFieldTo/createSpinner; stub both to
-// capture what a real render would have shown.
+// SETTINGS builds each spinner through rangeControl(pump, unit); stub
+// createSpinner to capture what a real render would have shown.
 function limiterEditor(steps) {
     const editorState = { profile: { steps } };
-    const fields = {};
     const createSpinner = (value, _step, unit, onChange, opts) => ({ value, unit, onChange, ...opts });
-    const addFieldTo = (_col, label, spinner) => { fields[label] = spinner; };
     const api = new Function(
-        'editorState', 'addFieldTo', 'createSpinner', 'getTranslation', 'leftCol',
-        `${limiterMatch[0]}\n${toleranceMatch[0]}\nreturn { toleranceField, newLimiterRange, limiterRangeOf };`
-    )(editorState, addFieldTo, createSpinner, (x) => x, null);
-    api.toleranceField('flow', 'bar-field', 'bar');
-    api.toleranceField('pressure', 'mls-field', 'mL/s');
+        'editorState', 'createSpinner', 'getTranslation',
+        `${limiterMatch[0]}\n${toleranceMatch[0]}\nreturn { rangeControl, newLimiterRange, limiterRangeOf };`
+    )(editorState, createSpinner, (x) => x);
+    const fields = {
+        'bar-field': api.rangeControl('flow', 'bar'),
+        'mls-field': api.rangeControl('pressure', 'mL/s'),
+    };
     return { steps, fields, newLimiterRange: api.newLimiterRange };
 }
 
