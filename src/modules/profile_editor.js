@@ -1376,147 +1376,218 @@ function renderFlowCalibrationFields(col) {
     });
 }
 
+// beverage_type enum per rest_v1.yml (Profile schema): espresso, calibrate,
+// cleaning, manual, pourover. The Figma grid (node 2662-1507) draws three
+// more tiles -- filter, tea, tea_portafilter -- that decaid has no value for;
+// they render disabled rather than being dropped, so the redesign's full
+// 8-tile layout stays intact while only the five real values are selectable.
+const BEVERAGE_TYPE_TILES = [
+    { value: 'espresso', label: 'Espresso' },
+    { value: 'filter', label: 'Filter', unsupported: true },
+    { value: 'pourover', label: 'Pour Over' },
+    { value: 'tea', label: 'Tea', unsupported: true },
+    { value: 'tea_portafilter', label: 'Tea Portafilter', unsupported: true },
+    { value: 'calibrate', label: 'Calibration' },
+    { value: 'cleaning', label: 'Cleaning' },
+    { value: 'manual', label: 'Manual' },
+];
+
+// One bordered box inside a settings section row: a plain-text field label
+// over its control. Two boxes share a hairline border edge (mr-[-1.5px]) the
+// way the CARDS card footer already does, so adjoining boxes don't double
+// their border weight.
+function settingsFieldBox(labelText, controlEl, { last = false } = {}) {
+    const box = document.createElement('div');
+    box.className = `flex-1 min-w-0 flex flex-col items-center gap-[22.5px] border border-[var(--border-color)] px-[30px] py-[22.5px] ${last ? '' : 'mr-[-1.5px]'}`;
+    const label = document.createElement('p');
+    label.className = 'text-[25.5px] text-[var(--text-primary)] whitespace-nowrap';
+    label.textContent = labelText;
+    box.appendChild(label);
+    box.appendChild(controlEl);
+    return box;
+}
+
+// One section row: a --mimoja-blue label in a fixed 127.5px gutter (matching
+// the CARDS card's own label-gutter convention) beside its field boxes.
+function settingsSectionRow(labelText, boxes) {
+    const row = document.createElement('div');
+    row.className = 'flex gap-[15px] items-center pl-[15px]';
+    const label = document.createElement('p');
+    label.className = 'text-[24px] font-semibold text-[var(--mimoja-blue)] w-[127.5px] shrink-0';
+    label.textContent = labelText;
+    row.appendChild(label);
+    const boxRow = document.createElement('div');
+    boxRow.className = 'flex items-stretch';
+    boxes.forEach((box, i) => boxRow.appendChild(settingsFieldBox(box.label, box.control, { last: i === boxes.length - 1 })));
+    row.appendChild(boxRow);
+    return row;
+}
+
+// Pre-infusion ends after -- cycles through "None" + every step name with the
+// same prev/next arrow chrome initCardPaging uses for CARDS' own paging
+// buttons, instead of the old plain <select>. Writes target_volume_count_start,
+// the same 0..steps.length integer the dropdown wrote.
+function createStepCycler(steps, current, onChange) {
+    let index = current;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex items-center gap-[15px]';
+
+    const label = (i) => i === 0 ? getTranslation('None') : (steps[i - 1]?.name || `${getTranslation('Step')} ${i}`);
+
+    function makeArrowBtn(rotate) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = STEPPER_BTN_CLASS;
+        const icon = maskIcon(ICON_ARROW, 37.5, 'var(--text-primary)');
+        if (rotate) icon.style.transform = 'rotate(180deg)';
+        btn.appendChild(icon);
+        return btn;
+    }
+
+    const prevBtn = makeArrowBtn(true);
+    const display = document.createElement('p');
+    display.className = 'font-bold text-[24px] text-center text-[var(--text-primary)] w-[200px] whitespace-nowrap overflow-hidden text-ellipsis';
+    const nextBtn = makeArrowBtn(false);
+
+    function update() {
+        display.textContent = label(index);
+        const atStart = index === 0;
+        const atEnd = index === steps.length;
+        prevBtn.classList.toggle('opacity-40', atStart);
+        prevBtn.classList.toggle('pointer-events-none', atStart);
+        nextBtn.classList.toggle('opacity-40', atEnd);
+        nextBtn.classList.toggle('pointer-events-none', atEnd);
+    }
+
+    prevBtn.addEventListener('click', () => { index = Math.max(0, index - 1); update(); onChange(index); });
+    nextBtn.addEventListener('click', () => { index = Math.min(steps.length, index + 1); update(); onChange(index); });
+    update();
+
+    wrapper.appendChild(prevBtn);
+    wrapper.appendChild(display);
+    wrapper.appendChild(nextBtn);
+    return wrapper;
+}
+
 function renderSettingsTab() {
-    const container = document.getElementById('editor-settings-container');
-    if (!container) return;
-    container.innerHTML = '';
+    const formCard = document.getElementById('editor-settings-form-card');
+    const notesCol = document.getElementById('editor-settings-notes-col');
+    if (!formCard || !notesCol) return;
+    formCard.innerHTML = '';
+    notesCol.innerHTML = '';
 
     const profile = editorState.profile;
 
-    // Create 3 column containers. Use flex ratios (1:1:2) so columns divide the
-    // ACTUAL available row space (after padding + gaps), not the parent's full
-    // width — otherwise widths sum to 100% + 160px and rightCol overflows back
-    // onto middleCol, clipping the Import button on tablet. min-w-0 lets
-    // children shrink below their intrinsic min-content width.
-    const leftCol = document.createElement('div');
-    leftCol.className = 'flex flex-col gap-[45px] min-w-0';
-    leftCol.style.flex = '1 1 0';
+    // Figma node 2662-1507 (2560px canvas at 0.75, the same convention CARDS
+    // and SCRIPT were built on).
+    const form = document.createElement('div');
+    form.className = 'flex flex-col gap-[45px] pl-[22.5px] pr-[30px] pt-[45px] pb-[75px]';
+    formCard.appendChild(form);
 
-    const middleCol = document.createElement('div');
-    middleCol.className = 'flex flex-col gap-[45px] min-w-0';
-    middleCol.style.flex = '1 1 0';
-
-    const rightCol = document.createElement('div');
-    rightCol.className = 'flex flex-col gap-[24px] min-w-0';
-    rightCol.style.flex = '2 1 0';
-
-    container.appendChild(leftCol);
-    container.appendChild(middleCol);
-    container.appendChild(rightCol);
-
-    function addFieldTo(targetCol, labelText, element) {
+    function appendBoltedField(labelText, element) {
         const wrapper = document.createElement('div');
-        wrapper.className = 'flex flex-col gap-[12px]';
+        wrapper.className = 'flex flex-col gap-[12px] pl-[15px]';
         const label = document.createElement('div');
-        label.className = 'text-[24px] font-semibold text-[var(--text-primary)] break-words';
+        label.className = 'text-[24px] font-semibold text-[var(--mimoja-blue)]';
         label.textContent = labelText;
         wrapper.appendChild(label);
         wrapper.appendChild(element);
-        targetCol.appendChild(wrapper);
+        form.appendChild(wrapper);
         return wrapper;
     }
 
-    // ── Left column: Target Weight, Tank Temperature, Beverage Type, Author ──
+    // ── Water Settings: Preheat Water Tank, Pre-infusion ends at ──
 
-    // Target Weight
-    addFieldTo(leftCol, getTranslation('Target Weight (g)'), createSpinner(
-        profile.target_weight || 0, 0.1, 'g', (val) => { editorState.profile.target_weight = val; }, { min: 0, max: 1000 }
-    ));
+    form.appendChild(settingsSectionRow(getTranslation('Water Settings'), [
+        { label: getTranslation('Preheat Water Tank'), control: createSpinner(
+            profile.tank_temperature || 0, 1, '°c', (val) => { editorState.profile.tank_temperature = val; }, { min: 0, max: 110 }
+        ) },
+        { label: getTranslation('Pre-infusion ends at'), control: createStepCycler(
+            profile.steps || [], profile.target_volume_count_start || 0,
+            (val) => { editorState.profile.target_volume_count_start = val; updateSaveAsNewButtonState(); }
+        ) },
+    ]));
 
-    // Tank Temperature
-    addFieldTo(leftCol, getTranslation('Tank Temperature (\u00b0c)'), createSpinner(
-        profile.tank_temperature || 0, 1, '\u00b0c', (val) => { editorState.profile.tank_temperature = val; }, { min: 0, max: 110 }
-    ));
-
-    // Limiter Tolerance — separate controls for bar (flow-pump steps) and mL/s
-    // (pressure-pump steps). A flow-pump step's limiter caps pressure, so it is
-    // the bar control; a pressure-pump step's caps flow, so it is the mL/s one.
+    // ── Limits: Flow Range (pressure-pump steps' mL/s limiter), Pressure
+    // Range (flow-pump steps' bar limiter) -- labeled by what they measure,
+    // not by the pump type that owns them. Same underlying fields the old
+    // "Limiter Tolerance" spinners wrote. ──
     {
-        // No limiter on this pump type means no tolerance: show 0, not the 0.6
-        // default, which reads as a setting someone chose. The control is dead
-        // too -- there is no step to write a range to, and decaid drops the
-        // field entirely for a limiter-less step (unified_de1.profile.dart).
-        const toleranceField = (pump, label, unit) => {
+        // No limiter on this pump type means no range to show: 0, not the 0.6
+        // default, which would read as a setting someone chose. The control is
+        // dead too -- there is no step to write a range to, and decaid drops
+        // the field entirely for a limiter-less step (unified_de1.profile.dart).
+        const rangeControl = (pump, unit) => {
             const hasLimiter = limitedSteps(pump).length > 0;
-            addFieldTo(leftCol, getTranslation(label), createSpinner(
+            return createSpinner(
                 limiterRangeOf(pump, 0), 0.1, unit,
                 // Writes reach only the steps that already have a limiter.
                 // Creating one on every step of the pump type would flatten a
                 // profile that deliberately limits a single step.
                 (val) => limitedSteps(pump).forEach(step => { step.limiter.range = val; }),
                 { min: 0, max: 5, disabled: !hasLimiter }
-            ));
+            );
         };
 
-        toleranceField('flow', 'Limiter Tolerance (bar)', 'bar');
-        toleranceField('pressure', 'Limiter Tolerance (mL/s)', 'mL/s');
+        form.appendChild(settingsSectionRow(getTranslation('Limits'), [
+            { label: getTranslation('Flow Range'), control: rangeControl('pressure', 'mL/s') },
+            { label: getTranslation('Pressure Range'), control: rangeControl('flow', 'bar') },
+        ]));
     }
 
-    // Beverage Type (select)
-    const select = document.createElement('select');
-    select.className = 'text-[24px] text-[var(--text-primary)] bg-[var(--box-color)] border border-[var(--border-color)] rounded-[12px] px-[16px] py-[12px] outline-none focus:border-[var(--mimoja-blue)] w-full';
-    ['espresso', 'manual', 'cleaning'].forEach((type) => {
-        const opt = document.createElement('option');
-        opt.value = type;
-        opt.textContent = type.charAt(0).toUpperCase() + type.slice(1);
-        if (profile.beverage_type === type) opt.selected = true;
-        select.appendChild(opt);
-    });
-    select.addEventListener('change', () => {
-        editorState.profile.beverage_type = select.value;
-        updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
-    });
-    addFieldTo(leftCol, getTranslation('Beverage type'), select);
+    // ── Stop At: Weight, Volume ──
 
-    // Author (text input)
-    const authorInput = document.createElement('input');
-    authorInput.type = 'text';
-    authorInput.value = profile.author || '';
-    authorInput.className = 'text-[24px] text-[var(--text-primary)] bg-[var(--box-color)] border border-[var(--border-color)] rounded-[12px] px-[16px] py-[12px] outline-none focus:border-[var(--mimoja-blue)] w-full';
-    authorInput.addEventListener('change', () => { editorState.profile.author = authorInput.value; });
-    addFieldTo(leftCol, getTranslation('Author'), authorInput);
+    form.appendChild(settingsSectionRow(getTranslation('Stop At'), [
+        { label: getTranslation('Weight'), control: createSpinner(
+            profile.target_weight || 0, 0.1, 'g', (val) => { editorState.profile.target_weight = val; }, { min: 0, max: 1000 }
+        ) },
+        { label: getTranslation('Volume'), control: createSpinner(
+            profile.target_volume || 0, 1, 'ml', (val) => { editorState.profile.target_volume = val; }, { min: 0, max: 500 }
+        ) },
+    ]));
 
-    // ── Middle column: Preinfusion ends after, After preinfusion stop the shot at ──
-
-    // Preinfusion ends after — dropdown of step names
+    // ── Beverage Type: 2x4 tile grid ──
     {
-        const steps = profile.steps || [];
-        const countStart = profile.target_volume_count_start || 0;
+        const section = document.createElement('div');
+        section.className = 'flex gap-[15px] items-center pl-[15px]';
 
-        const preinfSelect = document.createElement('select');
-        preinfSelect.className = 'text-[24px] text-[var(--text-primary)] bg-[var(--box-color)] border border-[var(--border-color)] rounded-[12px] px-[16px] py-[12px] outline-none focus:border-[var(--mimoja-blue)] w-full';
+        const label = document.createElement('p');
+        label.className = 'text-[24px] font-semibold text-[var(--mimoja-blue)] w-[127.5px] shrink-0';
+        label.textContent = getTranslation('Beverage Type');
+        section.appendChild(label);
 
-        const noneOpt = document.createElement('option');
-        noneOpt.value = '0';
-        noneOpt.textContent = getTranslation('None');
-        if (countStart === 0) noneOpt.selected = true;
-        preinfSelect.appendChild(noneOpt);
-
-        steps.forEach((step, i) => {
-            const opt = document.createElement('option');
-            opt.value = String(i + 1);
-            opt.textContent = step.name || `Step ${i + 1}`;
-            if (countStart === i + 1) opt.selected = true;
-            preinfSelect.appendChild(opt);
+        const grid = document.createElement('div');
+        grid.className = 'grid grid-cols-4';
+        BEVERAGE_TYPE_TILES.forEach((tile) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            const active = profile.beverage_type === tile.value;
+            btn.className = `h-[72px] w-[210px] flex items-center justify-center text-center font-bold text-[24px] border border-[var(--border-color)] mr-[-1px] mb-[-1px] ${
+                active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] text-[var(--tab-text-inactive)]'
+            } ${tile.unsupported ? 'opacity-40 pointer-events-none' : ''}`;
+            btn.textContent = getTranslation(tile.label);
+            btn.setAttribute('aria-pressed', String(active));
+            if (tile.unsupported) btn.setAttribute('aria-disabled', 'true');
+            btn.addEventListener('click', () => {
+                editorState.profile.beverage_type = tile.value;
+                updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
+                renderSettingsTab();
+            });
+            grid.appendChild(btn);
         });
-
-        preinfSelect.addEventListener('change', () => {
-            editorState.profile.target_volume_count_start = parseInt(preinfSelect.value, 10);
-            updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
-        });
-
-        addFieldTo(middleCol, getTranslation('Preinfusion ends after'), preinfSelect);
+        section.appendChild(grid);
+        form.appendChild(section);
     }
 
-    // Target Volume (stop shot after preinfusion)
-    addFieldTo(middleCol, getTranslation('After preinfusion stop the shot at'), createSpinner(
-        profile.target_volume || 0, 1, 'ml', (val) => { editorState.profile.target_volume = val; }, { min: 0, max: 500 }
-    ));
+    // ── Flow calibration ──
+    // (target_volume itself now lives in the Stop At row above -- the
+    // redesigned "Volume" field is the same target_volume this used to write
+    // under "After preinfusion stop the shot at".)
+    renderFlowCalibrationFields(form);
 
-    // ── Middle column: Flow calibration ──
-    renderFlowCalibrationFields(middleCol);
-
-    // ── Middle column: Load Profile From (new profile only) ──
+    // ── Load Profile From (new profile only), bolted on below the
+    // redesigned fields -- the Figma frame only covers editing an existing
+    // profile, so there's no spec yet for where this belongs. ──
 
     const isNewProfile = editorState.sourceProfileId === null;
 
@@ -1588,7 +1659,7 @@ function renderSettingsTab() {
             };
             fileInput.click();
         });
-        addFieldTo(middleCol, getTranslation('Upload Local File'), uploadBtn);
+        appendBoltedField(getTranslation('Upload Local File'), uploadBtn);
 
         // Import from share code
         const shareSection = document.createElement('div');
@@ -1667,20 +1738,24 @@ function renderSettingsTab() {
         shareRow.appendChild(shareImportBtn);
         shareSection.appendChild(shareRow);
         shareSection.appendChild(shareStatus);
-        addFieldTo(middleCol, getTranslation('Import from Share Code'), shareSection);
+        appendBoltedField(getTranslation('Import from Share Code'), shareSection);
     }
 
-    // ── Right column: Notes (tall textarea filling column height) ──
+    // ── Description (right card, node 2662:1633's Description panel) ──
+    // Same tap-to-edit-in-a-modal preview the old right column used, just
+    // rendered into the redesign's own scrollable card instead of a labeled
+    // column -- the HTML shell already draws the "Description" heading, help
+    // icon and divider above #editor-settings-notes-col.
 
     const notesPreview = document.createElement('div');
-    notesPreview.className = 'text-[22px] text-[var(--text-primary)] bg-[var(--box-color)] border-2 border-[var(--border-color)] rounded-[12px] px-[20px] py-[16px] cursor-pointer select-none overflow-y-auto flex-1 whitespace-pre-wrap leading-[1.5] hover:border-[var(--mimoja-blue)] transition-colors';
+    notesPreview.className = 'text-[24px] text-[var(--text-primary)] cursor-pointer select-none whitespace-pre-wrap leading-[1.5] h-full';
     function updateNotesPreview() {
         const text = editorState.profile.notes || '';
         if (text) {
             notesPreview.textContent = text;
             notesPreview.style.color = '';
         } else {
-            notesPreview.textContent = getTranslation('Tap to edit notes\u2026');
+            notesPreview.textContent = getTranslation('Tap to edit notes…');
             notesPreview.style.color = '#959595';
         }
     }
@@ -1691,8 +1766,7 @@ function renderSettingsTab() {
             updateNotesPreview();
         });
     });
-    const notesWrapper = addFieldTo(rightCol, getTranslation('Notes'), notesPreview);
-    notesWrapper.className = 'flex flex-col gap-[12px] flex-1';
+    notesCol.appendChild(notesPreview);
 }
 
 // ─── Script Tab ─────────────────────────────────────────────────────────────

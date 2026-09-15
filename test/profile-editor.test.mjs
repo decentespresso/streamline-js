@@ -142,24 +142,24 @@ test('a real exit still survives the same round trip', () => {
 // instead of a hardcoded 0.6.
 // DEFAULT_LIMITER_RANGE moved into profile-field-limits.js (imported above) so
 // the legacy-TCL importer can share it; it's injected below the same way the
-// other stubbed dependencies (addFieldTo, createSpinner, ...) are.
+// other stubbed dependencies (createSpinner, ...) are.
 const limiterMatch = source.match(/function limitedSteps\(pump\) \{[\s\S]*?\nfunction newLimiterRange\(pump\) \{[\s\S]*?\r?\n\}/);
-const toleranceMatch = source.match(/const toleranceField = \(pump, label, unit\) => \{[\s\S]*?\r?\n        \};/);
+const toleranceMatch = source.match(/const rangeControl = \(pump, unit\) => \{[\s\S]*?\r?\n        \};/);
 assert.ok(limiterMatch && toleranceMatch, 'limiter tolerance source not found in profile_editor.js');
 
-// The tab builds the field through addFieldTo/createSpinner; stub both to
-// capture what a real render would have shown.
+// SETTINGS builds each spinner through rangeControl(pump, unit); stub
+// createSpinner to capture what a real render would have shown.
 function limiterEditor(steps) {
     const editorState = { profile: { steps } };
-    const fields = {};
     const createSpinner = (value, _step, unit, onChange, opts) => ({ value, unit, onChange, ...opts });
-    const addFieldTo = (_col, label, spinner) => { fields[label] = spinner; };
     const api = new Function(
-        'editorState', 'addFieldTo', 'createSpinner', 'getTranslation', 'leftCol', 'DEFAULT_LIMITER_RANGE',
-        `${limiterMatch[0]}\n${toleranceMatch[0]}\nreturn { toleranceField, newLimiterRange, limiterRangeOf };`
-    )(editorState, addFieldTo, createSpinner, (x) => x, null, DEFAULT_LIMITER_RANGE);
-    api.toleranceField('flow', 'bar-field', 'bar');
-    api.toleranceField('pressure', 'mls-field', 'mL/s');
+        'editorState', 'createSpinner', 'getTranslation', 'DEFAULT_LIMITER_RANGE',
+        `${limiterMatch[0]}\n${toleranceMatch[0]}\nreturn { rangeControl, newLimiterRange, limiterRangeOf };`
+    )(editorState, createSpinner, (x) => x, DEFAULT_LIMITER_RANGE);
+    const fields = {
+        'bar-field': api.rangeControl('flow', 'bar'),
+        'mls-field': api.rangeControl('pressure', 'mL/s'),
+    };
     return { steps, fields, newLimiterRange: api.newLimiterRange };
 }
 
