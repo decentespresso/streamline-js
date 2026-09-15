@@ -292,7 +292,7 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
     let debounceTimer = null;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'flex items-center gap-[10px]';
+    wrapper.className = 'flex items-center gap-[15px]';
 
     const minusBtn = document.createElement('button');
     minusBtn.type = 'button';
@@ -301,7 +301,7 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
     minusBtn.setAttribute('aria-label', 'Decrease');
 
     const display = document.createElement('span');
-    display.className = 'font-bold text-[20px] text-center w-[90px] text-[var(--text-primary)]';
+    display.className = 'font-bold text-[24px] text-center w-[150px] text-[var(--text-primary)]';
 
     const plusBtn = document.createElement('button');
     plusBtn.type = 'button';
@@ -1300,9 +1300,17 @@ const BEVERAGE_TYPE_TILES = [
 // their border weight.
 function settingsFieldBox(labelText, controlEl, { last = false } = {}) {
     const box = document.createElement('div');
-    box.className = `flex-1 min-w-0 flex flex-col items-center gap-[22.5px] border border-[var(--border-color)] px-[30px] py-[22.5px] ${last ? '' : 'mr-[-1.5px]'}`;
+    // Fixed 420px (Figma 560), not flex-1: an auto-width row would size each
+    // box to its own content, so the Water Settings row (which holds the wider
+    // step cycler) would end further right than Limits and Stop At. Two boxes
+    // at 420 less the shared hairline is 839.25 -- the same right edge as the
+    // 4x210 beverage grid below them.
+    box.className = `w-[420px] shrink-0 flex flex-col items-center gap-[22.5px] border border-[var(--border-primary)] px-[30px] py-[22.5px] ${last ? '' : 'mr-[-1px]'}`;
     const label = document.createElement('p');
-    label.className = 'text-[25.5px] text-[var(--text-primary)] whitespace-nowrap';
+    // leading-[1.2] is the design's own line-height on this style; without it
+    // the browser default (1.5) adds ~8px to every field box, which the card
+    // has no room for.
+    label.className = 'text-[25.5px] leading-[1.2] text-[var(--text-primary)] whitespace-nowrap';
     label.textContent = labelText;
     box.appendChild(label);
     box.appendChild(controlEl);
@@ -1315,7 +1323,7 @@ function settingsSectionRow(labelText, boxes) {
     const row = document.createElement('div');
     row.className = 'flex gap-[15px] items-center pl-[15px]';
     const label = document.createElement('p');
-    label.className = 'text-[24px] font-semibold text-[var(--mimoja-blue)] w-[127.5px] shrink-0';
+    label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0';
     label.textContent = labelText;
     row.appendChild(label);
     const boxRow = document.createElement('div');
@@ -1382,15 +1390,22 @@ function renderSettingsTab() {
 
     // Figma node 2662-1507 (2560px canvas at 0.75, the same convention CARDS
     // and SCRIPT were built on).
+    // The Figma frame is over-stuffed: its own sections plus padding come to
+    // ~897px inside an 853.5px card, so it cannot be reproduced as drawn and
+    // still show everything. Two figures absorb that. pb is 45 rather than the
+    // drawn 75, and the section gap is 34 rather than 45. Everything inside a
+    // field box stays exactly on spec — the compression is all in the space
+    // between sections, where it reads as tighter rhythm rather than as
+    // shrunken controls.
     const form = document.createElement('div');
-    form.className = 'flex flex-col gap-[45px] pl-[22.5px] pr-[30px] pt-[45px] pb-[75px]';
+    form.className = 'flex flex-col gap-[34px] pl-[22.5px] pr-[30px] pt-[45px] pb-[45px]';
     formCard.appendChild(form);
 
     function appendBoltedField(labelText, element) {
         const wrapper = document.createElement('div');
         wrapper.className = 'flex flex-col gap-[12px] pl-[15px]';
         const label = document.createElement('div');
-        label.className = 'text-[24px] font-semibold text-[var(--mimoja-blue)]';
+        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)]';
         label.textContent = labelText;
         wrapper.appendChild(label);
         wrapper.appendChild(element);
@@ -1454,22 +1469,31 @@ function renderSettingsTab() {
         section.className = 'flex gap-[15px] items-center pl-[15px]';
 
         const label = document.createElement('p');
-        label.className = 'text-[24px] font-semibold text-[var(--mimoja-blue)] w-[127.5px] shrink-0';
+        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0';
         label.textContent = getTranslation('Beverage Type');
         section.appendChild(label);
 
         const grid = document.createElement('div');
         grid.className = 'grid grid-cols-4';
-        BEVERAGE_TYPE_TILES.forEach((tile) => {
+        BEVERAGE_TYPE_TILES.forEach((tile, i) => {
             const btn = document.createElement('button');
             btn.type = 'button';
             const active = profile.beverage_type === tile.value;
-            btn.className = `h-[72px] w-[210px] flex items-center justify-center text-center font-bold text-[24px] border border-[var(--border-color)] mr-[-1px] mb-[-1px] ${
-                active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] text-[var(--tab-text-inactive)]'
-            } ${tile.unsupported ? 'opacity-40 pointer-events-none' : ''}`;
+            // Pull only the edges that meet another tile, so the grid's own
+            // outer edge keeps its full hairline instead of losing 1px off the
+            // last column and row. The selected tile borders in its own fill
+            // rather than dropping the border outright -- the design draws no
+            // outline on it, and a width change here would reflow the row.
+            const lastCol = i % 4 === 3;
+            const lastRow = i >= 4;
+            btn.className = `h-[72px] w-[210px] flex items-center justify-center text-center font-bold text-[24px] border ${lastCol ? '' : 'mr-[-1px]'} ${lastRow ? '' : 'mb-[-1px]'} ${
+                active ? 'bg-[var(--button-primary-bg)] border-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border-[var(--border-primary)] text-[var(--tab-text-inactive)]'
+            } ${tile.unsupported ? 'opacity-40' : ''}`;
             btn.textContent = getTranslation(tile.label);
             btn.setAttribute('aria-pressed', String(active));
-            if (tile.unsupported) btn.setAttribute('aria-disabled', 'true');
+            // A real disabled button is inert and drops out of the tab order;
+            // aria-disabled alone would still take focus and fire clicks.
+            if (tile.unsupported) btn.disabled = true;
             btn.addEventListener('click', () => {
                 editorState.profile.beverage_type = tile.value;
                 updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
@@ -1643,7 +1667,7 @@ function renderSettingsTab() {
             notesPreview.style.color = '';
         } else {
             notesPreview.textContent = getTranslation('Tap to edit notes…');
-            notesPreview.style.color = '#959595';
+            notesPreview.style.color = 'var(--low-contrast-white)';
         }
     }
     updateNotesPreview();

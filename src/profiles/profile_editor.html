@@ -15,7 +15,10 @@
     </div>
 
     <!-- Tab bar -->
-    <div class="flex items-center justify-between px-[37.5px] py-[37.5px] bg-[var(--bg-tertiary)]">
+    <!-- py is 30, not 37.5: the design stacks header 150 + 30 + tab bar 105 +
+         30, putting the tab panels' top edge at 315. At 37.5 the panels start
+         at 330 and every tab's card loses 15px of height. -->
+    <div class="flex items-center justify-between px-[37.5px] py-[30px] bg-[var(--bg-tertiary)]">
         <div class="flex items-center gap-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] rounded-[60px] p-[18px] w-[834.75px] h-[105px]">
             <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="0" data-i18n-key="CARDS" data-fit-text>CARDS</button>
             <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="2" data-i18n-key="SCRIPT" data-fit-text>SCRIPT</button>
@@ -44,12 +47,12 @@
                     <!-- Settings fields rendered by JS -->
                 </div>
                 <div class="flex-1 min-w-0 bg-[var(--profile-button-background-color)] rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] flex flex-col overflow-hidden">
-                    <div class="flex items-center justify-between px-[36px] pt-[36px] shrink-0">
+                    <div class="flex items-center justify-between px-[49.5px] pt-[37.5px] shrink-0">
                         <p class="text-[30px] font-bold text-[var(--text-primary)]" data-i18n-key="Description">Description</p>
-                        <div class="w-[36px] h-[36px] rounded-full border-[1.5px] border-[var(--border-color)] flex items-center justify-center text-[18px] font-bold text-[var(--text-primary)] shrink-0 select-none">?</div>
+                        <div class="w-[48px] h-[48px] rounded-full bg-[var(--button-primary-bg)] flex items-center justify-center text-[24px] font-bold text-white shrink-0 select-none">?</div>
                     </div>
-                    <div class="h-0 border-t-[1.5px] border-[var(--border-graph-grid)] mx-[36px] mt-[27px] shrink-0"></div>
-                    <div id="editor-settings-notes-col" class="flex-1 overflow-y-auto overflow-x-hidden px-[36px] py-[27px]">
+                    <div class="h-0 border-t-[0.75px] border-[var(--border-graph-grid)] mx-[49.5px] mt-[36px] shrink-0"></div>
+                    <div id="editor-settings-notes-col" class="flex-1 overflow-y-auto overflow-x-hidden px-[49.5px] pt-[36px] pb-[37.5px]">
                         <!-- Notes content rendered by JS -->
                     </div>
                 </div>
