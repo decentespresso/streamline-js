@@ -48,7 +48,7 @@ test('the selector re-resolves a fallback selection from the workflow', async ()
     const source = readFileSync(new URL('../src/modules/profile_selector.js', import.meta.url), 'utf8');
 
     // The fallback (first row) is what marks the selection as untrustworthy.
-    assert.match(source, /selectionIsFallback = !initialItem;/);
+    assert.match(source, /selectionIsFallback = !initialKey;/);
 
     const correction = source.match(/if \(selectionIsFallback\) \{[\s\S]*?\n    \}/);
     assert.ok(correction, 'no workflow correction after the profiles land');

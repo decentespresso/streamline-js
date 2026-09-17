@@ -1,8 +1,3 @@
-<style>
-    .profile-list-scroll::-webkit-scrollbar { width: 10px; }
-    .profile-list-scroll::-webkit-scrollbar-track { background: transparent; }
-    .profile-list-scroll::-webkit-scrollbar-thumb { background: #c9d3e0; border-radius: 999px; }
-</style>
 <div id="scaled-content">
 <div class="bg-base-200 overflow-hidden flex-grow flex flex-col" role="dialog" aria-labelledby="page_title">
     <div id="subpage-header" class="flex justify-between items-center p-6 border-b border-base-300 bg-[var(--box-color)] h-[150px]">
@@ -45,7 +40,7 @@
                     </svg>
                 </button>
             </div>
-            <div id="profile-list" class="profile-list-scroll p-3 space-y-1.5 text-[30px] text-[var(--text-primary)] overflow-y-auto min-h-0 flex-grow" role="listbox" aria-label="Available Profiles">
+            <div id="profile-list" class="relative p-3 space-y-1.5 text-[30px] text-[var(--text-primary)] overflow-y-auto min-h-0 flex-grow" role="listbox" aria-label="Available Profiles">
             </div>
         </div>
         <div id="separator" class="cursor-col-resize w-px bg-gray-300 hover:bg-blue-500 transition-colors z-10" style="position: relative;" aria-hidden="true"></div>
@@ -53,8 +48,8 @@
             <div class="flex justify-between items-center profile-selector-bg pl-[54px] pr-[30px]">
                 <div class="flex items-center gap-4 h-[121.5px]">
                     <h2 class="text-[30px] font-bold text-[var(--mimoja-blue)]" id = 'selected_profile_name' aria-live="polite">Pick a profile</h2>
-                    <button id="edit-profile-name-btn" class="flex items-center justify-center text-[var(--mimoja-blue)]" aria-label="Edit profile name">
-                        <svg class="w-[24px] h-[24px]" aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <button id="edit-profile-name-btn" class="flex items-center justify-center" aria-label="Edit profile name">
+                        <svg class="w-[24px] h-[24px]" aria-hidden="true" viewBox="0 0 33.0338 33" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M20.9908 6.01201L26.988 12.0092M23.9894 3.01342C24.3713 2.56219 24.8436 2.1949 25.3763 1.93496C25.909 1.67502 26.4904 1.52813 27.0834 1.50366C27.6765 1.47919 28.2681 1.57767 28.8207 1.79283C29.3733 2.00799 29.8747 2.33511 30.2929 2.75333C30.7111 3.17155 31.037 3.67171 31.2498 4.22192C31.4626 4.77213 31.5576 5.36032 31.5288 5.94901C31.5 6.5377 31.348 7.11397 31.0824 7.64109C30.8169 8.16822 30.4437 8.63463 29.9866 9.0106L9.74615 29.2511L1.50003 31.5L3.74897 23.2539L23.9894 3.01342Z" stroke="#5F7BA8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     </button>
                 </div>
                 <div class="flex space-x-4">

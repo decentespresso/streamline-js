@@ -739,23 +739,67 @@ function renderProfiles() {
             container.appendChild(h);
         };
 
-        // Group profiles under the default they were cloned from (parentId),
-        // so an edited copy renders as a nested child instead of a flat "from
-        // X" badge (Figma). Only nests under a parent that will itself be
-        // visible under the current isShowingHidden filter -- otherwise the
-        // child falls back to a flat row with its lineage badge.
+        // A family with no real profile named just the base ("A-Flow") gets
+        // this plain, unselectable label as its head instead -- no
+        // data-profile-key, so selectItem's full-list sweep and the initial
+        // auto-select logic both skip right over it.
+        const renderFamilyHeader = (base) => {
+            const h = document.createElement('div');
+            h.className = 'p-3 text-[30px] text-[var(--text-primary)] select-none';
+            h.setAttribute('role', 'presentation');
+            h.textContent = base;
+            container.appendChild(h);
+        };
+
+        // Group profiles that share a name family: either a common prefix
+        // before a "/", "•" or ":" separator ("A-Flow / default-dark",
+        // "A-Flow / default-light", ... -> family "A-Flow"), or -- when there
+        // is no separator -- an auto-suffixed duplicate title ("Adaptive v2"
+        // / "Adaptive v2 (2)" -> family "Adaptive v2"). Pure title match,
+        // unrelated to parentId/clone lineage -- the "from X" badge below
+        // still covers that separately.
         const isProfileVisible = (rec) => isShowingHidden || rec.visibility !== 'hidden';
-        const childrenByParent = new Map();
+        const familyBaseTitle = (title) => {
+            const t = title || '';
+            const sep = t.match(/^(.*?)\s*[/•:]\s*\S.*$/);
+            if (sep) return sep[1].trim();
+            return t.replace(/\s*\(\d+\)\s*$/, '').trim();
+        };
+        const familyGroups = new Map();
         for (const [key, rec] of sortedProfiles) {
-            const parentRecord = rec.parentId ? availableProfiles[rec.parentId] : null;
-            if (parentRecord && isProfileVisible(parentRecord)) {
-                if (!childrenByParent.has(rec.parentId)) childrenByParent.set(rec.parentId, []);
-                childrenByParent.get(rec.parentId).push([key, rec]);
+            const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
+            const base = familyBaseTitle(title);
+            if (!familyGroups.has(base)) familyGroups.set(base, []);
+            familyGroups.get(base).push([key, rec, title]);
+        }
+        // Headed family: one member's own title IS the bare base name, so it
+        // renders normally at depth 0 and the rest nest under it (existing
+        // profile as head). Headless family (no member is titled just the
+        // base -- "A-Flow" itself isn't a profile): a synthetic, unselectable
+        // label row stands in as the head instead.
+        const childrenByFamily = new Map();
+        const syntheticFamilies = new Map();
+        for (const [base, members] of familyGroups) {
+            const visibleMembers = members.filter(([, rec]) => isProfileVisible(rec));
+            if (visibleMembers.length < 2) continue;
+            const headIdx = visibleMembers.findIndex(([, , title]) => title === base);
+            if (headIdx !== -1) {
+                const [headKey] = visibleMembers[headIdx];
+                const children = visibleMembers.filter((_, i) => i !== headIdx).map(([k, rec]) => [k, rec]);
+                if (children.length > 0) childrenByFamily.set(headKey, children);
+            } else {
+                syntheticFamilies.set(base, {
+                    members: visibleMembers.map(([k, rec]) => [k, rec]),
+                    isDefault: visibleMembers[0][1].isDefault === true,
+                });
             }
         }
         const nestedChildKeys = new Set();
-        for (const kids of childrenByParent.values()) {
+        for (const kids of childrenByFamily.values()) {
             for (const [k] of kids) nestedChildKeys.add(k);
+        }
+        for (const { members } of syntheticFamilies.values()) {
+            for (const [k] of members) nestedChildKeys.add(k);
         }
 
         const renderProfileItem = ([key, profileRecord], depth = 0) => {
@@ -783,15 +827,25 @@ function renderProfiles() {
             div.setAttribute('aria-label', displayTitle);
             div.tabIndex = -1;
 
+            // Tree indent step matches the Figma spec (node 2662-1377,
+            // Group 315/316: solid black 2px lines) scaled by this app's
+            // usual 0.75 design-px factor (70px indent -> 52px). Each row
+            // draws its own "L" corner (border-left down to its own
+            // mid-height, border-bottom turning right) as ONE element, so it
+            // is always connected by construction -- adjacent siblings'
+            // left borders chain into what reads as one continuous trunk
+            // with a branch off it per row, matching Group 315/316.
             if (depth > 0) {
-                const indent = depth * 28;
+                const indent = depth * 52;
                 div.classList.add('relative');
                 div.style.paddingLeft = `${12 + indent}px`;
                 const connector = document.createElement('span');
                 connector.setAttribute('aria-hidden', 'true');
-                connector.className = 'absolute top-0 bottom-1/2 border-l-2 border-b-2 border-[var(--border-color)] rounded-bl-[6px] pointer-events-none';
-                connector.style.left = `${12 + indent - 16}px`;
-                connector.style.width = '14px';
+                connector.className = 'absolute top-0 bottom-1/2 pointer-events-none';
+                connector.style.left = `${12 + indent - 20}px`;
+                connector.style.width = '20px';
+                connector.style.borderLeft = '2px solid black';
+                connector.style.borderBottom = '2px solid black';
                 div.appendChild(connector);
             }
 
@@ -814,9 +868,9 @@ function renderProfiles() {
             }
             div.appendChild(leftSide);
 
-            if (!isHidden && key === selectedProfileKey) {
+            const createHideButton = () => {
                 const hideButton = document.createElement('button');
-                hideButton.className = 'p-1 rounded-full flex-shrink-0';
+                hideButton.className = 'profile-hide-btn p-1 rounded-full flex-shrink-0';
                 hideButton.title = 'Hide this profile';
                 hideButton.setAttribute('aria-label', `Hide profile ${displayTitle}`);
                 hideButton.innerHTML = getEyeOffIconSVG('currentColor');
@@ -826,7 +880,11 @@ function renderProfiles() {
                     renderProfiles();
                 });
                 hideButton.addEventListener('pointerdown', (e) => e.stopPropagation());
-                div.appendChild(hideButton);
+                return hideButton;
+            };
+
+            if (!isHidden && key === selectedProfileKey) {
+                div.appendChild(createHideButton());
             }
 
             if (isHidden) {
@@ -860,6 +918,7 @@ function renderProfiles() {
                 for(const item of allItems) {
                     item.classList.remove('bg-[#385a92]', 'text-white', 'rounded-[8px]', 'bg-gray-200', 'text-black');
                     item.setAttribute('aria-selected', 'false');
+                    item.querySelector('.profile-hide-btn')?.remove();
                     const itemKey = item.dataset.profileKey;
                     if (itemKey && availableProfiles[itemKey] && availableProfiles[itemKey].visibility === 'hidden') {
                         item.classList.add('text-[var(--low-contrast-white)]');
@@ -875,6 +934,7 @@ function renderProfiles() {
                 } else {
                     clickedItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
                     clickedItem.classList.remove('text-[#121212]');
+                    clickedItem.appendChild(createHideButton());
                 }
 
                 clickedItem.setAttribute('aria-selected', 'true');
@@ -900,49 +960,93 @@ function renderProfiles() {
 
             container.appendChild(div);
 
-            const kids = childrenByParent.get(key);
+            const kids = childrenByFamily.get(key);
             if (kids) kids.forEach(child => renderProfileItem(child, depth + 1));
+
+            return div;
+        };
+
+        // Resolve the initial selection BEFORE building any rows -- the
+        // per-row render logic below (hide icon, selected background) keys
+        // off selectedProfileKey, so it has to be set first or the very row
+        // it points at renders as if nothing were selected.
+        let justAutoSelected = false;
+        if (!selectedProfileKey) {
+            // Honor a return-from-editor hint, then the loaded profile, before
+            // falling back to the first visible item.
+            const lastEditedKey = sessionStorage.getItem('lastEditedProfileKey');
+            let initialKey = null;
+            if (lastEditedKey) {
+                sessionStorage.removeItem('lastEditedProfileKey');
+                if (availableProfiles[lastEditedKey] && isProfileVisible(availableProfiles[lastEditedKey])) {
+                    initialKey = lastEditedKey;
+                }
+            }
+            if (!initialKey) {
+                const activeKey = findActiveProfileKey();
+                if (activeKey && availableProfiles[activeKey] && isProfileVisible(availableProfiles[activeKey])) {
+                    initialKey = activeKey;
+                }
+            }
+            selectionIsFallback = !initialKey;
+            if (!initialKey) {
+                const firstVisible = sortedProfiles.find(([, r]) => isProfileVisible(r));
+                initialKey = firstVisible ? firstVisible[0] : null;
+            }
+            if (initialKey) {
+                selectedProfileKey = initialKey;
+                justAutoSelected = true;
+            }
+        }
+
+        // Top-level rows: real profiles not absorbed into a family (as a head
+        // or a child either way), plus one synthetic entry per headless
+        // family -- merged and re-sorted together so a family sits wherever
+        // its base name falls alphabetically, same as any other row.
+        const topLevelEntries = [];
+        for (const [key, rec] of sortedProfiles) {
+            if (nestedChildKeys.has(key)) continue;
+            const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
+            topLevelEntries.push({ type: 'profile', key, rec, sortLabel: title, isDefault: rec.isDefault === true });
+        }
+        for (const [base, info] of syntheticFamilies) {
+            topLevelEntries.push({ type: 'family', base, members: info.members, sortLabel: base, isDefault: info.isDefault });
+        }
+        topLevelEntries.sort((a, b) => a.sortLabel.localeCompare(b.sortLabel));
+
+        const renderTopLevelEntry = (entry) => {
+            if (entry.type === 'family') {
+                renderFamilyHeader(entry.base);
+                entry.members.forEach(member => renderProfileItem(member, 1));
+            } else {
+                renderProfileItem([entry.key, entry.rec], 0);
+            }
         };
 
         // Partition: built-in defaults vs user-owned (kv records, includes clones).
         // Nested children are rendered by their parent's recursive call above,
         // not as their own top-level row.
-        const defaultsList = sortedProfiles.filter(([k, r]) => r.isDefault === true && !nestedChildKeys.has(k));
-        const yoursList = sortedProfiles.filter(([k, r]) => r.isDefault !== true && !nestedChildKeys.has(k));
+        const defaultsList = topLevelEntries.filter((e) => e.isDefault);
+        const yoursList = topLevelEntries.filter((e) => !e.isDefault);
 
         if (yoursList.length > 0) {
             renderSectionHeader('Your Profiles');
-            yoursList.forEach(entry => renderProfileItem(entry, 0));
+            yoursList.forEach(renderTopLevelEntry);
         }
         if (defaultsList.length > 0) {
             renderSectionHeader('Built-In Profiles');
-            defaultsList.forEach(entry => renderProfileItem(entry, 0));
+            defaultsList.forEach(renderTopLevelEntry);
         }
 
         console.log('renderProfiles: Total visible profiles:', visibleProfileCount);
-        if (visibleProfileCount > 0 && !selectedProfileKey) {
-            // Honor a return-from-editor hint, then the loaded profile, before
-            // falling back to first item.
-            const lastEditedKey = sessionStorage.getItem('lastEditedProfileKey');
-            let initialItem = null;
-            if (lastEditedKey) {
-                initialItem = container.querySelector(`[data-profile-key="${CSS.escape(lastEditedKey)}"]`);
-                sessionStorage.removeItem('lastEditedProfileKey');
-            }
-            if (!initialItem) {
-                const activeKey = findActiveProfileKey();
-                if (activeKey) initialItem = container.querySelector(`[data-profile-key="${CSS.escape(activeKey)}"]`);
-            }
-            selectionIsFallback = !initialItem;
-            if (!initialItem) initialItem = container.querySelector('[data-profile-key]');
-            if (initialItem) {
-                initialItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
-                initialItem.setAttribute('aria-selected', 'true');
-                updateSelectedProfileView(initialItem);
+        if (justAutoSelected) {
+            const selectedEl = container.querySelector(`[data-profile-key="${CSS.escape(selectedProfileKey)}"]`);
+            if (selectedEl) {
+                updateSelectedProfileView(selectedEl);
                 // The list is taller than the pane and sorted alphabetically, so the
                 // pre-selected item is usually out of view. 'nearest' leaves an
                 // already-visible item alone instead of yanking the list.
-                initialItem.scrollIntoView({ block: 'nearest' });
+                selectedEl.scrollIntoView({ block: 'nearest' });
             }
         }
 

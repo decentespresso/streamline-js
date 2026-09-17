@@ -601,6 +601,32 @@ body {
   width: 181.5px;
 }
 
+/* Profile selector's list scrollbar (Figma node 2662-1377): the same
+   bare-pill mechanics as the profile editor's vertical scroll bars above --
+   floating thumb directly on the page ground, no trough -- but proportional
+   thumb height since the list's length varies with the profile count
+   instead of the editor's fixed-height panes. */
+#profile-list {
+  scrollbar-gutter: stable;
+}
+@supports not selector(::-webkit-scrollbar) {
+  #profile-list {
+    scrollbar-color: var(--secondary-button-bg) transparent;
+  }
+}
+#profile-list::-webkit-scrollbar {
+  width: 45px;
+}
+#profile-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+#profile-list::-webkit-scrollbar-thumb {
+  background-color: var(--secondary-button-bg);
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
 /* Profile editor CARDS icons — SVGs rendered as a CSS mask so the glyph picks
    up `currentColor`/a theme token instead of the fixed stroke baked into the
    source file. Size and mask-image are set inline per instance (they vary per
