@@ -71,8 +71,11 @@
                     <p class="text-[30px] font-semibold text-[var(--text-primary)] shrink-0" data-i18n-key="Steps Overview">Steps Overview</p>
                     <!-- Only this half scrolls; the graph is fixed. The 36px
                          right padding puts the scrollbar where the design draws
-                         its thumb, clear of the 756px text column. -->
-                    <div id="script-steps-col" class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-[45px] pr-[36px] pb-[45px]"></div>
+                         its thumb, clear of the 756px text column. pt-[10px]
+                         gives the first line's pill/chip hover box (py-[10px]
+                         -my-[10px] in profile_editor.js) room to sit above its
+                         text instead of getting clipped by this scroll edge. -->
+                    <div id="script-steps-col" class="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-[45px] pr-[36px] pt-[10px] pb-[45px]"></div>
                 </div>
                 <!-- Right: Graph Preview -->
                 <div class="flex-1 min-w-0 flex flex-col gap-[37.5px] pt-[45px] overflow-hidden">

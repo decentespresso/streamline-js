@@ -61,7 +61,10 @@ function openNumpadForField(currentVal, numpadConfig, onCommit) {
 // history between the two tabs rather than splitting it per view.
 
 function createSettingPill({ value, step, unit, min, max, fieldType, title, format, onCommit }) {
-    const PILL_CLASS = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none inline-flex px-[4px] rounded-[4px]';
+    // py + matching -my expands the tap/hover box for tablet fingers without
+    // pushing wrapped script lines further apart (negative margin cancels the
+    // padding's contribution to layout, only the hit area grows).
+    const PILL_CLASS = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none inline-flex px-[4px] py-[10px] -my-[10px] rounded-[4px]';
     const fmt = format || ((v) => unit ? `${roundTo(v, step || 1)} ${unit}` : `${roundTo(v, step || 1)}`);
 
     const pill = document.createElement('span');
@@ -1312,17 +1315,15 @@ function renderStepCards() {
     updateSaveAsNewButtonState();
 }
 
-// beverage_type enum per rest_v1.yml (Profile schema): espresso, calibrate,
-// cleaning, manual, pourover. The Figma grid (node 2662-1507) draws three
-// more tiles -- filter, tea, tea_portafilter -- that decaid has no value for;
-// they render disabled rather than being dropped, so the redesign's full
-// 8-tile layout stays intact while only the five real values are selectable.
+// beverage_type enum per rest_v1.yml (Profile schema) and the Figma grid
+// (node 2662-1507): espresso, filter, pourover, tea, tea_portafilter,
+// calibrate, cleaning, manual.
 const BEVERAGE_TYPE_TILES = [
     { value: 'espresso', label: 'Espresso' },
-    { value: 'filter', label: 'Filter', unsupported: true },
+    { value: 'filter', label: 'Filter' },
     { value: 'pourover', label: 'Pour Over' },
-    { value: 'tea', label: 'Tea', unsupported: true },
-    { value: 'tea_portafilter', label: 'Tea Portafilter', unsupported: true },
+    { value: 'tea', label: 'Tea' },
+    { value: 'tea_portafilter', label: 'Tea Portafilter' },
     { value: 'calibrate', label: 'Calibration' },
     { value: 'cleaning', label: 'Cleaning' },
     { value: 'manual', label: 'Manual' },
@@ -1522,12 +1523,9 @@ function renderSettingsTab() {
             const lastRow = i >= 4;
             btn.className = `h-[72px] w-[210px] flex items-center justify-center text-center font-bold text-[24px] border ${lastCol ? '' : 'mr-[-1px]'} ${lastRow ? '' : 'mb-[-1px]'} ${
                 active ? 'bg-[var(--button-primary-bg)] border-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border-[var(--border-primary)] text-[var(--tab-text-inactive)]'
-            } ${tile.unsupported ? 'opacity-40' : ''}`;
+            }`;
             btn.textContent = getTranslation(tile.label);
             btn.setAttribute('aria-pressed', String(active));
-            // A real disabled button is inert and drops out of the tab order;
-            // aria-disabled alone would still take focus and fire clicks.
-            if (tile.unsupported) btn.disabled = true;
             btn.addEventListener('click', () => {
                 editorState.profile.beverage_type = tile.value;
                 updateSaveAsNewButtonState(); // execution field — no other render path runs after this raw listener
@@ -1712,6 +1710,27 @@ function renderSettingsTab() {
         });
     });
     notesCol.appendChild(notesPreview);
+
+    // ── Author (below Description) — notesCol already scrolls on its own, so
+    // this reads below the description text rather than needing its own card.
+    // Metadata field like title/notes: never part of the content hash
+    // (currentExecChanged's comment above), so no updateSaveAsNewButtonState.
+    const authorSection = document.createElement('div');
+    authorSection.className = 'flex flex-col gap-[12px] mt-[36px] pt-[36px] border-t-[1.5px] border-[var(--border-graph-grid)]';
+
+    const authorLabel = document.createElement('div');
+    authorLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)]';
+    authorLabel.textContent = getTranslation('Author');
+    authorSection.appendChild(authorLabel);
+
+    const authorInput = document.createElement('input');
+    authorInput.type = 'text';
+    authorInput.value = editorState.profile.author || '';
+    authorInput.className = 'text-[24px] text-[var(--text-primary)] bg-[var(--box-color)] border-2 border-[var(--border-color)] rounded-[12px] px-[16px] py-[12px] outline-none focus:border-[var(--mimoja-blue)] w-full';
+    authorInput.addEventListener('change', () => { editorState.profile.author = authorInput.value; });
+    authorSection.appendChild(authorInput);
+
+    notesCol.appendChild(authorSection);
 }
 
 // ─── Script Tab ─────────────────────────────────────────────────────────────
@@ -1815,7 +1834,8 @@ function createScriptChip({ states, index, labelFor, onChange }) {
     // keyboard activation and the button role for free.
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none px-[4px] rounded-[4px]';
+    // Same py/-my hit-area expansion as createSettingPill's PILL_CLASS.
+    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none px-[4px] py-[10px] -my-[10px] rounded-[4px]';
 
     function render() { chip.textContent = labelFor(states[i], i); }
     render();
@@ -2103,10 +2123,13 @@ function renderScriptGraph() {
         t = endT;
     }
 
+    // smooth: true rounds the frame-to-frame corners into a shot-like curve \u2014
+    // this is a preview plot of the target profile, not the live/history shot
+    // trace, so it doesn't need to stay exact point-for-point.
     const traces = [
-        { x: pressureX, y: pressureY, name: 'Pressure', mode: 'lines', line: { color: '#17c29a' }, hoverinfo: 'name' },
-        { x: flowX,     y: flowY,     name: 'Flow',     mode: 'lines', line: { color: '#0358cf' }, hoverinfo: 'name' },
-        { x: tempX,     y: tempY,     name: '\u00b0C',  mode: 'lines', line: { color: tempLineColor }, hoverinfo: 'name' },
+        { x: pressureX, y: pressureY, name: 'Pressure', mode: 'lines', line: { color: '#17c29a', smooth: true }, hoverinfo: 'name' },
+        { x: flowX,     y: flowY,     name: 'Flow',     mode: 'lines', line: { color: '#0358cf', smooth: true }, hoverinfo: 'name' },
+        { x: tempX,     y: tempY,     name: '\u00b0C',  mode: 'lines', line: { color: tempLineColor, smooth: true }, hoverinfo: 'name' },
     ];
 
     const layout = isDark ? {
