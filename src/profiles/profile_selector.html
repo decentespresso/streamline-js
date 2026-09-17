@@ -1,3 +1,8 @@
+<style>
+    .profile-list-scroll::-webkit-scrollbar { width: 10px; }
+    .profile-list-scroll::-webkit-scrollbar-track { background: transparent; }
+    .profile-list-scroll::-webkit-scrollbar-thumb { background: #c9d3e0; border-radius: 999px; }
+</style>
 <div id="scaled-content">
 <div class="bg-base-200 overflow-hidden flex-grow flex flex-col" role="dialog" aria-labelledby="page_title">
     <div id="subpage-header" class="flex justify-between items-center p-6 border-b border-base-300 bg-[var(--box-color)] h-[150px]">
@@ -33,9 +38,6 @@
                             <path d="M57.7498 57.7508L45.9248 45.9258" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
                         </svg>
                     </button>
-                    <a id="ai_generate_profile" href="http://localhost:8080/api/v1/plugins/decent-profile.reaplugin/ui?layout=baseline" class="w-[82.5px] h-[82.5px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] flex items-center justify-center" aria-label="AI Generate Profile">
-                        <img src="src/ui/ai-generate-icon-artificial-intelligence-black-and-white-icon-modern-minimal-design-for-your-futuristic-website-or-application-image-generator-with-ai-vector.svg" class="w-[36px] h-[36px]" aria-hidden="true" />
-                    </a>
                 </div>
                 <button class="w-[82.5px] h-[82.5px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] flex items-center justify-center" id ='delete_profile' aria-label="Delete Profile">
                     <svg class="w-[36px] h-[36px]" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -43,15 +45,7 @@
                     </svg>
                 </button>
             </div>
-            <div id="profile-list" class=" p-3 space-y-1.5 text-[30px] text-[var(--text-primary)] overflow-y-auto min-h-0 h-[850px]" role="listbox" aria-label="Available Profiles">
-            </div>
-            <div class="p-6 border-t border-base-300 flex items-center space-x-[22px]">
-                <button id='assign-fav-btn-0' aria-label="Assign to Favorite 1" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">1</button>
-                <button id='assign-fav-btn-1' aria-label="Assign to Favorite 2" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">2</button>
-                <button id='assign-fav-btn-2' aria-label="Assign to Favorite 3" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">3</button>
-                <button id='assign-fav-btn-3' aria-label="Assign to Favorite 4" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">4</button>
-                <button id='assign-fav-btn-4' aria-label="Assign to Favorite 5" class="w-[68px] h-[68px] rounded-full border-2 border-[var(--mimoja-blue)] flex items-center justify-center text-[var(--mimoja-blue)] text-[30px] font-semibold">5</button>
-                <span class="text-[var(--mimoja-blue)] font-semibold text-xl ml-2" data-i18n-key="Assign favourite" aria-hidden="true">Assign favourite</span>
+            <div id="profile-list" class="profile-list-scroll p-3 space-y-1.5 text-[30px] text-[var(--text-primary)] overflow-y-auto min-h-0 flex-grow" role="listbox" aria-label="Available Profiles">
             </div>
         </div>
         <div id="separator" class="cursor-col-resize w-px bg-gray-300 hover:bg-blue-500 transition-colors z-10" style="position: relative;" aria-hidden="true"></div>
@@ -59,6 +53,9 @@
             <div class="flex justify-between items-center profile-selector-bg pl-[54px] pr-[30px]">
                 <div class="flex items-center gap-4 h-[121.5px]">
                     <h2 class="text-[30px] font-bold text-[var(--mimoja-blue)]" id = 'selected_profile_name' aria-live="polite">Pick a profile</h2>
+                    <button id="edit-profile-name-btn" class="flex items-center justify-center text-[var(--mimoja-blue)]" aria-label="Edit profile name">
+                        <svg class="w-[24px] h-[24px]" aria-hidden="true" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    </button>
                 </div>
                 <div class="flex space-x-4">
                     <button id = "reset_btn" class="bg-[var(--profile-button-background-color)] border-2 border-[#c9c9c9] text-[var(--mimoja-blue)] font-semibold rounded-[15px] text-[19.5px] w-[150px] h-[82.5px] px-[45px] py-[15px] flex items-center justify-center" data-i18n-key="RESET">RESET</button>
