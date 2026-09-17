@@ -134,7 +134,12 @@ function seriesOptions(traces, layout) {
             data: trace.x.map((x, pointIndex) => [x, trace.y[pointIndex]]),
             showSymbol: false,
             symbol: 'none',
-            smooth: false,
+            // Opt-in per trace (profile preview curves) — live shot/history
+            // traces must stay unsmoothed so target vs actual data reads exact.
+            // smoothMonotone stops the spline overshooting below 0 or past a
+            // flat target when a trace jumps straight off a zero baseline.
+            smooth: trace.line?.smooth ? 0.3 : false,
+            smoothMonotone: trace.line?.smooth ? 'x' : null,
             connectNulls: false,
             silent: !hoverable,
             triggerEvent: hoverable ? 'line' : false,
