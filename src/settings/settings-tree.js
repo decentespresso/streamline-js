@@ -68,9 +68,12 @@ export const SETTINGS_TREE = {
         subcategories: [
             { id: 'extention1', name: 'Visualizer', settingsCategory: 'extensions' },
             { id: 'shotupload', name: 'Shot Uploader', settingsCategory: 'shotupload', i18nKey: 'Shot Uploader' },
-            { id: 'extention2', name: 'Plugins', settingsCategory: 'plugins' },
-            { id: 'dye2', name: 'DYE2', settingsCategory: 'dye2', i18nKey: 'DYE2' },
-            { id: 'printtheshot', name: 'Print The Shot', settingsCategory: 'printtheshot', i18nKey: 'Print The Shot' }
+            // The one dynamic node: lists every plugin Decaid reports (see
+            // window.loadPluginList in settings.js) with a full generic settings
+            // card each — install state, enable toggle, version/update, and its
+            // own manifest settings. A new plugin needs no entry here; it just
+            // needs to be installed.
+            { id: 'extention2', name: 'Plugins', settingsCategory: 'plugins' }
         ]
     },
     'miscellaneous': {

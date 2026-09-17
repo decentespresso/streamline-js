@@ -3,7 +3,7 @@
 // These lock spec invariant I1: the 8→16→8 round trip is lossless.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { led8to16, ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite } from '../src/modules/led-color.js';
+import { led8to16, ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite, ledLiveWriteState } from '../src/modules/led-color.js';
 
 test('led8to16 byte-replicates the 8-bit value up', () => {
     assert.equal(led8to16(0x00), '0000');
@@ -107,4 +107,66 @@ test('composite: missing palette entries read as black', () => {
     assert.deepEqual(
         ledPreviewComposite(null, [], 'awake', 'awake'),
         { front: '000000000000', back: '000000000000' });
+});
+
+// ── ledLiveWriteState ────────────────────────────────────────────────────
+// The payload that actually reaches the machine. There is no preview endpoint:
+// a live colour is a PUT into the bank the firmware is rendering, so these
+// tests lock the two properties that keep that from destroying the palette --
+// the other bank is carried through untouched, and the switch mirrors front.
+
+test('live write: the colour lands in the bank the machine is rendering', () => {
+    const out = ledLiveWriteState(PALETTE, 'FFFF00000000', '0000FFFF0000', 'awake');
+    assert.equal(out.frontStrip.awake, 'FFFF00000000');
+    assert.equal(out.backStrip.awake, '0000FFFF0000');
+});
+
+test('live write: the bank the machine is NOT rendering is preserved', () => {
+    // This is what makes a live write survivable: the half of the palette the
+    // user cannot see is never touched, so a restore only has to undo one bank.
+    const out = ledLiveWriteState(PALETTE, 'FFFF00000000', '0000FFFF0000', 'awake');
+    assert.equal(out.frontStrip.sleeping, '000000001111');
+    assert.equal(out.backStrip.sleeping, '000000002222');
+});
+
+test('live write: painting while the machine sleeps targets the sleeping bank', () => {
+    const out = ledLiveWriteState(PALETTE, 'FFFF00000000', '0000FFFF0000', 'sleeping');
+    assert.equal(out.frontStrip.sleeping, 'FFFF00000000');
+    assert.equal(out.backStrip.sleeping, '0000FFFF0000');
+    assert.equal(out.frontStrip.awake, 'AAAA00000000'); // awake bank untouched
+    assert.equal(out.backStrip.awake, '0000BBBB0000');
+});
+
+test('live write: frontSwitch mirrors the front strip, never an independent value', () => {
+    // The firmware derives the HV switch colours from the front strip and the
+    // server ignores frontSwitch on write; sending anything else is a lie.
+    const out = ledLiveWriteState(PALETTE, 'FFFF00000000', '0000FFFF0000', 'awake');
+    assert.deepEqual(out.frontSwitch, out.frontStrip);
+});
+
+test('live write: an unrecognised bank is treated as awake', () => {
+    // ledMachinePaletteState() only ever yields 'awake' for a state it does not
+    // recognise; make sure a stray value cannot write the sleeping bank.
+    const out = ledLiveWriteState(PALETTE, 'FFFF00000000', '0000FFFF0000', undefined);
+    assert.equal(out.frontStrip.awake, 'FFFF00000000');
+    assert.equal(out.frontStrip.sleeping, '000000001111');
+});
+
+test('live write: missing palette/colours read as black rather than undefined', () => {
+    const out = ledLiveWriteState(null, null, undefined, 'awake');
+    assert.deepEqual(out, {
+        frontStrip: { awake: '000000000000', sleeping: '000000000000' },
+        backStrip: { awake: '000000000000', sleeping: '000000000000' },
+        frontSwitch: { awake: '000000000000', sleeping: '000000000000' },
+    });
+});
+
+test('live write: a composite feeds straight into the payload', () => {
+    // The Lighting page's cross-state preview path end to end: compose what the
+    // user should see, then write it into the bank the machine renders.
+    const { front, back } = ledPreviewComposite(PALETTE, ['frontStrip'], 'sleeping', 'awake');
+    const out = ledLiveWriteState(PALETTE, front, back, 'awake');
+    assert.equal(out.frontStrip.awake, '000000001111');    // the sleep colour, shown now
+    assert.equal(out.backStrip.awake, '0000BBBB0000');     // rear keeps its real colour
+    assert.equal(out.frontStrip.sleeping, '000000001111'); // stored sleep colour intact
 });

@@ -39,6 +39,8 @@ export let reconnectingWebSocket = null; // Exporting for app.js access
 export let currentMachineState = null;
 let previousMachineState = null;
 let scaleWebSocket = null;
+let sensorSnapshotWebSocket = null;
+let sensorSnapshotWebSocketId = null; // sensor `id` the open socket is bound to
 let displayWebSocket = null;
 let displayWebSocketReady = false;
 let pendingDisplayCommand = null;
@@ -130,6 +132,29 @@ export async function getDevices() {
         throw new Error('Failed to get devices');
     }
     return response.json();
+}
+
+// ── Sensors (Bengle milk probe et al.) ──────────────────────────────────────
+// GET /api/v1/sensors lists devices currently registered on the sensor bus
+// (e.g. a Bengle's onboard milk probe, auto-registered by reaprime's
+// BengleProbeBridge while it is physically attached). Each entry is
+// `{ id, info: { name, vendor, data: DataChannel[], commands } }` — note the
+// wire key is `info.data`, not `info.dataChannels` as rest_v1.yml's
+// SensorManifest schema states; the schema is stale here, confirmed against
+// reaprime's SensorInfo.toJson(). Returns [] (not a throw) on any failure so
+// callers can poll this without special-casing errors.
+export async function getSensors() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/sensors`);
+        if (!response.ok) {
+            logger.warn(`Failed to get sensors (status ${response.status})`);
+            return [];
+        }
+        return await response.json();
+    } catch (error) {
+        logger.warn('Error fetching sensors:', error);
+        return [];
+    }
 }
 
 // How long we are willing to hold a caller on a scan before answering from the
@@ -520,6 +545,52 @@ export function connectScaleWebSocket(onData, onReconnect, onDisconnect) {
     };
 
     scaleWebSocket.onreconnect = null;
+}
+
+// ── Generic per-sensor snapshot (Bengle milk probe today) ───────────────────
+// ws/v1/sensors/<id>/snapshot streams whatever the sensor's own `data` map
+// looks like — for the Bengle milk probe that is `{ timestamp, temperature }`
+// (BengleMilkProbe in reaprime), not the `{ id, values }` SensorSnapshot shape
+// rest_v1.yml documents. The id is only valid while reaprime has that sensor
+// registered (see getSensors()); a probe that later detaches is not reflected
+// by the socket closing, only by no further frames arriving, so callers must
+// re-poll getSensors() and treat a stale/missing id as absence themselves.
+export function connectSensorSnapshotWebSocket(sensorId, onData) {
+    if (sensorSnapshotWebSocket && sensorSnapshotWebSocketId === sensorId) {
+        return; // already bound to this sensor
+    }
+    if (sensorSnapshotWebSocket) {
+        logger.info('Closing existing sensor snapshot WebSocket before opening a new one.');
+        sensorSnapshotWebSocket.close();
+    }
+
+    sensorSnapshotWebSocketId = sensorId;
+    sensorSnapshotWebSocket = new ReconnectingWebSocket(`${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/sensors/${sensorId}/snapshot`, [], {
+        reconnectInterval: 3000,
+    });
+
+    sensorSnapshotWebSocket.onmessage = (event) => {
+        try {
+            onData(JSON.parse(event.data));
+        } catch (error) {
+            logger.error('Error parsing sensor snapshot WebSocket message:', error);
+        }
+    };
+
+    sensorSnapshotWebSocket.onerror = (error) => {
+        logger.error('Sensor snapshot WebSocket error:', error);
+    };
+
+    sensorSnapshotWebSocket.onreconnect = null;
+}
+
+/** Close and clear the sensor snapshot socket (no matching sensor found). */
+export function closeSensorSnapshotWebSocket() {
+    if (sensorSnapshotWebSocket) {
+        sensorSnapshotWebSocket.close();
+    }
+    sensorSnapshotWebSocket = null;
+    sensorSnapshotWebSocketId = null;
 }
 
 export function connectShotSettingsWebSocket(onData) {
@@ -1460,18 +1531,28 @@ export async function resyncIfDrifted(key, fetchedValue, pushFn) {
     return remembered;
 }
 
+// KV first, machine second, for the same reason as setTargetSteamDuration: the
+// store is the record of intent, and everything else compares against it.
+//
+// Storing after the PUT resolved (and without awaiting the store write) left a
+// window in which the workflow and the machine already held the NEW value while
+// the store still held the OLD one. Hot water is echoed straight back by a
+// shotSettings frame, so resyncDriftedShotSettings runs inside that window,
+// reads the stale store, and treats the user's own change as drift -- pushing
+// the OLD value back over the machine and the workflow. The tile flashed the
+// new number, the echo of the re-pushed old one repainted it, and the setting
+// was gone. Intermittent rather than constant only because RESYNC_COOLDOWN_MS
+// suppresses the check for 30s after it fires.
 export async function setTargetHotWaterVolume(volume) {
     const value = parseFloat(volume);
-    const result = await updateWorkflow({ hotWaterData: { volume: value } });
-    persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, value);
-    return result;
+    await persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, value);
+    return updateWorkflow({ hotWaterData: { volume: value } });
 }
 
 export async function setTargetHotWaterTemp(temp) {
     const value = parseFloat(temp);
-    const result = await updateWorkflow({ hotWaterData: { targetTemperature: value } });
-    persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, value);
-    return result;
+    await persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, value);
+    return updateWorkflow({ hotWaterData: { targetTemperature: value } });
 }
 
 export async function setTargetHotWaterDuration(duration) {
@@ -1512,17 +1593,25 @@ async function steamHeaterFor(duration) {
     return remembered > 0 ? { targetTemperature: Math.round(remembered) } : {};
 }
 
-// KV first, machine second -- deliberately the reverse order of the hot-water
-// setters above. PUT /workflow can sit in Rea's request queue for 30s and come
-// back 503 (decaid#634), and persisting only on success leaves the store
-// holding the OLD value: the boot resync would then push that stale value back
-// over what the user asked for, and the tile's number would be the only trace
-// of their intent left anywhere. Writing it first makes the store the record of
-// intent, which is what resyncSteamFromStore replays when a push doesn't land.
+// KV first, machine second, like the hot-water setters above. PUT /workflow can
+// sit in Rea's request queue for 30s and come back 503 (decaid#634), and
+// persisting only on success leaves the store holding the OLD value: the boot
+// resync would then push that stale value back over what the user asked for,
+// and the tile's number would be the only trace of their intent left anywhere.
+// Writing it first makes the store the record of intent, which is what
+// resyncSteamFromStore replays when a push doesn't land.
 export async function setTargetSteamDuration(duration) {
     const value = parseFloat(duration);
     await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, value);
     return updateWorkflow({ steamSettings: { duration: value, ...(await steamHeaterFor(value)) } });
+}
+
+// Steam-heater switch for procedures that must not run against a hot steam
+// boiler (descaling). Same remember/restore rule as setTargetSteamDuration:
+// switching off stores the current target, switching back on returns to it.
+// The duration is deliberately untouched, so the user's steam time survives.
+export async function setSteamHeaterEnabled(enabled) {
+    return updateWorkflow({ steamSettings: await steamHeaterFor(enabled ? 1 : 0) });
 }
 
 export async function setTargetSteamFlow(flow) {
@@ -1674,8 +1763,20 @@ export async function setCupWarmerPrewarm(enabled, leadMinutes) {
 
 // ── Bengle: LED strip ───────────────────────────────────────────────────────
 // State = { frontStrip, backStrip, frontSwitch }, each { awake, sleeping } as a
-// 12-char hex 'RRRRGGGGBBBB'. PUT pushes live (no NVM); commit persists to NVM;
-// reset reloads NVM and returns the refreshed state. 404 on a non-Bengle.
+// 12-char hex 'RRRRGGGGBBBB'. 404 on a non-Bengle.
+//
+// These three are the whole surface -- there is no preview endpoint. Per
+// rest_v1.yml and reaprime's de1handler.dart / led_strip_capability.dart:
+//   PUT    writes the four palette MMR registers straight through. It is
+//          immediate AND persistent; there is no staging latch.
+//   commit is a documented compatibility no-op (202, no side effects). Kept
+//          because it is the contract's "persist" verb, not because it does
+//          anything today.
+//   reset  RE-READS the registers and returns them. It is a truthful reload,
+//          NOT a rollback -- the firmware cannot undo a persisted write.
+// So anything that paints the strip temporarily (a colour preview, a sequence
+// step) must PUT the colour and then PUT the real palette back itself; nothing
+// on the server side will restore it. `frontSwitch` is ignored on write.
 export async function getLedStrip() {
     const response = await fetch(`${API_BASE_URL}/machine/ledStrip`);
     if (!response.ok) throw new Error(`Failed to get LED strip (status ${response.status})`);
@@ -1702,24 +1803,6 @@ export async function resetLedStrip() {
     const response = await fetch(`${API_BASE_URL}/machine/ledStrip/reset`, { method: 'POST' });
     if (!response.ok) throw new Error(`Failed to reset LED strip (status ${response.status})`);
     return response.json();
-}
-
-// Live preview: show `front`/`back` (12-char hex) on the strip now, regardless
-// of awake/sleep, without changing the stored palette. clear -> restore awake.
-export async function previewLedStrip(front, back) {
-    const response = await fetch(`${API_BASE_URL}/machine/ledStrip/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ front, back }),
-    });
-    if (!response.ok) throw new Error(`Failed to preview LED (status ${response.status})`);
-    return true;
-}
-
-export async function clearLedStripPreview() {
-    const response = await fetch(`${API_BASE_URL}/machine/ledStrip/preview/clear`, { method: 'POST' });
-    if (!response.ok) throw new Error(`Failed to clear LED preview (status ${response.status})`);
-    return true;
 }
 
 export async function getAppInfo() {
@@ -2497,6 +2580,15 @@ export async function restoreBrightnessFromStorage() {
 export function isWakeLockEnabled() {
     const stored = localStorage.getItem('wakeLockEnabled');
     return stored === null ? true : stored === 'true';
+}
+
+/** Load a chosen profile onto the machine when it wakes from sleep. Default OFF. */
+export function isWakeProfileEnabled() {
+    return localStorage.getItem('wakeProfileEnabled') === 'true';
+}
+
+export function getWakeProfileId() {
+    return localStorage.getItem('wakeProfileId') || '';
 }
 
 export async function enableWakeLock() {

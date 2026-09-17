@@ -9,6 +9,9 @@ import { test } from 'node:test';
 // function is lifted out of the source, as in settings-sync.test.mjs.
 
 const source = readFileSync(new URL('../src/settings/settings.js', import.meta.url), 'utf8');
+// escapeHtml is defined once, in the DOM-free plugin-view.js, and imported by
+// settings.js -- lift it from where it actually lives.
+const viewSource = readFileSync(new URL('../src/settings/plugin-view.js', import.meta.url), 'utf8');
 const match = source.match(/^function pluginUiUrl\(plugin\) \{[\s\S]*?\r?\n\}/m);
 assert.ok(match, 'pluginUiUrl not found in settings.js');
 const pluginUiUrl = new Function('API_BASE_URL', `${match[0]}\nreturn pluginUiUrl;`)('http://x:8080/api/v1');
@@ -55,14 +58,15 @@ test('an id needing escaping stays intact in the path', () => {
 // declares, whichever version that is. The schema below is 0.2.1's.
 
 const shotUpload = (() => {
-    const lift = (re, name) => {
-        const m = source.match(re);
-        assert.ok(m, `${name} not found in settings.js`);
+    const lift = (re, name, from = source) => {
+        const m = from.match(re);
+        assert.ok(m, `${name} not found in source`);
         return m[0].replace('export ', '');
     };
     const body = [
-        lift(/function escapeHtml\(str\) \{[\s\S]*?\r?\n\}/, 'escapeHtml'),
+        lift(/export function escapeHtml\(str\) \{[\s\S]*?\r?\n\}/, 'escapeHtml', viewSource),
         lift(/export function pluginSettingLabel\(key\) \{[\s\S]*?\r?\n\}/, 'pluginSettingLabel'),
+        lift(/export function pluginSettingDisplayLabel\(key, schema\) \{[\s\S]*?\r?\n\}/, 'pluginSettingDisplayLabel'),
         lift(/export function renderPluginSettingControl\(key, schema, idPrefix = 'shotupload'\) \{[\s\S]*?\r?\n\}/, 'renderPluginSettingControl'),
     ].join('\n');
     // getTranslation is identity here: untranslated strings fall back to the
@@ -123,11 +127,51 @@ test('each declared type gets its own widget', () => {
     assert.match(num, /type="number" id="shotupload-setting-LengthThreshold"/);
 });
 
+test('an enum renders a closed list of the manifest values', () => {
+    // The API rejects a value outside `values`, so free text would let the page
+    // offer something the bridge refuses to store.
+    const html = shotUpload.renderPluginSettingControl('Roast', { type: 'enum', values: ['Light', 'Dark'] });
+    assert.match(html, /<select id="shotupload-setting-Roast"[^>]*data-setting-type="enum"/);
+    assert.match(html, /<option value="Light">Light<\/option>/);
+    assert.match(html, /<option value="Dark">Dark<\/option>/);
+});
+
+test('an enum missing its values list renders nothing rather than an empty menu', () => {
+    assert.equal(shotUpload.renderPluginSettingControl('Roast', { type: 'enum' }), '');
+});
+
 test('a type with no widget renders nothing rather than a broken control', () => {
     // The caller logs this, which is the prompt to add the widget. A half-drawn
     // control that silently discards writes would be worse than an absent one.
-    assert.equal(shotUpload.renderPluginSettingControl('Roast', { type: 'enum', values: ['Light'] }), '');
+    assert.equal(shotUpload.renderPluginSettingControl('Mystery', { type: 'colour' }), '');
     assert.equal(shotUpload.renderPluginSettingControl('Missing', undefined), '');
+});
+
+test("the manifest's own label wins over the name derived from the storage key", () => {
+    // PluginSettingSchema.label exists so a form can read "Upload shots
+    // automatically" instead of "AutoUpload".
+    const labelled = shotUpload.renderPluginSettingControl('AutoUpload', {
+        type: 'boolean', label: 'Upload shots automatically',
+    });
+    assert.match(labelled, /Upload shots automatically/);
+    assert.doesNotMatch(labelled, />Auto Upload</);
+});
+
+test('an absent, empty or whitespace label falls back to the split key', () => {
+    // The spec says clients fall back, so a manifest written before labels
+    // existed renders exactly as it did before.
+    for (const schema of [{ type: 'boolean' }, { type: 'boolean', label: '' }, { type: 'boolean', label: '   ' }]) {
+        assert.match(shotUpload.renderPluginSettingControl('AutoUpload', schema), />Auto Upload</);
+    }
+});
+
+test('a secure setting is typed apart from a plain string so its writes differ', () => {
+    // A secure value comes back as { isSet } and must never be assigned into
+    // the field or echoed back as the credential; the write path keys off this.
+    const secret = shotUpload.renderPluginSettingControl('Password', { type: 'string', secure: true });
+    const open = shotUpload.renderPluginSettingControl('ServerUrl', { type: 'string' });
+    assert.match(secret, /data-setting-type="secure"/);
+    assert.match(open, /data-setting-type="string"/);
 });
 
 test('a secure string is not rendered in the clear', () => {

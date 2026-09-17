@@ -14,6 +14,7 @@ import {
     procedureIndicatorView,
     shouldWakeBeforeStart,
     startedProcedureState,
+    steamCoolEnoughToDescale,
 } from '../src/modules/maintenance-progress.js';
 
 const TICK = 1000;
@@ -222,6 +223,7 @@ test('the wake wait is bounded, so a machine that never reports awake still star
 const INTENTIONAL_NEW_KEYS = new Set([
     'Lost contact with the machine. Reconnecting...',
     'The machine did not start. Check that it is awake and connected.',
+    'The steam boiler did not cool down. Try again once it is cold.',
 ]);
 
 test('milestone labels and captions are translation-sheet keys, or declared new', () => {
@@ -252,4 +254,17 @@ test('completion does not reuse the shot-history Done rows', () => {
     assert.ok(!captions.includes('Done'), '`Done` is translated for another screen');
     assert.ok(!captions.includes('done'), '`done` is translated for another screen');
     assert.ok(captions.includes('Ready'), 'completion should read Ready');
+});
+
+// A descale must not start against a hot steam boiler. The unknown case is the
+// one worth pinning: machines that report no steam temperature would otherwise
+// never be able to descale.
+test('the steam cooldown gate blocks only a reading that is actually hot', () => {
+    assert.equal(steamCoolEnoughToDescale(90), false);
+    assert.equal(steamCoolEnoughToDescale(60.5), false);
+    assert.equal(steamCoolEnoughToDescale(60), true);
+    assert.equal(steamCoolEnoughToDescale(21), true);
+    assert.equal(steamCoolEnoughToDescale(null), true);
+    assert.equal(steamCoolEnoughToDescale(undefined), true);
+    assert.equal(steamCoolEnoughToDescale(NaN), true);
 });

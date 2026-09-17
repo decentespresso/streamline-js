@@ -1,6 +1,7 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, resetLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
+import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
 import { initScaling } from '../modules/scaling.js';
 import { getSupportedLanguages, getCurrentLanguage, setLanguage, translatePage, getTranslation } from '../modules/i18n.js';
 import { getTempUnit, setTempUnit, formatTemp, fromDisplayTemp, boundToDisplay } from '../modules/units.js';
@@ -10,7 +11,9 @@ import { isBengleMachine, setMachineModel } from '../modules/machine.js';
 import { resolveSteamStopMode, applyMilkProbeGate } from '../modules/steam-mode.js';
 import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
-import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite } from '../modules/led-color.js';
+import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite, ledLiveWriteState } from '../modules/led-color.js';
+import { LED_SEQUENCE_KEY, MIN_STEP_DURATION_MS, MAX_STEP_DURATION_MS, LED_TRIGGER_STATES, parseLedSequence, serializeLedSequence, addStep, removeStep, updateStep, moveStep, toggleTriggerState } from '../modules/led-sequence.js';
+import { requestStart as ledRunRequestStart, requestStop as ledRunRequestStop, forceStop as ledRunForceStop, onRunChange as ledRunOnChange, getRunState as ledRunGetState, onMachineStateChange as ledRunOnMachineStateChange, noteStoredPalette as ledRunNoteStoredPalette } from '../modules/led-strip-runner.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS } from '../modules/sensor-cal.js';
@@ -24,6 +27,14 @@ import { haYamlBlocks } from '../modules/home-assistant.js';
 import { loadIro } from '../modules/vendor-loader.js';
 import { readSettingsLocation, writeSettingsLocation } from './settings-location.js';
 import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
+import { adoptFromMachine, diffUserSettings, restorePatches } from './settings-restore.js';
+import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
+         pluginIdFromCategory, pluginCategoryFor } from './plugin-view.js';
+
+// The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
+// MMRItem table) and clamps a higher write without reporting it, so the machine
+// keeps its old value while the page shows what was typed.
+const FAN_THRESHOLD_MAX = 50;
 
 // Config for each numeric input that should get two-click numpad support
 const SETTINGS_NUMPAD_CONFIGS = {
@@ -31,7 +42,10 @@ const SETTINGS_NUMPAD_CONFIGS = {
     flushFlowInput:          { title: 'FLUSH FLOW',          unit: 'ml/s', min: 1,   max: 8,    fieldType: 'settings-flush-flow' },
     tankTempInput:           { title: 'TANK TEMPERATURE',    unit: '°C',   min: 10,  max: 40,   fieldType: 'settings-tank-temp' },
     waterAlertInput:         { title: 'WATER ALERT LEVEL',   unit: 'mm',   min: 0,   max: 30,   fieldType: 'settings-water-alert' },
-    calibFanInput:           { title: 'FAN THRESHOLD',       unit: '%',    min: 0,   max: 100,  fieldType: 'settings-calib-fan' },
+    // 50 is the DE1's own ceiling for this MMR item, not a UI preference: the
+    // machine silently clamps anything higher and reports 50 back, so a page
+    // offering 100 let users "set" a value that never took.
+    calibFanInput:           { title: 'FAN THRESHOLD',       unit: '°C',   min: 0,   max: FAN_THRESHOLD_MAX, fieldType: 'settings-calib-fan' },
     calibWeightInput:        { title: 'CALIBRATION WEIGHT',  unit: 'g',    min: 1,   max: 10000,fieldType: 'settings-calib-weight' },
     // DE1 sensor calibration: only the measured half is typed — the DE1's own
     // reading is captured off the machine. The temperature box is entered in
@@ -139,9 +153,6 @@ function attachSettingsNumpad() {
     });
 }
 
-function escapeHtml(str) {
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 let screensaverImagesCache = [];
 
@@ -236,6 +247,18 @@ function hasPendingChanges() {
 }
 const isNum = (v) => typeof v === 'number' && isFinite(v);
 
+// A background refresh must not throw away an edit the user has made but not
+// saved yet. The fetch was started before that edit existed, so its value is
+// the older one -- staging wins. Without this a preload landing mid-edit (or
+// the 3-second retry loop that runs while the DE1 is unreachable) snaps the
+// page back to the machine's value, and the user then steps from that number
+// and saves something they never intended.
+export function mergeStagedOverFetched(fetched, staged) {
+    if (!fetched || typeof fetched !== 'object') return fetched;
+    if (!staged || Object.keys(staged).length === 0) return fetched;
+    return { ...fetched, ...staged };
+}
+
 async function flushPendingChanges() {
     const tasks = [];
     if (Object.keys(pendingChanges.rea).length) tasks.push(setReaSettings(pendingChanges.rea));
@@ -266,8 +289,15 @@ async function flushPendingChanges() {
         if (isNum(water.volume)) persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, water.volume);
         if (isNum(water.targetTemperature)) persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, water.targetTemperature);
     }
+    const written = { de1: { ...pendingChanges.de1 }, de1Advanced: { ...pendingChanges.de1Advanced } };
     if (tasks.length) await Promise.all(tasks);
     saveSettingsBackup();
+    // Only after the writes resolved: a rejected write never reached the
+    // machine, and recording it would make the next visit offer to restore
+    // something that never applied.
+    if (Object.keys(written.de1).length || Object.keys(written.de1Advanced).length) {
+        await syncMachineSettingsRecord(written);
+    }
     resetPendingChanges();
 }
 
@@ -446,18 +476,39 @@ function updateSettingsContentArea(category) {
     maintenanceCleanup = null;
     // Leaving the Lighting page → flush any deferred cross-state palette PUT,
     // THEN stop previewing (flush-before-clear: one strip transition, and the
-    // edit persists exactly as the old always-PUT behaviour did).
-    if (category !== 'ledstrip') { ledFlushDirty(); ledClearPreview(); }
+    // edit persists exactly as the old always-PUT behaviour did). Also release
+    // this page's 'manual' sequence-run ownership -- a state-triggered run
+    // (led-strip-runner.js, driven from app.js) is untouched by this and keeps
+    // running on whatever page the user goes to next.
+    if (category !== 'ledstrip') { ledRestoreStrip(); ledSeqReleaseManual(); }
     // Leaving the Load Cells page → hand the scale WS back to the main page.
     if (category !== 'calib_loadcell' && calWsClaimed) calReleaseScaleWs();
     if (category !== 'calib_sensors') {
         sensorCalStopLive();
+        // Leaving clears a failed read, so returning to the page tries once
+        // more — the machine may have come back in the meantime.
+        sensorCalLoadError = '';
         ({ shown: sensorCalWarningShown, ack: sensorCalWarningAck } = sensorCalWarningNextState(
             { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'leave').state);
         document.getElementById('sensor-cal-warning-modal')?.close();
     }
     // Leaving the Cup Warmer page → stop its ~5 s revalidate poll.
     if (category !== 'cupwarmer' && cupWarmerPollTimer !== null) stopCupWarmerPoll();
+    // A render of calib_sensors rebuilds #settings-content-area from scratch,
+    // which recreates <dialog id="sensor-cal-warning-modal"> as a brand new,
+    // closed node -- silently destroying it if it happened to be open when an
+    // UNRELATED render lands (preloadSettings() finishing in the background,
+    // a language change, another settings write's re-render -- none of which
+    // have anything to do with the calibration read). Capture the real,
+    // browser-reported open state of the node THAT IS ABOUT TO BE REPLACED,
+    // before the rebuild below destroys it, so it can be restored afterwards.
+    // This is deliberately read from the DOM, not from sensorCalWarningShown:
+    // shown only means "opened at some point this visit" and must NOT itself
+    // reopen a dialog the user already dismissed (Ok, or Cancel navigating
+    // away) or closed with Escape -- .open naturally goes false in all of
+    // those cases, so this only fires for a genuine mid-flight interruption.
+    const sensorCalWarningWasOpen = category === 'calib_sensors'
+        && document.getElementById('sensor-cal-warning-modal')?.open === true;
     const contentArea = document.getElementById('settings-content-area');
     if (contentArea) {
         contentArea.innerHTML = renderSettingsContent(category);
@@ -473,6 +524,10 @@ function updateSettingsContentArea(category) {
         }
         if (category === 'plugins') {
             setTimeout(() => window.loadPluginList?.(), 0);
+        }
+        const mountPluginId = pluginIdFromCategory(category);
+        if (mountPluginId) {
+            setTimeout(() => window.loadPluginPage?.(mountPluginId), 0);
         }
         if (category === 'fontsize') {
             setTimeout(initFontSizeSettings, 0);
@@ -509,7 +564,12 @@ function updateSettingsContentArea(category) {
                 { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'render');
             sensorCalWarningShown = state.shown;
             sensorCalWarningAck = state.ack;
-            if (open) setTimeout(sensorCalShowWarning, 0);
+            // `open` alone would leave the warning gone for good the moment an
+            // unrelated render interrupts it before the user has acted on it
+            // -- see sensorCalWarningShouldReopen for why folding in
+            // sensorCalWarningWasOpen (captured above, before the rebuild) is
+            // safe against reopening on a user-driven render.
+            if (sensorCalWarningShouldReopen(open, sensorCalWarningWasOpen)) setTimeout(sensorCalShowWarning, 0);
         }
         // Step 4's live readout needs the scale WS — claim it on every render
         // of the page at step 4 (idempotent), so returning to a resumed wizard
@@ -620,6 +680,174 @@ async function saveSettingsBackup() {
     }
 }
 
+// ── Restore the user's own machine settings ────────────────────────────────
+//
+// Two halves: remember what the user saved here (recordSavedMachineSettings),
+// and, when the machine later reports something else, ask whether to put the
+// user's values back (checkMachineSettingsDrift). Nothing is written to the
+// machine without the user answering -- see settings-restore.js for why a
+// difference cannot be read as a lost setting.
+
+const USER_MACHINE_SETTINGS_KEY = 'userMachineSettings';
+
+// Asked at most once per visit to the settings page, so declining is not
+// undone by the next background refresh landing.
+let machineDriftChecked = false;
+let machineDriftPending = null;
+
+async function readUserMachineSettings() {
+    try {
+        await openDB();
+        return await getSetting(USER_MACHINE_SETTINGS_KEY) || null;
+    } catch (e) {
+        console.warn('readUserMachineSettings failed:', e);
+        return null;
+    }
+}
+
+async function writeUserMachineSettings(record) {
+    try {
+        await openDB();
+        await setSetting(USER_MACHINE_SETTINGS_KEY, record);
+    } catch (e) {
+        console.warn('writeUserMachineSettings failed:', e);
+    }
+}
+
+// Re-read the machine after a write Streamline made and store what it now
+// reports. Every write path here calls this -- saving, restoring, and resetting
+// to defaults -- so the record always reflects this skin's own doing and
+// anything that disagrees with it later came from somewhere else.
+//
+// `written` names keys the user has just set for the first time, which is what
+// adds them to the tracked set; the values come from the machine.
+async function syncMachineSettingsRecord(written = {}) {
+    try {
+        const [de1, de1Advanced] = await Promise.all([getDe1Settings(), getDe1AdvancedSettings()]);
+        settingsCache.de1 = de1;
+        settingsCache.de1Advanced = de1Advanced;
+        const existing = await readUserMachineSettings();
+        await writeUserMachineSettings(adoptFromMachine(existing, { de1, de1Advanced }, written));
+    } catch (e) {
+        // A failed read-back leaves the record as it was: better to ask about a
+        // difference later than to record a value the machine never confirmed.
+        logger.warn('Could not sync machine settings record:', e);
+    }
+}
+
+async function checkMachineSettingsDrift() {
+    if (machineDriftChecked) return;
+    if (!settingsCache.de1 && !settingsCache.de1Advanced) return;
+    // An edit in flight is the user's current intent; comparing against it
+    // would report their own unsaved change as machine drift.
+    if (hasPendingChanges()) return;
+    machineDriftChecked = true;
+
+    const record = await readUserMachineSettings();
+    if (!record) return;
+    const differences = diffUserSettings(record, {
+        de1: settingsCache.de1,
+        de1Advanced: settingsCache.de1Advanced,
+    });
+    if (!differences.length) return;
+
+    machineDriftPending = { record, differences };
+    // Appended to the body rather than to a category's markup: the content area
+    // is rebuilt on every navigation, which would destroy an open dialog.
+    if (!document.getElementById('machine-drift-modal')) {
+        document.body.insertAdjacentHTML('beforeend', machineDriftModal());
+    }
+    const dlg = document.getElementById('machine-drift-modal');
+    if (dlg) {
+        dlg.querySelector('[data-role="machine-drift-list"]').innerHTML = differences
+            .map(d => `<li class="flex items-center justify-between gap-[24px] w-full">
+                    <span>${escapeHtml(getTranslation(machineSettingLabel(d.key)))}</span>
+                    <span class="font-bold text-[var(--text-primary)] whitespace-nowrap">
+                        ${escapeHtml(String(d.actual))} → ${escapeHtml(String(d.saved))}
+                    </span>
+                </li>`)
+            .join('');
+        translatePage();
+        if (!dlg.open) dlg.showModal();
+    }
+}
+
+// Put the user's values back. Only the keys that differ are written, and the
+// caches are refreshed from the machine afterwards so the page shows what the
+// machine actually took rather than what was asked for.
+async function machineDriftRestore() {
+    const pending = machineDriftPending;
+    document.getElementById('machine-drift-modal')?.close();
+    machineDriftPending = null;
+    if (!pending) return;
+    const patches = restorePatches(pending.differences);
+    try {
+        const tasks = [];
+        if (patches.de1) tasks.push(setDe1Settings(patches.de1));
+        if (patches.de1Advanced) tasks.push(setDe1AdvancedSettings(patches.de1Advanced));
+        await Promise.all(tasks);
+        await syncMachineSettingsRecord();
+        ui.showToast(getTranslation('Settings restored'), 3000, 'success');
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+    } catch (e) {
+        logger.error('Failed to restore machine settings', e);
+        ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 5000, 'error');
+    }
+}
+
+// Keeping the machine's values makes them the user's values: without this the
+// same question is asked on every visit to the page.
+async function machineDriftKeep() {
+    const pending = machineDriftPending;
+    document.getElementById('machine-drift-modal')?.close();
+    machineDriftPending = null;
+    if (!pending) return;
+    // The outside change becomes the known state, so it is not queried again.
+    await writeUserMachineSettings(adoptFromMachine(pending.record, {
+        de1: settingsCache.de1,
+        de1Advanced: settingsCache.de1Advanced,
+    }));
+}
+
+// The keys are the API's own field names; these are what the settings pages
+// already call them on screen.
+const MACHINE_SETTING_LABELS = {
+    fan: 'Fan Threshold',
+    flushTemp: 'Flush Temperature',
+    flushFlow: 'Flush Flow',
+    flushTimeout: 'Flush Timeout',
+    hotWaterFlow: 'Hot Water Flow',
+    steamFlow: 'Steam Flow',
+    tankTemp: 'Water Tank Temperature',
+    steamPurgeMode: 'Steam Purge Mode',
+    usb: 'USB Charger Mode',
+};
+
+function machineSettingLabel(key) {
+    return MACHINE_SETTING_LABELS[key] || pluginSettingLabel(key);
+}
+
+function machineDriftModal() {
+    return `
+        <dialog id="machine-drift-modal" class="modal">
+            <div class="modal-box bg-[var(--box-color)] max-w-2xl">
+                <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2" data-i18n-key="Machine settings differ">Machine settings differ</h3>
+                <p class="text-[24px] text-[var(--text-primary)] leading-[1.4] mb-[20px]" data-i18n-key="The machine reports different values than the ones you saved. Restore your saved settings?">The machine reports different values than the ones you saved. Restore your saved settings?</p>
+                <ul data-role="machine-drift-list" class="flex flex-col gap-[10px] w-full text-[22px] text-[var(--text-secondary)]"></ul>
+                <div class="modal-action">
+                    <button class="border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[62px] rounded-[67.5px] border px-[32px] text-[24px] font-bold transition-colors duration-200 hover:bg-[var(--mimoja-blue)] hover:text-white"
+                            onclick="window.machineDriftKeep()" data-i18n-key="Keep machine values">
+                        Keep machine values
+                    </button>
+                    <button class="bg-[#385a92] h-[62px] px-[32px] rounded-[67.5px] text-white text-[24px] font-bold"
+                            onclick="window.machineDriftRestore()" data-i18n-key="Restore">
+                        Restore
+                    </button>
+                </div>
+            </div>
+        </dialog>`;
+}
+
 // NOTE: the settingsBackup written by saveSettingsBackup() is consumed ONLY by
 // preSeedFromIDB() above, which seeds the in-memory display cache and never PUTs.
 // A "reconcile" step that re-applied backup diffs to the SERVER used to live here,
@@ -633,6 +861,12 @@ async function saveSettingsBackup() {
 
 // ── Render settings content based on selected category
 export function renderSettingsContent(category) {
+    // A plugin's own page. Its category is derived from the plugin id
+    // (plugin-view.js), so it never appears in the switch below and never needs
+    // an entry in settings-tree.js -- installing the plugin is what creates it.
+    const ownPagePluginId = pluginIdFromCategory(category);
+    if (ownPagePluginId) return renderPluginPage(ownPagePluginId);
+
     // Determine loading state for the specific category
     let isLoading = false;
     let error = null;
@@ -749,10 +983,6 @@ export function renderSettingsContent(category) {
             return renderPluginManagerSettings();
         case 'shotupload':
             return renderShotUploadSettings();
-        case 'dye2':
-            return renderDye2Settings();
-        case 'printtheshot':
-            return renderPrintTheShotSettings();
         case 'extensions':
         case 'extention1':
         case 'extention2':
@@ -1200,7 +1430,7 @@ export function renderFanThresholdSettings(settings) {
     }
 
     const fanVal = settings.fan !== undefined ? settings.fan : 40;
-    const pct = Math.round(Math.max(0, Math.min(100, fanVal)));
+    const pct = Math.round(Math.max(0, Math.min(FAN_THRESHOLD_MAX, fanVal)));
 
     return `
         <div class="content-stretch flex flex-col gap-[48px] items-start relative w-full">
@@ -1256,7 +1486,7 @@ export function renderFanThresholdSettings(settings) {
                     </div>
                     <div class="flex justify-between text-[18px] text-[var(--text-primary)] opacity-50">
                         <span>0°C</span>
-                        <span data-i18n-key="Range: 0 – 100°C">Range: 0 – 100°C</span>
+                        <span data-i18n-key="Range: 0 – 50°C">Range: 0 – 50°C</span>
                         <span>100°C</span>
                     </div>
                 </div>
@@ -2060,6 +2290,18 @@ export function renderWakeLockSettings() {
     // display-socket listener below for why that distinction matters.
     const wakeLockEnabled = displayStateCache?.wakeLockOverride
         ?? isWakeLockEnabled();
+    const wakeProfileEnabled = isWakeProfileEnabled();
+    const wakeProfileId = getWakeProfileId();
+    const profileOptions = Object.values(availableProfiles)
+        .map(record => `<option value="${escapeHtml(record.id)}" ${record.id === wakeProfileId ? 'selected' : ''}>${escapeHtml(translateProfileTitle(record.profile?.title) || record.id)}</option>`)
+        .join('');
+
+    // Settings can be opened before the main page has ever mounted, in which
+    // case profileManager's cache is still empty (it's only populated by
+    // initMainPageOnce). Fetch it now so the dropdown isn't stuck empty.
+    if (Object.keys(availableProfiles).length === 0) {
+        loadWakeProfileOptionsAsync();
+    }
 
     return `
         <div class="space-y-6 px-[60px] py-[80px]">
@@ -2088,11 +2330,53 @@ export function renderWakeLockSettings() {
                 </div>
             </div>
 
+            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Load Profile on Wake">Load Profile on Wake</label>
+                        <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Automatically load a chosen profile when the machine wakes from sleep">
+                            Automatically load a chosen profile when the machine wakes from sleep
+                        </p>
+                    </div>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="wake-profile-toggle" class="sr-only peer"
+                               ${wakeProfileEnabled ? 'checked' : ''}
+                               onchange="handleWakeProfileToggle(this.checked)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
+                </div>
+                <div id="wake-profile-select-row" class="mt-4" ${wakeProfileEnabled ? '' : 'hidden'}>
+                    <select id="wake-profile-select"
+                            class="select select-bordered w-full max-w-xs text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
+                            onchange="handleWakeProfileSelect(this.value)">
+                        <option value="" data-i18n-key="Select a profile">Select a profile</option>
+                        ${profileOptions}
+                    </select>
+                </div>
+            </div>
+
             <div class="text-[18px] text-[var(--text-primary)] opacity-75 mt-4">
                 <p><strong>Note:</strong> Wake-lock automatically releases when the WebSocket disconnects.</p>
             </div>
         </div>
     `;
+}
+
+async function loadWakeProfileOptionsAsync() {
+    try {
+        await loadAvailableProfiles();
+    } catch (error) {
+        console.error('Failed to load profiles for wake settings:', error);
+        return;
+    }
+    const select = document.getElementById('wake-profile-select');
+    if (!select) return; // navigated away before the fetch resolved
+    const wakeProfileId = getWakeProfileId();
+    const options = Object.values(availableProfiles)
+        .map(record => `<option value="${escapeHtml(record.id)}" ${record.id === wakeProfileId ? 'selected' : ''}>${escapeHtml(translateProfileTitle(record.profile?.title) || record.id)}</option>`)
+        .join('');
+    select.innerHTML = `<option value="" data-i18n-key="Select a profile">Select a profile</option>${options}`;
 }
 
 // Render Presence Detection settings (async — populates container after fetch)
@@ -3352,8 +3636,9 @@ window.setCupWarmerPrewarmMinutes = async function(value) {
 
 // ── Lighting / LED strip (Bengle) ────────────────────────────────────────────
 // State = { frontStrip, backStrip, frontSwitch } × { awake, sleeping }, each a
-// 12-char 'RRRRGGGGBBBB' hex (16-bit/channel). PUT previews live on the machine;
-// commit persists to NVM; reset reloads NVM. Uses the vendored iro.js colour wheel.
+// 12-char 'RRRRGGGGBBBB' hex (16-bit/channel). PUT is the only write and it is
+// immediate AND persistent -- there is no preview endpoint and no rollback (see
+// the ledStrip block in api.js). Uses the vendored iro.js colour wheel.
 // Colour maps (8-bit↔16-bit) live in ../modules/led-color.js so node:test covers them.
 let ledState = null;           // working LedStripState, or null until loaded
 let ledCommitted = null;       // JSON snapshot at last load/commit
@@ -3365,6 +3650,24 @@ let ledError = false;
 let ledPreviewActive = false;  // a live colour is being previewed on the strip
 let ledPaletteDirty = false;   // cross-state edits not yet PUT (deferred to a preview-end seam)
 let ledLastLit = {};           // last lit colour per 'zoneKey:state', restored on power-on
+// Which tab of the Lighting page is showing. The page holds two things with
+// different commitment models -- a palette that persists to the machine
+// (Save/Reset) and a sequence that plays transiently and saves locally as you
+// type -- so they get separate tabs rather than one stacked column where
+// "Save" looks like it covers both.
+let ledActiveTab = 'colours';  // 'colours' | 'sequence'
+// Colour step-sequence editor (REAL capability — see led-sequence.js header).
+// The ACTUAL playback timer/writes/ownership arbitration live in
+// led-strip-runner.js, shared with app.js's machine-state trigger -- this page
+// only edits the persisted sequence and drives the runner's 'manual' owner
+// slot. ledSeqSteps/Loop/TriggerStates are the persisted editor state, loaded
+// lazily on first render; ledSeqRunSnapshot mirrors the runner for painting.
+let ledSeqSteps = null;
+let ledSeqLoop = false;
+let ledSeqTriggerStates = [];
+let ledSeqLoaded = false;
+let ledSeqRunUnsubscribe = null; // set once subscribed to led-strip-runner.js's onRunChange
+let ledSeqRunSnapshot = { owner: null, running: false, index: -1 };
 let iroLoadPromise = null;
 let iroLoadFailed = false;
 const LED_DEFAULT_ON = 'FFFFAAAA5555'; // warm white — default colour when powering a zone on with no history
@@ -3389,6 +3692,54 @@ function ledCurrentColor16() { return ledCellColor16(ledZoneKeys(ledSelectedZone
 function ledNormalize(data) {
     const z = (o) => ({ awake: o?.awake || '000000000000', sleeping: o?.sleeping || '000000000000' });
     return { frontStrip: z(data?.frontStrip), backStrip: z(data?.backStrip), frontSwitch: z(data?.frontSwitch) };
+}
+
+// Lazy-load the persisted step sequence (steps + loop + trigger states).
+// Re-reads localStorage whenever the in-memory copy hasn't been loaded yet
+// so a settings re-open after a KV sync from another device picks up the
+// synced value.
+function ledSeqLoad() {
+    if (!ledSeqLoaded) {
+        let stored = null;
+        try { stored = localStorage.getItem(LED_SEQUENCE_KEY); } catch (e) { /* private mode */ }
+        const sequence = parseLedSequence(stored);
+        ledSeqSteps = sequence.steps;
+        ledSeqLoop = sequence.loop;
+        ledSeqTriggerStates = sequence.triggerStates;
+        ledSeqLoaded = true;
+    }
+    return ledSeqSteps;
+}
+
+function ledSeqPersist() {
+    try {
+        localStorage.setItem(LED_SEQUENCE_KEY, serializeLedSequence({
+            steps: ledSeqSteps || [], loop: ledSeqLoop, triggerStates: ledSeqTriggerStates,
+        }));
+    } catch (e) { /* private mode — in-memory state still updates */ }
+}
+
+// Mirror led-strip-runner.js's shared run state (owner/index) into this page
+// so the active-step highlight and Start/Stop buttons reflect it, including a
+// trigger run that started while the user happens to be on this page. Wired
+// once per Settings visit; ledSeqReleaseManual() below tears it down at every
+// exit seam.
+function ledSeqEnsureSubscribed() {
+    if (ledSeqRunUnsubscribe) return;
+    ledSeqRunSnapshot = ledRunGetState();
+    ledSeqRunUnsubscribe = ledRunOnChange((snapshot) => {
+        ledSeqRunSnapshot = snapshot;
+        ledSeqPaintActiveStep();
+    });
+}
+
+// Release this page's 'manual' ownership (a no-op if 'manual' doesn't
+// currently own the strip -- e.g. only a trigger run, or nothing, is
+// active) and drop the run-state subscription. Stopping a manual run hands
+// control back to the state trigger -- see led-strip-runner.js.
+function ledSeqReleaseManual() {
+    ledRunRequestStop('manual');
+    if (ledSeqRunUnsubscribe) { ledSeqRunUnsubscribe(); ledSeqRunUnsubscribe = null; }
 }
 
 export function renderLedSettings() {
@@ -3419,6 +3770,7 @@ export function renderLedSettings() {
     if (ledError || !ledState) {
         return renderErrorState(getTranslation('Lighting'), getTranslation('Failed to load lighting settings'));
     }
+    ledSeqEnsureSubscribed();
 
     const isOn = ledCurrentColor16() !== '000000000000';
     const seg = (value, label, current, handler) => {
@@ -3437,74 +3789,199 @@ export function renderLedSettings() {
             class="w-[64px] h-[64px] rounded-full border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${hex}"></button>`
     ).join('');
 
+    const seqSteps = ledSeqLoad();
+    const tab = (id, label) =>
+        `<button class="led-tab" role="tab" aria-selected="${ledActiveTab === id}"
+            onclick="window.ledSelectTab('${id}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
+
+    // ── Static Colours ───────────────────────────────────────────────────
+    // The palette that PERSISTS on the machine. Save/Reset belong here and
+    // only here: the sequence tab saves itself as you type, and having one
+    // Save button under both made it look like it covered the sequence too.
+    const coloursPanel = `
+        <div class="flex flex-row gap-[48px] w-full items-start flex-wrap">
+            <div class="flex flex-col gap-[28px] flex-1 min-w-[420px]">
+                <div class="flex flex-col gap-[12px] w-full">
+                    <p class="led-label text-[26px]" data-i18n-key="Zone">Zone</p>
+                    <div class="flex gap-[12px] w-full">
+                        ${seg('front', 'Front', ledSelectedZone, 'ledSelectZone')}
+                        ${seg('rear', 'Rear', ledSelectedZone, 'ledSelectZone')}
+                        ${seg('both', 'Both', ledSelectedZone, 'ledSelectZone')}
+                    </div>
+                </div>
+                <div class="flex flex-col gap-[12px] w-full">
+                    <p class="led-label text-[26px]" data-i18n-key="State">State</p>
+                    <div class="flex gap-[12px] w-full">
+                        ${seg('awake', 'Awake', ledSelectedState, 'ledSelectState')}
+                        ${seg('sleeping', 'Asleep', ledSelectedState, 'ledSelectState')}
+                    </div>
+                </div>
+                <div class="flex flex-col gap-[12px] w-full">
+                    <p class="led-label text-[26px]" data-i18n-key="Current Colours">Current Colours</p>
+                    <div class="grid w-full gap-[12px] items-center" style="grid-template-columns: 120px 1fr 1fr;">
+                        <div></div>
+                        <div class="text-center text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Awake">Awake</div>
+                        <div class="text-center text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Asleep">Asleep</div>
+                        <div class="text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Front">Front</div>
+                        ${cell('frontStrip', 'Front', 'awake')}
+                        ${cell('frontStrip', 'Front', 'sleeping')}
+                        <div class="text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Rear">Rear</div>
+                        ${cell('backStrip', 'Rear', 'awake')}
+                        ${cell('backStrip', 'Rear', 'sleeping')}
+                    </div>
+                </div>
+                <div class="flex flex-col gap-[12px] w-full">
+                    <p class="led-label text-[26px]" data-i18n-key="Presets">Presets</p>
+                    <div class="flex flex-wrap gap-[14px]">${presetSwatches}</div>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-[20px] items-center">
+                <div class="flex items-center justify-between gap-[20px] w-full">
+                    <span class="led-label text-[26px]" data-i18n-key="Power">Power</span>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="ledPowerToggle" class="sr-only peer" ${isOn ? 'checked' : ''} onchange="window.ledSetPower(this.checked)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
+                </div>
+                <div id="led-picker-slot" style="position:relative;"><div id="led-picker" style="${isOn ? '' : 'opacity:0.35;pointer-events:none;'}"></div></div>
+                <p class="led-muted text-[20px]" data-i18n-key="Wheel picks colour · slider sets brightness">Wheel picks colour · slider sets brightness</p>
+                <div class="flex items-center gap-[16px]" style="${isOn ? '' : 'opacity:0.35;'}">
+                    <div id="led-current-swatch" class="w-[56px] h-[56px] rounded-[10px] border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${ledColor16ToHex8(ledCurrentColor16())}"></div>
+                    <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[24px]">${isOn ? ledColor16ToHex8(ledCurrentColor16()) : 'Off'}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-end gap-[20px] w-full">
+            <button class="border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledReset()" data-i18n-key="Reset">Reset</button>
+            <button class="bg-[var(--mimoja-blue)] text-white h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledSave()" data-i18n-key="Save">Save</button>
+        </div>`;
+
+    // ── Sequence & Triggers ──────────────────────────────────────────────
+    // A step's two colours are the front and rear of ONE moment, so they sit
+    // in a single bordered cell rather than as two loose inputs; the row's
+    // left edge is the active-step indicator (see .led-step in main.css).
+    const seqStepRow = (step, index) => `
+        <div class="led-step ${ledSeqRunSnapshot.index === index ? 'led-seq-step-active' : ''}" data-led-seq-step="${index}">
+            <span class="led-step-index">${index + 1}</span>
+            <div class="led-step-colors">
+                <input type="color" aria-label="${getTranslation('Front')}" value="${step.frontColor}"
+                    onchange="window.ledSeqUpdateStep(${index}, { frontColor: this.value })" />
+                <input type="color" aria-label="${getTranslation('Rear')}" value="${step.rearColor}"
+                    onchange="window.ledSeqUpdateStep(${index}, { rearColor: this.value })" />
+            </div>
+            <input type="number" class="led-step-duration" min="${MIN_STEP_DURATION_MS}" max="${MAX_STEP_DURATION_MS}" step="100"
+                value="${step.durationMs}" aria-label="${getTranslation('Duration (ms)')}"
+                onchange="window.ledSeqUpdateStep(${index}, { durationMs: this.value })" />
+            <span class="led-muted text-[16px]" data-i18n-key="ms">ms</span>
+            <div class="flex gap-[6px] ml-auto">
+                <button class="led-icon-btn" aria-label="${getTranslation('Move step up')}" ${index === 0 ? 'disabled' : ''}
+                    onclick="window.ledSeqMoveStep(${index}, 'up')">&uarr;</button>
+                <button class="led-icon-btn" aria-label="${getTranslation('Move step down')}" ${index === seqSteps.length - 1 ? 'disabled' : ''}
+                    onclick="window.ledSeqMoveStep(${index}, 'down')">&darr;</button>
+                <button class="led-icon-btn" data-variant="remove" aria-label="${getTranslation('Remove step')}"
+                    onclick="window.ledSeqRemoveStep(${index})">&times;</button>
+            </div>
+        </div>`;
+
+    const sequencePanel = `
+        <div class="led-transport w-full">
+            <button id="led-seq-transport" class="led-transport-btn" ${ledSeqTransportAttrs()}
+                onclick="window.ledSeqToggleRun()">${ledSeqTransportLabel()}</button>
+            <div class="led-now" aria-hidden="true">
+                <span id="led-now-front" class="led-now-swatch" style="background-color: ${ledNowColors().front}"></span>
+                <span id="led-now-back" class="led-now-swatch" style="background-color: ${ledNowColors().back}"></span>
+            </div>
+            <span id="led-seq-status" class="text-[20px] font-semibold">${ledSeqStatusHtml()}</span>
+            <label class="flex items-center gap-[12px] ml-auto cursor-pointer">
+                <span class="text-[var(--text-primary)] text-[20px] font-semibold" data-i18n-key="Loop">Loop</span>
+                <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
+                    <input type="checkbox" class="sr-only peer" ${ledSeqLoop ? 'checked' : ''} onchange="window.ledSeqSetLoop(this.checked)">
+                    <span class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></span>
+                    <span class="absolute top-1/2 left-[4px] -translate-y-1/2 peer-checked:translate-x-[34px] size-[30px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></span>
+                </span>
+            </label>
+        </div>
+
+        <div class="flex flex-col gap-[10px] w-full">
+            ${seqSteps.length ? seqSteps.map(seqStepRow).join('')
+                : `<p class="led-muted text-[20px]" data-i18n-key="Add a step to start building a sequence.">Add a step to start building a sequence.</p>`}
+        </div>
+        <button class="border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[56px] px-[28px] rounded-[28px] text-[18px] font-bold self-start"
+            onclick="window.ledSeqAddStep()" data-i18n-key="Add step">Add step</button>
+
+        <div class="h-0 relative w-full"><hr class="border-t border-[var(--profile-button-outline-color)] w-full" /></div>
+        <div class="flex flex-col gap-[12px] w-full">
+            <p class="led-label text-[26px]" data-i18n-key="Auto-run">Auto-run</p>
+            <p class="led-muted text-[20px]" data-i18n-key="Play this sequence whenever the machine enters:">Play this sequence whenever the machine enters:</p>
+            <div class="flex flex-wrap gap-[10px]">
+                ${LED_TRIGGER_STATES.map((s) => {
+                    const active = ledSeqTriggerStates.includes(s.id);
+                    return `<button type="button" class="led-chip" aria-pressed="${active}"
+                        onclick="window.ledSeqToggleTriggerState('${s.id}', ${!active})"
+                        data-i18n-key="${s.label}">${getTranslation(s.label)}</button>`;
+                }).join('')}
+            </div>
+        </div>`;
+
     return `
-        <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
+        <div class="led-page content-stretch flex flex-col gap-[36px] items-start relative w-full">
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Lighting">Lighting</p>
             </div>
 
-            <div class="flex flex-row gap-[48px] w-full items-start flex-wrap">
-                <div class="flex flex-col gap-[28px] flex-1 min-w-[420px]">
-                    <div class="flex flex-col gap-[12px] w-full">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="Zone">Zone</p>
-                        <div class="flex gap-[12px] w-full">
-                            ${seg('front', 'Front', ledSelectedZone, 'ledSelectZone')}
-                            ${seg('rear', 'Rear', ledSelectedZone, 'ledSelectZone')}
-                            ${seg('both', 'Both', ledSelectedZone, 'ledSelectZone')}
-                        </div>
-                    </div>
-                    <div class="flex flex-col gap-[12px] w-full">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="State">State</p>
-                        <div class="flex gap-[12px] w-full">
-                            ${seg('awake', 'Awake', ledSelectedState, 'ledSelectState')}
-                            ${seg('sleeping', 'Asleep', ledSelectedState, 'ledSelectState')}
-                        </div>
-                    </div>
-                    <div class="flex flex-col gap-[12px] w-full">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="Current Colours">Current Colours</p>
-                        <div class="grid w-full gap-[12px] items-center" style="grid-template-columns: 120px 1fr 1fr;">
-                            <div></div>
-                            <div class="text-center text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Awake">Awake</div>
-                            <div class="text-center text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Asleep">Asleep</div>
-                            <div class="text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Front">Front</div>
-                            ${cell('frontStrip', 'Front', 'awake')}
-                            ${cell('frontStrip', 'Front', 'sleeping')}
-                            <div class="text-[var(--text-primary)] text-[22px] font-semibold" data-i18n-key="Rear">Rear</div>
-                            ${cell('backStrip', 'Rear', 'awake')}
-                            ${cell('backStrip', 'Rear', 'sleeping')}
-                        </div>
-                    </div>
-                    <div class="flex flex-col gap-[12px] w-full">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="Presets">Presets</p>
-                        <div class="flex flex-wrap gap-[14px]">${presetSwatches}</div>
-                    </div>
-                </div>
-
-                <div class="flex flex-col gap-[20px] items-center">
-                    <div class="flex items-center justify-between gap-[20px] w-full">
-                        <span class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px]" data-i18n-key="Power">Power</span>
-                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                            <input type="checkbox" id="ledPowerToggle" class="sr-only peer" ${isOn ? 'checked' : ''} onchange="window.ledSetPower(this.checked)">
-                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
-                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                        </label>
-                    </div>
-                    <div id="led-picker-slot" style="position:relative;"><div id="led-picker" style="${isOn ? '' : 'opacity:0.35;pointer-events:none;'}"></div></div>
-                    <p class="text-[var(--text-secondary)] text-[20px]" data-i18n-key="Wheel picks colour · slider sets brightness">Wheel picks colour · slider sets brightness</p>
-                    <div class="flex items-center gap-[16px]" style="${isOn ? '' : 'opacity:0.35;'}">
-                        <div id="led-current-swatch" class="w-[56px] h-[56px] rounded-[10px] border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${ledColor16ToHex8(ledCurrentColor16())}"></div>
-                        <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[24px]">${isOn ? ledColor16ToHex8(ledCurrentColor16()) : 'Off'}</span>
-                    </div>
-                </div>
+            <div class="led-tabs w-full" role="tablist">
+                ${tab('colours', 'Static Colours')}
+                ${tab('sequence', 'Sequence')}
             </div>
 
-            <div class="h-0 relative w-full"><hr class="border-t border-[#c9c9c9] w-full" /></div>
-            <div class="flex justify-end gap-[20px] w-full">
-                <button class="border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledReset()" data-i18n-key="Reset">Reset</button>
-                <button class="bg-[var(--mimoja-blue)] text-white h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledSave()" data-i18n-key="Save">Save</button>
+            <div class="flex flex-col gap-[28px] items-start w-full" role="tabpanel">
+                ${ledActiveTab === 'sequence' ? sequencePanel : coloursPanel}
             </div>
         </div>
     `;
+}
+
+// The colours ON THE STRIP right now, as '#RRGGBB'. While a sequence plays
+// that is the step the runner last wrote; otherwise it is the stored palette's
+// machine-state bank, which is what the firmware is rendering.
+function ledNowColors() {
+    const playing = ledSeqRunSnapshot.running ? ledSeqRunSnapshot.steps?.[ledSeqRunSnapshot.index] : null;
+    if (playing) return { front: playing.frontColor, back: playing.rearColor };
+    const bank = ledMachinePaletteState();
+    return {
+        front: ledColor16ToHex8(ledCellColor16('frontStrip', bank)),
+        back: ledColor16ToHex8(ledCellColor16('backStrip', bank)),
+    };
+}
+
+// Transport button: one control that reads the live run state, rather than a
+// Start/Stop pair where one half is always dead. Stop is offered only for a
+// run this page owns -- an auto-run belongs to the machine-state trigger, and
+// pressing play simply preempts it (see led-strip-runner.js).
+const ledSeqIsManualRun = () => ledSeqRunSnapshot.owner === 'manual';
+function ledSeqTransportLabel() {
+    return getTranslation(ledSeqIsManualRun() ? 'Stop' : 'Play');
+}
+function ledSeqTransportAttrs() {
+    const disabled = !ledSeqIsManualRun() && !(ledSeqSteps && ledSeqSteps.length);
+    return `data-mode="${ledSeqIsManualRun() ? 'stop' : 'play'}"` +
+        ` data-i18n-key="${ledSeqIsManualRun() ? 'Stop' : 'Play'}"${disabled ? ' disabled' : ''}`;
+}
+
+// Status line. Split so the translatable words and the live numbers are
+// separate nodes -- translatePage() replaces a node's text wholesale, so a
+// "Step 2 of 5" string baked into one key would lose its numbers.
+function ledSeqStatusHtml() {
+    if (!ledSeqRunSnapshot.running) {
+        return `<span class="led-muted" data-i18n-key="Stopped">${getTranslation('Stopped')}</span>`;
+    }
+    const label = ledSeqIsManualRun() ? 'Playing' : 'Auto-running';
+    const total = ledSeqRunSnapshot.steps?.length || 0;
+    return `<span style="color: var(--mimoja-blue);" data-i18n-key="${label}">${getTranslation(label)}</span>` +
+        `<span class="led-muted"> ${ledSeqRunSnapshot.index + 1}&thinsp;/&thinsp;${total}</span>`;
 }
 
 function initLedPicker() {
@@ -3571,33 +4048,38 @@ function ledUpdateSwatchesDom(hex8) {
 }
 
 // ── LED strip write sequencing ───────────────────────────────────────────────
-// Every write that changes what the strip SHOWS (palette PUT, preview POST,
-// preview clear) is funnelled through ONE promise chain, so writes land in
-// enqueue order and can never interleave. This is what keeps a cross-state
-// preview steady: the FW unconditionally re-applies the machine-state bank to
-// the live registers on EVERY palette-register write, so any PUT
-// that lands while a cross-state preview is up repaints the strip with the
-// awake palette until the next preview write — a visible flash. The rules
-// that make that flash impossible:
-//   1. While a cross-state edit is active, NO stored-palette PUT is issued —
-//      not per move (which alternated visibly) and not at gesture end (which
-//      left a residual flash). Moves and gesture ends are PREVIEW writes only,
-//      coalesced update-in-place (never a clear between two previews); the
-//      pending palette is only marked dirty (ledCommitEdit).
-//   2. The deferred PUT flushes at the seams where the preview ENDS — target
-//      switch, Save, Reset, settings Cancel/Save, leaving the Lighting page —
-//      enqueued immediately BEFORE that seam's preview-clear (ledFlushDirty →
-//      ledPutPalette, no preview chase). The cross-state edit never touched
-//      the bank the machine is rendering, so the FW re-apply this PUT
-//      triggers paints exactly the palette the clear then writes to the live
-//      registers: the strip makes ONE transition, picked colour → final.
-//   3. Same-state edits keep the immediate PUT (ledFlushPut) — there the FW
-//      re-apply repaints the very colour just edited, so nothing can flash.
-//   4. The chain serializes all of it: a queued PUT can never slip between a
-//      preview and the eye, and a seam's clear can never run before its flush.
+// Every write that changes what the strip SHOWS is funnelled through ONE
+// promise chain, so writes land in enqueue order and can never interleave.
+//
+// There is no preview endpoint on this hardware (see the ledStrip block in
+// api.js). The firmware stores ONE palette and renders the bank matching the
+// machine's wake state, so every write here — previewing a colour the user is
+// dragging, and putting the strip back afterwards — is the same
+// `PUT /machine/ledStrip`, differing only in what payload it carries:
+//   * SAME-STATE edit (editing the bank the machine is rendering): PUT the
+//     working palette itself. What gets stored and what gets shown are the
+//     same thing, so there is nothing to undo — this is just a normal edit.
+//   * CROSS-STATE edit (e.g. picking the asleep colour while the machine is
+//     awake): the strip can only show it by writing it into the AWAKE bank,
+//     which is NOT where the user wants it stored. So those writes carry a
+//     composite (ledPreviewComposite → ledLiveWriteState) that shows the
+//     edited colour while leaving the other bank alone, the real edit is only
+//     marked dirty (ledPaletteDirty), and both are settled at the seams below
+//     by one PUT of the true palette.
+//
+// The seams — switching zone/state, Save, Reset, leaving the page, popstate —
+// all call ledRestoreStrip(), which is the single "put the strip back to what
+// the user actually has" write. Because a deferred cross-state edit and a live
+// preview both resolve to the SAME payload (the working palette), the seam
+// issues exactly one PUT rather than the flush-then-clear pair the old
+// preview-endpoint design needed.
+//
+// NOTE: PUT persists. Every write here is a firmware write, so the coalescing
+// below is not just about flicker — it is what keeps a wheel drag from
+// becoming hundreds of stored writes.
 let ledOpChain = Promise.resolve(); // serialized LED I/O; tail never rejected
 let ledPreviewQueued = false;       // a preview op is queued but not yet started
-let ledFlushQueued = false;         // a PUT+preview flush op is queued but not yet started
+let ledFlushQueued = false;         // a palette PUT is queued but not yet started
 let ledFlushPromise = Promise.resolve(); // the queued flush, for coalesced awaiters (Save)
 
 function ledEnqueue(op) {
@@ -3606,24 +4088,33 @@ function ledEnqueue(op) {
     return p;
 }
 
-// A preview colour is on the strip, or a queued op is about to put one there —
-// the exit seams must clear in either case or a late op would latch the strip.
-const ledPreviewPending = () => ledPreviewActive || ledPreviewQueued || ledFlushQueued;
+// A colour that is NOT the stored palette is on the strip, or a queued op is
+// about to put one there — the exit seams must restore in either case or a
+// late op would latch the strip on a preview colour. A queued ledFlushPut is
+// deliberately NOT counted: it only ever carries the true palette (same-state
+// edits), so it already does what a restore would, and counting it would make
+// every seam after an ordinary edit issue a second identical firmware write.
+const ledPreviewPending = () => ledPreviewActive || ledPreviewQueued;
 
-// POST a live preview of what the user is looking at (edited zones show the
-// bank being edited, all other zones the bank the machine is rendering).
-// Coalesced: at most one op waits in the chain, and it reads the freshest
-// palette/target state only when it actually runs.
+// Drive the colour the user is looking at onto the strip: edited zones show
+// the bank being edited, every other zone the bank the machine is rendering.
+// Written into the machine's bank (the only bank that shows) while the other
+// bank is carried through untouched, so the half of the palette the user is
+// NOT looking at is never disturbed. Coalesced: at most one op waits in the
+// chain, and it reads the freshest palette/target state only when it runs.
 function ledPushPreview() {
     if (ledPreviewQueued) return;
     ledPreviewQueued = true;
     ledEnqueue(async () => {
         ledPreviewQueued = false;
         if (!ledState) return;
+        const machineBank = ledMachinePaletteState();
         const { front, back } = ledPreviewComposite(
-            ledState, ledZoneKeys(ledSelectedZone), ledSelectedState, ledMachinePaletteState());
-        try { await previewLedStrip(front, back); ledPreviewActive = true; }
-        catch (e) { /* preview is a nicety — non-fatal */ }
+            ledState, ledZoneKeys(ledSelectedZone), ledSelectedState, machineBank);
+        try {
+            await setLedStrip(ledLiveWriteState(ledState, front, back, machineBank));
+            ledPreviewActive = true;
+        } catch (e) { /* preview is a nicety — non-fatal */ }
     });
 }
 
@@ -3643,16 +4134,17 @@ function ledSchedulePut() {
 }
 
 // Commit an edit gesture (wheel release, preset tap, power toggle).
-// Same-state: PUT now — the FW re-apply repaints the colour just edited.
-// Cross-state: NO PUT (it would flash the awake palette over the preview) --
-// mark the palette dirty and land the final position as one more
-// coalesced preview write; the preview-end seams flush the PUT later.
+// Same-state: PUT the working palette now — what is stored and what is shown
+// are the same colour, so this is just the edit landing.
+// Cross-state: the edit must NOT be written to the bank the machine renders,
+// so mark it dirty and land the final wheel position as one more coalesced
+// preview write; ledRestoreStrip() at the next seam writes the real palette.
 function ledCommitEdit() {
     if (ledPutTimer) { clearTimeout(ledPutTimer); ledPutTimer = null; }
     // Same late-write guard as ledSchedulePut: with multi-touch, input:end can
     // fire AFTER an exit seam (one finger navigates while another still holds
-    // the wheel) — a late commit would re-post a preview after that seam's
-    // clear and latch it on the strip until the next navigation event.
+    // the wheel) — a late commit would re-write a preview after that seam's
+    // restore and latch it on the strip until the next navigation event.
     if (activeSettingsCategory !== 'ledstrip') return;
     if (ledSelectedState === ledMachinePaletteState()) {
         ledFlushPut();
@@ -3662,10 +4154,9 @@ function ledCommitEdit() {
     }
 }
 
-// PUT the stored palette, then immediately re-assert the preview in the same
-// chain link (the FW re-applies the machine's wake-state bank on every palette
-// write, so an unchased PUT would knock a cross-state preview off the strip).
-// Returns a promise that resolves once both writes have landed (Save awaits it).
+// PUT the working palette. Same-state edit path: the payload IS what the strip
+// should show, so there is nothing to chase it with. Returns a promise that
+// resolves once the write has landed (Save awaits it).
 function ledFlushPut() {
     if (ledPutTimer) { clearTimeout(ledPutTimer); ledPutTimer = null; }
     if (!ledState) return Promise.resolve();
@@ -3675,85 +4166,75 @@ function ledFlushPut() {
         ledFlushQueued = false;
         if (!ledState) return;
         ledPaletteDirty = false; // this PUT carries the full current palette
+        ledPreviewActive = false; // ...and it carries it to BOTH banks: nothing is overridden
         // The front-switch LED can't be set independently — it mirrors the front strip.
         ledState.frontSwitch = { awake: ledState.frontStrip.awake, sleeping: ledState.frontStrip.sleeping };
+        ledRunNoteStoredPalette(ledState); // a running sequence must restore THIS, not the pre-edit palette
         try { await setLedStrip(ledState); } catch (e) { /* non-fatal */ }
-        const { front, back } = ledPreviewComposite(
-            ledState, ledZoneKeys(ledSelectedZone), ledSelectedState, ledMachinePaletteState());
-        try { await previewLedStrip(front, back); ledPreviewActive = true; }
-        catch (e) { /* preview is a nicety — non-fatal */ }
     });
     return ledFlushPromise;
 }
 
-// PUT the stored palette with NO preview chase. Exit-seam use only: enqueue it
-// immediately BEFORE that seam's ledClearPreview(). A cross-state edit never
-// touched the bank the machine is rendering, so the FW re-apply this PUT
-// triggers paints exactly the palette the following clear writes to the live
-// registers — the strip makes one transition (preview → final), and with no
-// chased preview left in flight there is nothing to flash back from. Also the
-// pre-commit flush for Save, which needs the registers current before
-// commitLedStrip persists them.
+// PUT the working palette, unconditionally. The seam write and the pre-save
+// write are the same operation: whatever the strip is currently showing, this
+// puts the user's real palette (both banks) back on it.
 function ledPutPalette() {
     if (ledPutTimer) { clearTimeout(ledPutTimer); ledPutTimer = null; }
     if (!ledState) { ledPaletteDirty = false; return Promise.resolve(); }
     return ledEnqueue(() => {
         if (!ledState) return;
         ledPaletteDirty = false;
+        ledPreviewActive = false;
         // The front-switch LED can't be set independently — it mirrors the front strip.
         ledState.frontSwitch = { awake: ledState.frontStrip.awake, sleeping: ledState.frontStrip.sleeping };
+        ledRunNoteStoredPalette(ledState);
         return setLedStrip(ledState).catch(() => { /* non-fatal */ });
     });
 }
 
-// Flush a deferred cross-state PUT (no-op when nothing was deferred). Call at
-// every seam where the preview ends, immediately before that seam's
-// ledClearPreview() — the shared chain guarantees the flush lands first.
-function ledFlushDirty() {
-    if (ledPaletteDirty) ledPutPalette();
-}
-
-// Restore the strip to its real (wake-state) palette after previewing. Chained,
-// so it lands after any queued preview/PUT (whose chase would otherwise win),
-// and it re-drops the active flag the moment it runs. Safe to call anytime.
-function ledClearPreview() {
-    if (!ledPreviewPending()) return;
+// The single exit-seam write: put the strip back to the palette the user
+// actually has. Covers both things a seam has to settle — a deferred
+// cross-state edit and a live preview override — because both resolve to the
+// same payload, so one PUT does the work the old flush-then-clear pair did.
+// No-op when nothing is pending, so calling it at every seam is safe.
+function ledRestoreStrip() {
+    if (!ledPaletteDirty && !ledPreviewPending()) return;
     ledPreviewActive = false;
-    ledEnqueue(() => { ledPreviewActive = false; return clearLedStripPreview().catch(() => {}); });
+    ledPutPalette();
 }
 
 // Browser/OS back navigation exits settings through the router's popstate
 // handler, not the Cancel/Save buttons — without this seam a cross-state
 // preview stays latched on the strip and the deferred palette PUT is
 // postponed until the next settings visit (lost entirely on an app reload).
-// Flush → clear, exactly like the Cancel/Save seams; both calls are no-ops
-// when nothing is pending, so firing on every popstate is safe. The settings
-// DOM is being torn down, so no category is active any more — dropping
+// Same restore as the Cancel/Save seams; it is a no-op when nothing is
+// pending, so firing on every popstate is safe. The settings DOM is being
+// torn down, so no category is active any more — dropping
 // activeSettingsCategory also disarms the late-write guards (ledSchedulePut,
 // ledCommitEdit) and lets the cup-warmer poll self-stop on its next tick.
 // Module-level: registered once, not per initializeSettings call.
 window.addEventListener('popstate', () => {
-    ledFlushDirty();
-    ledClearPreview();
+    ledRestoreStrip();
+    ledSeqReleaseManual();
     activeSettingsCategory = null;
 });
 
 // Switching the edit target (zone or state bank) ends the current preview —
-// the strip returns to the machine's real palette until the user picks again.
-// A deferred cross-state PUT flushes first (flush → clear, one transition).
+// the strip returns to the user's real palette until they pick again, which
+// also lands any deferred cross-state edit. One PUT, one strip transition.
 window.ledSelectZone = function(zone) {
-    if (ledSelectedZone !== zone) { ledFlushDirty(); ledClearPreview(); }
+    if (ledSelectedZone !== zone) ledRestoreStrip();
     ledSelectedZone = zone;
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
 window.ledSelectState = function(state) {
-    if (ledSelectedState !== state) { ledFlushDirty(); ledClearPreview(); }
+    if (ledSelectedState !== state) ledRestoreStrip();
     ledSelectedState = state;
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
 window.ledSelectCell = function(zoneKey, stateKey) {
     const zone = zoneKey === 'frontStrip' ? 'front' : zoneKey === 'backStrip' ? 'rear' : 'switch';
-    if (ledSelectedZone !== zone || ledSelectedState !== stateKey) { ledFlushDirty(); ledClearPreview(); }
+    if (ledSelectedZone !== zone || ledSelectedState !== stateKey) ledRestoreStrip();
     ledSelectedZone = zone;
     ledSelectedState = stateKey;
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
@@ -3790,20 +4271,125 @@ window.ledSetPower = function(on) {
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
     ledCommitEdit();
 };
-window.ledSave = async function() {
-    // Chaseless PUT, then commit, then clear — the PUT's FW re-apply and the
-    // clear paint the same (machine-state) palette: one strip transition.
-    try { await ledPutPalette(); await commitLedStrip(); ledClearPreview(); ledCommitted = JSON.stringify(ledState); ui.showToast(getTranslation('Lighting saved'), 2000, 'success'); }
-    catch (e) { ui.showToast(getTranslation('Failed to save lighting'), 3000, 'error'); }
+// ── Colour step-sequence editor ──────────────────────────────────────────
+// A REAL capability (see led-sequence.js header). Editing is local to this
+// page: every edit persists to localStorage and re-renders the category, same
+// as every other control here. Playback itself -- the timer, the strip writes
+// (setLedStrip, with the baseline capture/restore that goes with them), and
+// arbitration against app.js's machine-state trigger -- lives entirely in
+// led-strip-runner.js, shared with app.js, so it can keep running on the main
+// page after the user leaves Settings. This page only drives that shared
+// runner's 'manual' owner slot (ledSeqEnsureSubscribed/ledSeqReleaseManual
+// above) and mirrors its state to paint the transport -- ledSeqPaintActiveStep.
+
+function ledSeqEdit(next) {
+    ledSeqSteps = next;
+    ledSeqPersist();
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+}
+window.ledSeqAddStep = function() {
+    ledSeqEdit(addStep(ledSeqLoad(), { frontColor: '#FFAA55', rearColor: '#FFAA55' }));
 };
-window.ledReset = async function() {
+window.ledSeqRemoveStep = function(index) {
+    ledSeqEdit(removeStep(ledSeqLoad(), index));
+};
+window.ledSeqUpdateStep = function(index, patch) {
+    ledSeqEdit(updateStep(ledSeqLoad(), index, patch));
+};
+window.ledSeqMoveStep = function(index, direction) {
+    ledSeqEdit(moveStep(ledSeqLoad(), index, index + (direction === 'up' ? -1 : 1)));
+};
+window.ledSeqSetLoop = function(checked) {
+    ledSeqLoop = !!checked;
+    ledSeqPersist();
+};
+// Which machine states auto-run this sequence (app.js's trigger, via
+// led-strip-runner.js). Re-resolving immediately against the machine's
+// CURRENT state makes toggling feel live instead of waiting for the next
+// state change -- a no-op if 'manual' currently owns the strip (it always
+// wins) or the current state isn't the one just toggled.
+window.ledSeqToggleTriggerState = function(stateId, enabled) {
+    ledSeqLoad();
+    const next = toggleTriggerState({ steps: ledSeqSteps, loop: ledSeqLoop, triggerStates: ledSeqTriggerStates }, stateId, enabled);
+    ledSeqTriggerStates = next.triggerStates;
+    ledSeqPersist();
+    ledRunOnMachineStateChange(currentMachineState);
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+};
+
+// Patch the active-step highlight, the transport button, the status line and
+// the now-playing swatches -- never a re-render, because the playback tick
+// must not rebuild the page while the user is editing a field in it.
+// ledSeqRunSnapshot reflects led-strip-runner.js's shared state, so this shows
+// whichever step is ACTUALLY on the strip, even if a trigger run put it there.
+function ledSeqPaintActiveStep() {
+    document.querySelectorAll('[data-led-seq-step]').forEach((el) => {
+        el.classList.toggle('led-seq-step-active', Number(el.dataset.ledSeqStep) === ledSeqRunSnapshot.index);
+    });
+    const transport = document.getElementById('led-seq-transport');
+    if (transport) {
+        const mode = ledSeqIsManualRun() ? 'stop' : 'play';
+        transport.dataset.mode = mode;
+        transport.dataset.i18nKey = ledSeqIsManualRun() ? 'Stop' : 'Play';
+        transport.textContent = ledSeqTransportLabel();
+        transport.disabled = !ledSeqIsManualRun() && !ledSeqSteps?.length;
+    }
+    const status = document.getElementById('led-seq-status');
+    if (status) status.innerHTML = ledSeqStatusHtml();
+    const now = ledNowColors();
+    const front = document.getElementById('led-now-front');
+    const back = document.getElementById('led-now-back');
+    if (front) front.style.backgroundColor = now.front;
+    if (back) back.style.backgroundColor = now.back;
+}
+
+// One transport control, resolved against the LIVE run state on each press so
+// the button never acts on a stale render. Playing takes over from whatever is
+// running, including a trigger run ('manual' always preempts). Stopping only
+// applies to a run this page owns, and hands control back to the trigger for
+// the machine's current state -- see led-strip-runner.js.
+window.ledSeqToggleRun = function() {
+    if (ledSeqIsManualRun()) { ledRunRequestStop('manual'); return; }
+    ledSeqLoad();
+    ledRunRequestStart(ledSeqSteps, ledSeqLoop, 'manual');
+};
+
+// Switching tabs ends any colour preview the wheel put on the strip -- the
+// user is no longer looking at the control that justified it -- and lands a
+// deferred cross-state edit at the same time.
+window.ledSelectTab = function(tabId) {
+    if (ledActiveTab === tabId) return;
+    ledRestoreStrip();
+    ledActiveTab = tabId;
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+};
+window.ledSave = async function() {
+    // One PUT of the working palette (which also clears any preview override),
+    // then the contract's persist verb. The PUT is what actually persists --
+    // commitLedStrip is a documented no-op today (see api.js) and is kept only
+    // so the call site still reads as "save" if commit ever regains meaning.
     try {
-        const data = await resetLedStrip();
-        ledState = ledNormalize(data);
+        await ledPutPalette();
+        await commitLedStrip();
         ledCommitted = JSON.stringify(ledState);
+        ui.showToast(getTranslation('Lighting saved'), 2000, 'success');
+    } catch (e) { ui.showToast(getTranslation('Failed to save lighting'), 3000, 'error'); }
+};
+// Revert to the palette as it was at the last load or Save, and write it back.
+//
+// This deliberately does NOT use `POST /machine/ledStrip/reset`. That endpoint
+// re-READS the firmware registers; it is not a rollback, and the firmware
+// cannot undo a persisted write (see api.js). Since every edit here is written
+// through immediately, re-reading would just hand back the edits the user is
+// trying to discard -- or, mid-preview, promote a preview colour to "saved".
+// `ledCommitted` is the honest revert target: it is the palette this page
+// loaded from the machine, refreshed on every successful Save.
+window.ledReset = function() {
+    if (!ledCommitted) return;
+    try {
+        ledState = ledNormalize(JSON.parse(ledCommitted));
         ledPaletteDirty = false; // deferred edits are discarded with the rest
-        await ledEnqueue(() => setLedStrip(ledState)); // push reloaded NVM values back to the live registers (the seam flush, pre-clear)
-        ledClearPreview();
+        ledPutPalette();
         if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
         ui.showToast(getTranslation('Lighting reset'), 2000, 'success');
     } catch (e) { ui.showToast(getTranslation('Failed to reset lighting'), 3000, 'error'); }
@@ -4478,7 +5064,7 @@ export function renderCalibFanSettings(settings) {
                              style="width: 130px;">
                             <input type="text" inputmode="numeric" pattern="[0-9]*" id="calibFanInput"
                                    class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                   value="${fanValue}" step="1" min="0" max="100"
+                                   value="${fanValue}" step="1" min="0" max="${FAN_THRESHOLD_MAX}"
                                    onchange="window.updateDe1Setting('fan', parseInt(this.value))">
                             <span class="ml-2 text-nowrap">°C</span>
                         </div>
@@ -4490,8 +5076,8 @@ export function renderCalibFanSettings(settings) {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Temperature threshold at which the fan turns on (0–100°C)">
-                        Temperature threshold at which the fan turns on (0–100°C)
+                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Temperature threshold at which the fan turns on (0–50°C)">
+                        Temperature threshold at which the fan turns on (0–50°C)
                     </p>
                 </div>
             </div>
@@ -4702,6 +5288,30 @@ function sensorCalWarningNextState(state, event) {
 }
 // ─── end sensor-cal warning visit policy ───────────────────────────────────
 
+// ─── sensor-cal warning reopen-after-interruption policy ───────────────────
+// Whether THIS render should (re)open the dialog, combining what
+// sensorCalWarningNextState('render') decided (`open`: true only for the
+// very first render of a visit) with whether the dialog that render is about
+// to destroy was actually showing when the render started (`wasOpen`, read
+// straight from the browser -- see updateSettingsContentArea, which captures
+// it before contentArea.innerHTML tears the old <dialog> down).
+//
+// `wasOpen` can only be true for a render NOT caused by the user: showModal()
+// makes the rest of the page inert, so nothing the user does inside
+// calib_sensors (a keystroke, Capture, Apply, Restore -- all of which call
+// sensorCalRerender()) can happen while the dialog is genuinely open. Only an
+// UNRELATED render landing mid-flight (a background settings refresh, a
+// language change, the calibration read itself completing) can interrupt it.
+// So this reopens exactly the interrupted showing, resumed on the fresh node
+// within the same task -- one continuous appearance, not a second one -- and
+// never reopens a dialog the user already dismissed (Ok, Cancel navigating
+// away, or Escape all leave the node's own .open false, so wasOpen is false
+// on the next render regardless of `shown`/`ack`).
+function sensorCalWarningShouldReopen(open, wasOpen) {
+    return open || wasOpen;
+}
+// ─── end sensor-cal warning reopen-after-interruption policy ──────────────
+
 function sensorCalRerender() {
     updateSettingsContentArea('calib_sensors');
 }
@@ -4766,14 +5376,35 @@ async function sensorCalRememberPrevious(id, value) {
     }
 }
 
+// ── sensor-cal load re-entry policy (pure) ──────────────────────────────────
+// initSensorCal runs from the render path, and its own `finally` re-renders —
+// so every flag that means "do not start another read" has to be checked here
+// or the read loops. `error` is the one that used to be missing: a failure
+// recorded the message, re-rendered, and started another read, so a machine
+// answering /machine/calibration with a 504 produced one failed read per
+// gateway timeout (~12 s) for as long as the page stayed open. A failure now
+// stops until the Retry button (or leaving the page) clears the error.
+function shouldStartSensorCalLoad({ loaded, loading, error }) {
+    return !loaded && !loading && !error;
+}
+// ── end sensor-cal load re-entry policy ─────────────────────────────────────
+
 async function initSensorCal() {
     // The live column is fed by the snapshot socket, which nobody has opened
     // if the app booted straight onto this page (a reload while in Settings).
     ensureMachineSnapshotSocket();
     sensorCalStartLive();
-    if (sensorCalLoaded || sensorCalLoading) return;
+    if (!shouldStartSensorCalLoad({ loaded: sensorCalLoaded, loading: sensorCalLoading, error: sensorCalLoadError })) return;
     sensorCalLoading = true;
     sensorCalLoadError = '';
+    // Paint the "Reading calibration…" state before awaiting the read below --
+    // without this, sensorCalLoading flips true and back to false around the
+    // await with no render in between (the only rerender was in `finally`),
+    // so the page silently sat on its stale first paint (an empty table) for
+    // however long the read took, then jumped straight to the result. Safe
+    // against the render this itself causes re-entering: that render's own
+    // setTimeout(initSensorCal, 0) sees loading=true and returns immediately.
+    sensorCalRerender();
     try {
         await Promise.all(SENSOR_CAL_TARGETS.flatMap((t) => [
             sensorCalRead(t.id),
@@ -4786,6 +5417,58 @@ async function initSensorCal() {
     } finally {
         sensorCalLoading = false;
         sensorCalRerender();
+    }
+}
+
+// Re-render the Sensor Calibration page ONLY if it is what's actually on
+// screen right now. sensorCalRerender() (used above) is safe to call
+// unconditionally because it only ever runs from within calib_sensors's own
+// render path -- but warmSensorCalibration() below is kicked off as soon as
+// Settings is reached and can finish well after that, by which point the
+// user may be on a completely different settings category, or have left
+// Settings altogether. activeSettingsCategory alone isn't a safe enough
+// signal for that: it is legacy settings.js module state that persists
+// across page visits and can be stale. The dialog's own id only exists in
+// the DOM while renderSensorCalSettings() is the last thing painted into
+// #settings-content-area, so its presence is the truth.
+function sensorCalRerenderIfVisible() {
+    if (document.getElementById('sensor-cal-warning-modal')) sensorCalRerender();
+}
+
+// Warms the calibration read in the background as soon as Settings is
+// reached, rather than waiting for the user to open Sensor Calibration --
+// so the table usually has values the moment they get there instead of a
+// loading flash (or, on a struggling machine, the read having barely
+// started). Deliberately narrow: reuses shouldStartSensorCalLoad, the SAME
+// re-entry gate initSensorCal already has, so this can never race a read
+// initSensorCal has already started (or vice versa) -- there is exactly one
+// gate for "is a read in flight", not two. No socket, no live timer, no
+// render-on-start: nothing is on screen yet to feed or animate, and those
+// are initSensorCal's job for when the page actually mounts.
+//
+// A failed warm attempt is logged and then left exactly as if it never ran
+// (loading/loaded/error all reset to their starting values) rather than
+// recorded as sensorCalLoadError -- it must not spend the page's one real
+// attempt on a failure the user never saw, and must not leave the page
+// showing a stale error with nothing in flight the moment they do open it.
+export async function warmSensorCalibration() {
+    if (!shouldStartSensorCalLoad({ loaded: sensorCalLoaded, loading: sensorCalLoading, error: sensorCalLoadError })) return;
+    sensorCalLoading = true;
+    try {
+        await Promise.all(SENSOR_CAL_TARGETS.flatMap((t) => [
+            sensorCalRead(t.id),
+            sensorCalLoadPrevious(t.id),
+        ]));
+        sensorCalLoaded = true;
+    } catch (error) {
+        logger.warn('Background sensor calibration warm-up failed (the page will try again when opened):', error);
+    } finally {
+        sensorCalLoading = false;
+        // Covers the narrow window where the user opened the page while this
+        // warm attempt was still in flight: initSensorCal's own call saw
+        // loading=true and returned without a render, so this is the only
+        // thing that will paint the result now that it's done.
+        sensorCalRerenderIfVisible();
     }
 }
 
@@ -4948,7 +5631,15 @@ export function renderSensorCalSettings() {
     if (sensorCalLoading) {
         body = `<p class="${CAL_BODY}" data-i18n-key="Reading calibration from the machine…">Reading calibration from the machine…</p>`;
     } else if (sensorCalLoadError) {
-        body = `<p class="${CAL_BODY} text-red-500">${escapeHtml(sensorCalLoadError)}</p>`;
+        // The read no longer retries on its own, so the error has to offer the
+        // way back — otherwise a transient 504 stranded the page until the user
+        // navigated away and returned. Lead with something a user can act on
+        // rather than the raw status line (logged in full via logger.error in
+        // initSensorCal's catch, for anyone who needs the technical detail).
+        body = `<p class="${CAL_BODY} text-red-500" data-i18n-key="Couldn't read calibration from the machine. Check the connection and try again.">Couldn't read calibration from the machine. Check the connection and try again.</p>
+            <button onclick="window.sensorCalRetryLoad()"
+                    class="${SENSOR_CAL_SMALL_BTN} mt-[16px] bg-[var(--button-primary-bg)] text-white"
+                    data-i18n-key="Retry">Retry</button>`;
     } else {
         body = `
             <div class="w-full" style="overflow-x:auto">
@@ -5237,6 +5928,82 @@ export function renderLanguageSettings() {
 }
 
 // Render plugin manager — lists all installed plugins with enable/disable toggles
+// Plugins Decaid reported, kept so the Extensions nav can list one row per
+// plugin without an await: renderSubcategories is synchronous and runs on every
+// category click. Populated by ensurePluginNav(), which refreshes it whenever
+// Extensions is opened, then re-renders the nav in place if the set changed --
+// a plugin installed from the Decaid dashboard shows up on the next visit
+// without a reload, and the first visit of a session shows the rows as soon as
+// the bridge answers.
+let pluginNavCache = null;
+
+function selfInstallablePluginIds() {
+    return Object.keys(PLUGIN_CARD_OVERRIDES).filter(id => PLUGIN_CARD_OVERRIDES[id].onInstall);
+}
+
+export function extensionPluginNavEntries() {
+    return pluginNavEntries(pluginNavCache, selfInstallablePluginIds()).map(row => ({
+        ...row,
+        // A plugin's own row answers searches for its description and manifest
+        // setting names, which is what the aggregate Plugins page used to do for
+        // all of them at once.
+        keywords: pluginKeywords((pluginNavCache || []).find(p => p?.id === row.pluginId)),
+    }));
+}
+
+async function ensurePluginNav() {
+    const before = extensionPluginNavEntries().map(e => e.id).join('|');
+    try {
+        const { getPlugins } = await import('../modules/api.js');
+        const plugins = await getPlugins();
+        // null is the fetch-failed sentinel: keep whatever was listed before
+        // rather than emptying the nav out from under the user mid-session.
+        if (plugins) pluginNavCache = plugins;
+    } catch (err) {
+        logger.warn('Plugin nav list unavailable:', err?.message);
+    }
+    if (extensionPluginNavEntries().map(e => e.id).join('|') === before) return;
+    const panel = document.getElementById('sub-categories-panel');
+    // Only repaint while Extensions is the open category -- the panel holds
+    // another category's rows otherwise, and this resolves after navigation.
+    if (!panel || lastRenderedMainCategory !== 'extensions') return;
+    panel.innerHTML = renderSubcategories('extensions');
+    translatePage();
+    // Clicks are delegated on the panel, so the rebuilt rows need no listeners
+    // -- only the active row's styling, which lived on the element just
+    // replaced. Matches activateSubcategory().
+    const active = panel.querySelector(`.settings-subnav-btn[data-category="${CSS.escape(activeSettingsCategory || '')}"]`);
+    if (active) {
+        active.classList.add('text-white', 'bg-[#2c4a7a]');
+        active.classList.remove('text-[#959595]');
+    }
+}
+
+// One plugin's own settings page: the same card the Plugins list used to stack,
+// given a page of its own so eight installed plugins are eight nav rows instead
+// of one column the length of eight plugins.
+function renderPluginPage(pluginId) {
+    return `
+        <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
+            <div id="plugin-page-container" class="flex flex-col gap-[40px] w-full" data-plugin-page="${escapeHtml(pluginId)}">
+                <div class="flex items-center justify-center w-full py-[40px]">
+                    <span class="loading loading-spinner loading-lg text-[#385a92]"></span>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Page title for a plugin's own page, in the same place and weight every other
+// settings page puts its title -- so a plugin page reads as part of Settings
+// rather than as a panel that wandered in from the bridge.
+function renderPluginPageTitle(name) {
+    return `
+        <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <p class="leading-[1.2]" data-i18n-key="${escapeHtml(name)}">${escapeHtml(getTranslation(name))}</p>
+        </div>`;
+}
+
 export function renderPluginManagerSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
@@ -5307,15 +6074,31 @@ export function renderShotUploadSettings() {
     `;
 }
 
-// "AutoUpload" -> "Auto Upload". The schema names a setting but never labels it,
-// so the key is split rather than a friendlier label being invented here -- an
-// invented one is exactly what goes stale. The sentence the user actually reads
-// is the manifest's own `description`.
+// "AutoUpload" -> "Auto Upload". The fallback for a manifest that carries no
+// `label` for a setting: the key is split rather than a friendlier name being
+// invented here, since an invented one is exactly what goes stale. A manifest
+// that does carry `label` wins -- see pluginSettingDisplayLabel.
 export function pluginSettingLabel(key) {
     return String(key)
         .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
         .replace(/[_-]+/g, ' ')
         .trim();
+}
+
+// What a setting is called on screen. PluginSettingSchema.label is the author's
+// own name for it ("Upload shots automatically" rather than the storage key
+// "AutoUpload"); the spec says an absent, empty or whitespace label falls back
+// to the key, so a manifest written before labels existed renders as it always
+// did.
+export function pluginSettingDisplayLabel(key, schema) {
+    const label = typeof schema?.label === 'string' ? schema.label.trim() : '';
+    return label || pluginSettingLabel(key);
+}
+
+// A secure setting is never returned in plaintext: GET /plugins/{id}/settings
+// reports { isSet } instead. Anything else is the stored value.
+export function pluginSecureIsSet(value) {
+    return value && typeof value === 'object' ? value.isSet === true : !!value;
 }
 
 // One control per manifest setting, for the types the plugins on these pages
@@ -5327,16 +6110,24 @@ export function pluginSettingLabel(key) {
 // (Shot Uploader, Print The Shot); the ids have to stay distinct per page.
 export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload') {
     const id = `${idPrefix}-setting-${key}`;
-    const label = escapeHtml(getTranslation(pluginSettingLabel(key)));
+    const label = escapeHtml(getTranslation(pluginSettingDisplayLabel(key, schema)));
+    // One weight for every setting name on the page, including the plugin's own
+    // Enabled row: a manifest toggle printed in 30px bold blue (as these were)
+    // read as a section heading and outranked the switch that turns the whole
+    // plugin on.
+    const labelHtml = `<span class="font-['Inter:SemiBold',sans-serif] font-semibold text-[var(--text-primary)] text-[26px] leading-[1.2]">${label}</span>`;
+    // Manifest help text, under the name it explains rather than under the
+    // control, so a long description cannot drift toward the next setting.
     const description = schema?.description
-        ? `<p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${escapeHtml(schema.description)}">${escapeHtml(getTranslation(schema.description))}</p>`
+        ? `<span class="font-['Inter:Regular',sans-serif] leading-[1.4] text-[var(--text-primary)] opacity-70 text-[22px]" data-i18n-key="${escapeHtml(schema.description)}">${escapeHtml(getTranslation(schema.description))}</span>`
         : '';
+    const inputClass = 'p-3 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue)]';
 
     if (schema?.type === 'boolean') {
         return `
-            <div class="content-stretch flex items-center justify-between relative w-full">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[#385a92] text-[30px]">
-                    <p class="leading-[1.2]">${label}</p>
+            <div class="flex items-center justify-between gap-[24px] w-full">
+                <div class="flex flex-col gap-[4px] max-w-[52ch]">
+                    ${labelHtml}
                     ${description}
                 </div>
                 <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
@@ -5349,12 +6140,31 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
 
     if (schema?.type === 'number') {
         return `
-            <div class="flex flex-col gap-[8px] w-full">
-                <div class="flex items-center gap-4">
-                    <label for="${id}" class="text-[var(--text-primary)] text-[24px]">${label}</label>
-                    <input type="number" id="${id}" min="0" data-setting-key="${escapeHtml(key)}" data-setting-type="number" class="w-24 p-3 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue)]">
+            <div class="flex items-center justify-between gap-[24px] w-full">
+                <div class="flex flex-col gap-[4px] max-w-[52ch]">
+                    <label for="${id}">${labelHtml}</label>
+                    ${description}
                 </div>
-                ${description}
+                <input type="number" id="${id}" min="0" data-setting-key="${escapeHtml(key)}" data-setting-type="number" class="w-[140px] flex-shrink-0 text-right ${inputClass}">
+            </div>`;
+    }
+
+    // An enum names its allowed values in the manifest and the API rejects
+    // anything else, so it is a closed list, not free text -- a plugin that
+    // declares one used to render nothing at all here.
+    if (schema?.type === 'enum' && Array.isArray(schema.values)) {
+        const options = schema.values
+            .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(getTranslation(String(value)))}</option>`)
+            .join('');
+        return `
+            <div class="flex items-center justify-between gap-[24px] w-full">
+                <div class="flex flex-col gap-[4px] max-w-[52ch]">
+                    <label for="${id}">${labelHtml}</label>
+                    ${description}
+                </div>
+                <select id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="enum" class="flex-shrink-0 max-w-[340px] ${inputClass}">
+                    ${options}
+                </select>
             </div>`;
     }
 
@@ -5363,14 +6173,105 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
     // rendering every string in the clear.
     if (schema?.type === 'string') {
         return `
-            <div class="flex flex-col gap-[8px] w-full">
-                <label for="${id}" class="text-[var(--text-primary)] text-[24px]">${label}</label>
-                <input type="${schema.secure ? 'password' : 'text'}" id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="string" class="w-full max-w-[500px] p-3 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue)]">
-                ${description}
+            <div class="flex flex-col gap-[10px] w-full">
+                <div class="flex flex-col gap-[4px] max-w-[62ch]">
+                    <label for="${id}">${labelHtml}</label>
+                    ${description}
+                </div>
+                <input type="${schema.secure ? 'password' : 'text'}" id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="${schema.secure ? 'secure' : 'string'}" class="w-full max-w-[560px] ${inputClass}">
             </div>`;
     }
 
     return '';
+}
+
+// Fill a rendered schema form with its stored values and wire each control to
+// write straight through to the plugin. Shared by the Shot Uploader page and
+// the generic plugin card: two copies of this is how one of them ended up
+// painting a secure setting's { isSet } state object into a password box and
+// saving "[object Object]" as the credential.
+//
+// `ensureLoaded` is awaited before switching a setting ON, because a setting
+// means nothing while the plugin is unloaded.
+export function bindPluginSettingControls(rootEl, {
+    pluginId, idPrefix, schema, keys, settings, ensureLoaded = async () => {}, logLabel = pluginId,
+}) {
+    if (!rootEl) return;
+
+    // A secure value never arrives in plaintext -- GET /plugins/{id}/settings
+    // reports { isSet } -- so the field stays empty and only reports whether a
+    // credential is stored.
+    const markSecure = (el, isSet) => {
+        el.value = '';
+        el.placeholder = getTranslation(isSet ? 'Saved' : 'Not set');
+    };
+
+    // Stored value first, manifest default second -- a plugin that has never
+    // been written to has no stored value, and the default is what it is
+    // actually running with.
+    for (const key of keys) {
+        const el = rootEl.querySelector(`[id="${idPrefix}-setting-${key}"]`);
+        if (!el) continue;
+        const value = settings[key] !== undefined ? settings[key] : schema[key]?.default;
+        if (el.dataset.settingType === 'secure') markSecure(el, pluginSecureIsSet(value));
+        else if (el.type === 'checkbox') el.checked = value === true;
+        else if (value !== undefined && value !== null) el.value = value;
+    }
+
+    rootEl.querySelectorAll('[data-setting-key]').forEach(el => {
+        el.addEventListener('change', async function () {
+            const key = this.dataset.settingKey;
+            const type = this.dataset.settingType;
+            const previous = settings[key] !== undefined ? settings[key] : schema[key]?.default;
+
+            let value;
+            if (type === 'boolean') {
+                value = this.checked;
+            } else if (type === 'secure') {
+                // Typing sets the credential; an empty field keeps the stored
+                // one, which is what the isSet marker is for. Clearing is not
+                // offered here -- an empty box far likelier means "I did not
+                // touch this". Not trimmed: spaces can be part of a secret.
+                if (!this.value) return;
+                value = this.value;
+            } else if (type === 'string' || type === 'enum') {
+                value = this.value.trim();
+            } else {
+                value = parseFloat(this.value);
+                // Rejected rather than written: a NaN or a negative would be
+                // persisted and read back as a broken threshold on every later
+                // load. The schema carries no bounds.
+                if (!isFinite(value) || value < 0) {
+                    this.value = previous ?? '';
+                    return;
+                }
+            }
+
+            this.disabled = true;
+            try {
+                if (value === true) await ensureLoaded();
+                await setPluginSettings(pluginId, { [key]: value });
+                settings[key] = type === 'secure' ? { isSet: true } : value;
+                if (type === 'boolean') {
+                    ui.showToast(
+                        `${getTranslation(pluginSettingDisplayLabel(key, schema[key]))}: ${getTranslation(value ? 'On' : 'Off')}`,
+                        2000, 'success');
+                } else if (type === 'secure') {
+                    // The typed credential must not stay on screen, and the
+                    // placeholder is now the only thing reporting its state.
+                    markSecure(this, true);
+                    ui.showToast(getTranslation('Saved'), 2000, 'success');
+                }
+            } catch (e) {
+                logger.error(`Failed to change ${logLabel} setting ${key}`, e);
+                ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 4000, 'error');
+                if (type === 'boolean') this.checked = previous === true;
+                else if (type === 'secure') markSecure(this, pluginSecureIsSet(previous));
+                else this.value = previous ?? '';
+            }
+            this.disabled = false;
+        });
+    });
 }
 
 // Every control writes straight through to the plugin's settings -- there is no
@@ -5495,69 +6396,20 @@ function setupShotUploadListeners() {
             getTranslation('Nothing to configure'),
             getTranslation('This plugin does not expose any settings.'));
 
-        // Stored value first, manifest default second -- a plugin that has never
-        // been written to has no stored value, and the default is what it is
-        // actually running with.
-        for (const key of keys) {
-            const el = document.getElementById(`shotupload-setting-${key}`);
-            if (!el) continue;
-            const value = settings[key] !== undefined ? settings[key] : schema[key]?.default;
-            if (el.type === 'checkbox') el.checked = value === true;
-            else if (value !== undefined && value !== null) el.value = value;
-        }
         setControlsEnabled(true);
 
-        // A setting means nothing while the plugin is unloaded, so switching one ON
-        // loads it first. Switching off leaves it loaded: the manual upload button
-        // and the status endpoint still work.
-        const saveSetting = async (patch, { needsPlugin = false } = {}) => {
-            if (needsPlugin && !plugin.loaded) {
+        // Switching a setting off leaves the plugin loaded: the manual upload
+        // button and the status endpoint still work.
+        bindPluginSettingControls(controlsEl, {
+            pluginId: PLUGIN_ID,
+            idPrefix: 'shotupload',
+            schema, keys, settings,
+            logLabel: 'shot upload',
+            ensureLoaded: async () => {
+                if (plugin.loaded) return;
                 await enablePlugin(PLUGIN_ID);
                 plugin.loaded = true;
-            }
-            await setPluginSettings(PLUGIN_ID, patch);
-        };
-
-        controlsEl.querySelectorAll('[data-setting-key]').forEach(el => {
-            el.addEventListener('change', async function () {
-                const key = this.dataset.settingKey;
-                const type = this.dataset.settingType;
-                const previous = settings[key] !== undefined ? settings[key] : schema[key]?.default;
-
-                let value;
-                if (type === 'boolean') {
-                    value = this.checked;
-                } else if (type === 'string') {
-                    value = this.value;
-                } else {
-                    value = parseFloat(this.value);
-                    // Rejected rather than written: a NaN or a negative would be
-                    // persisted and read back as a broken threshold on every
-                    // later load. The schema carries no bounds, so this keeps the
-                    // one rule the hand-written field already enforced.
-                    if (!isFinite(value) || value < 0) {
-                        this.value = previous ?? '';
-                        return;
-                    }
-                }
-
-                this.disabled = true;
-                try {
-                    await saveSetting({ [key]: value }, { needsPlugin: value === true });
-                    settings[key] = value;
-                    if (type === 'boolean') {
-                        ui.showToast(
-                            `${getTranslation(pluginSettingLabel(key))}: ${getTranslation(value ? 'On' : 'Off')}`,
-                            2000, 'success');
-                    }
-                } catch (e) {
-                    logger.error(`Failed to change shot upload setting ${key}`, e);
-                    ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 4000, 'error');
-                    if (type === 'boolean') this.checked = previous === true;
-                    else this.value = previous ?? '';
-                }
-                this.disabled = false;
-            });
+            },
         });
 
         uploadNowBtn?.addEventListener('click', async function () {
@@ -5680,251 +6532,128 @@ function pluginDescription(plugin) {
         .trim();
 }
 
-// Print The Shot -- the settings half of print-the-shot.reaplugin, which sends a
-// finished shot to a local print server that renders it as a paper receipt.
+// ─── Generic plugin settings card ─────────────────────────────────────────
 //
-// Settings only, on purpose. The plugin ships its own complete page at its `ui`
-// endpoint -- shot browser, log, print buttons, the 3x retry -- and printing
-// there means converting the shot to the TCL wire format the print server wants,
-// which is ~130 lines living inside the plugin's own bundle. A copy of that here
-// would be wrong the first time the plugin's format changed, for the same reason
-// hand-written setting controls go stale (see renderShotUploadSettings). So this
-// page owns what the skin is better at -- the settings, in the skin's own
-// styling, generated from the manifest -- and hands printing to the page that
-// owns the format.
-const PRINT_THE_SHOT_PLUGIN_ID = 'print-the-shot.reaplugin';
+// One card renderer drives every plugin's settings, whether that plugin is
+// DYE2, Print The Shot, or something installed tomorrow with no skin code at
+// all: name, description, an Open link when the manifest declares a `ui`
+// endpoint, an enable/disable toggle, version and source with an
+// Approve-update button when Decaid is holding one back for permissions, and
+// the manifest's own settings schema (renderPluginSettingControl, the same
+// widgets Shot Uploader's page uses). See docs/AI_API_NOTES.md for the plugin
+// transport this reads, and pluginViewModel (plugin-view.js) for the
+// install/enable/update state machine.
+//
+// GET /plugins has no field for a plugin Decaid hasn't installed yet (no repo,
+// no registry entry -- see PluginManifest in rest_v1.yml), so a generic card
+// can only manage what the bridge already reports. PLUGIN_CARD_OVERRIDES is
+// the narrow, explicit exception list for UI that cannot come from the
+// manifest: currently just DYE2's self-install (it ships from a GitHub repo
+// dyeStrip.js already knows) and its master on/off switch, which is a
+// skin-level feature flag independent of the plugin's loaded state (see
+// setupDye2Extra).
+const PLUGIN_CARD_OVERRIDES = {
+    'dye2.reaplugin': {
+        fallbackTitle: 'Describe Your Espresso',
+        getVersionInfo: getDye2VersionInfo,
+        onInstall: installDye2Plugin,
+        renderExtra: renderDye2Extra,
+        setupExtra: setupDye2Extra,
+        replacesToggle: true,
+    },
+};
 
-export function renderPrintTheShotSettings() {
-    setTimeout(setupPrintTheShotListeners, 0);
-
-    return `
-        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                <p class="leading-[1.2]" id="printtheshot-title" data-i18n-key="Print The Shot">Print The Shot</p>
-            </div>
-
-            <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                <p id="printtheshot-description" class="text-[24px] text-[var(--text-primary)] leading-[1.4] opacity-75"></p>
-
-                <!-- Replaced with a notice when the plugin is missing or unreachable. -->
-                <div id="printtheshot-gate" class="w-full">
-                    <div class="flex items-center justify-center w-full py-[20px]">
-                        <span class="loading loading-spinner loading-lg text-[#385a92]"></span>
-                    </div>
-                </div>
-
-                <!-- Filled from the manifest schema by setupPrintTheShotListeners. -->
-                <div id="printtheshot-controls" class="content-stretch flex flex-col gap-[30px] items-start relative w-full"></div>
-
-                <!-- Filled with a link to the plugin's own page once we know it has one. -->
-                <div id="printtheshot-ui-link" class="w-full"></div>
-            </div>
-        </div>
-    `;
+function pluginCardOverride(pluginId) {
+    return PLUGIN_CARD_OVERRIDES[pluginId] || {};
 }
 
-function setupPrintTheShotListeners() {
-    const gateEl = document.getElementById('printtheshot-gate');
-    const controlsEl = document.getElementById('printtheshot-controls');
-    if (!gateEl || !controlsEl) return;
-
-    const notice = (title, body) => `
-        <div class="flex flex-col gap-[24px] p-[36px] rounded-[20px] border-2 border-dashed border-[var(--profile-button-outline-color)] bg-[var(--box-color)] items-center text-center">
-            <div class="flex flex-col gap-[8px]">
-                <p class="text-[26px] font-bold text-[var(--text-primary)]">${title}</p>
-                <p class="text-[22px] text-[var(--low-contrast-white)] max-w-[500px] leading-[1.4]">${body}</p>
+// DYE2's master switch -- gates the dashboard header UI, not the plugin's
+// loaded state. Persists streamline.dye2Enabled (default OFF) and, when
+// flipped on, live-updates the dashboard via the window.applyDye2Enabled
+// bridge dyeStrip.js installs on the main page. Turning it on requires the
+// plugin installed, loaded, and at DYE2's KV-contract floor -- see
+// ensureDye2PluginReady/checkDye2PluginRequirement in dyeStrip.js -- so the
+// generic enable/disable toggle would be the wrong control here; this
+// replaces it (PLUGIN_CARD_OVERRIDES.replacesToggle).
+function renderDye2Extra() {
+    return `
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <div class="flex flex-col gap-[4px] max-w-[52ch]">
+                <span class="font-['Inter:SemiBold',sans-serif] font-semibold text-[var(--text-primary)] text-[26px] leading-[1.2]" data-i18n-key="DYE2">DYE2</span>
+                <span class="font-['Inter:Regular',sans-serif] leading-[1.4] text-[var(--text-primary)] opacity-70 text-[22px]" data-i18n-key="Show DYE auto-favourites and recipes on the dashboard header.">
+                    Show DYE auto-favourites and recipes on the dashboard header.
+                </span>
             </div>
+            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                <input type="checkbox" id="dye2-enabled" class="sr-only peer">
+                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+            </label>
         </div>`;
-
-    (async () => {
-        controlsEl.style.opacity = '0.4';
-
-        // getPlugins answers null when the request failed and [] when there really
-        // are none, so the two must not collapse into "not installed" -- that would
-        // tell a user with a working plugin to go and install it again.
-        const plugins = await getPlugins();
-        if (!document.getElementById('printtheshot-gate')) return;
-        if (!plugins) {
-            gateEl.innerHTML = notice(
-                getTranslation('Could not check'),
-                getTranslation("Couldn't reach the bridge to check the Print The Shot plugin."));
-            return;
-        }
-        const plugin = plugins.find(p => p?.id === PRINT_THE_SHOT_PLUGIN_ID);
-        if (!plugin) {
-            gateEl.innerHTML = notice(
-                getTranslation('Print The Shot plugin not installed'),
-                getTranslation('Decaid has no Print The Shot plugin installed. Install it on Decaid, then come back to set up printing.'));
-            return;
-        }
-
-        // The plugin names and explains itself. Both are optional on the wire, so
-        // the static header stands in if either is missing.
-        const titleEl = document.getElementById('printtheshot-title');
-        if (titleEl && plugin.name) {
-            titleEl.textContent = getTranslation(plugin.name);
-            titleEl.setAttribute('data-i18n-key', plugin.name);
-        }
-        const descriptionEl = document.getElementById('printtheshot-description');
-        if (descriptionEl && plugin.description) {
-            descriptionEl.textContent = getTranslation(plugin.description);
-            descriptionEl.setAttribute('data-i18n-key', plugin.description);
-        }
-
-        let settings;
-        try {
-            // Strict: the lenient default returns {} for a failed read, which would
-            // paint the controls at their defaults while printing is in fact set up.
-            settings = await getPluginSettings(PRINT_THE_SHOT_PLUGIN_ID, { strict: true }) || {};
-        } catch (e) {
-            logger.warn('Print The Shot settings unavailable:', e);
-            gateEl.innerHTML = notice(
-                getTranslation('Could not check'),
-                getTranslation("Couldn't read the Print The Shot settings. Reopen this page to try again."));
-            return;
-        }
-        // The page can be left while those awaits are in flight, which drops the
-        // form -- same hazard loadVisualizerSettings guards against.
-        if (!document.getElementById('printtheshot-controls')) return;
-
-        gateEl.innerHTML = '';
-
-        const schema = plugin.settings && typeof plugin.settings === 'object' ? plugin.settings : {};
-        const keys = Object.keys(schema);
-        controlsEl.innerHTML = keys.map(key => {
-            const html = renderPluginSettingControl(key, schema[key], 'printtheshot');
-            if (!html) logger.warn(`Print The Shot: no control for setting ${key} of type ${schema[key]?.type}`);
-            return html;
-        }).join('');
-
-        for (const key of keys) {
-            const el = document.getElementById(`printtheshot-setting-${key}`);
-            if (!el) continue;
-            const value = settings[key] !== undefined ? settings[key] : schema[key]?.default;
-            if (el.type === 'checkbox') el.checked = value === true;
-            else if (value !== undefined && value !== null) el.value = value;
-        }
-        controlsEl.style.opacity = '1';
-
-        // Plain same-frame link, as on the Plugins page: the tablet's host opens an
-        // OS browser on this navigation, and a _blank would die in the webview.
-        const uiUrl = pluginUiUrl(plugin);
-        const linkEl = document.getElementById('printtheshot-ui-link');
-        if (linkEl && uiUrl) {
-            linkEl.innerHTML = `
-                <div class="flex flex-col gap-[10px] p-[24px] rounded-[14px] bg-[var(--box-color)] border border-[var(--profile-button-outline-color)]">
-                    <p class="text-[22px] font-bold text-[var(--text-primary)]" data-i18n-key="Printing">Printing</p>
-                    <p class="text-[20px] text-[var(--low-contrast-white)] leading-[1.4]" data-i18n-key="Browse shots, print one by hand and watch the upload log on the plugin's own page.">Browse shots, print one by hand and watch the upload log on the plugin's own page.</p>
-                    <a href="${escapeHtml(uiUrl)}" class="text-[20px] text-[#385a92] underline font-mono break-words">${escapeHtml(uiUrl)}</a>
-                </div>`;
-        }
-        translatePage();
-
-        controlsEl.querySelectorAll('[data-setting-key]').forEach(el => {
-            el.addEventListener('change', async function () {
-                const key = this.dataset.settingKey;
-                const type = this.dataset.settingType;
-                const previous = settings[key] !== undefined ? settings[key] : schema[key]?.default;
-
-                let value;
-                if (type === 'boolean') {
-                    value = this.checked;
-                } else if (type === 'string') {
-                    value = this.value.trim();
-                } else {
-                    value = parseFloat(this.value);
-                    // Rejected rather than written: a NaN or a negative would be
-                    // persisted and read back as a broken threshold on every later
-                    // load. The schema carries no bounds.
-                    if (!isFinite(value) || value < 0) {
-                        this.value = previous ?? '';
-                        return;
-                    }
-                }
-
-                this.disabled = true;
-                try {
-                    // A setting means nothing while the plugin is unloaded, so
-                    // switching one ON loads it first.
-                    if (value === true && !plugin.loaded) {
-                        await enablePlugin(PRINT_THE_SHOT_PLUGIN_ID);
-                        plugin.loaded = true;
-                    }
-                    await setPluginSettings(PRINT_THE_SHOT_PLUGIN_ID, { [key]: value });
-                    settings[key] = value;
-                    if (type === 'boolean') {
-                        ui.showToast(
-                            `${getTranslation(pluginSettingLabel(key))}: ${getTranslation(value ? 'On' : 'Off')}`,
-                            2000, 'success');
-                    }
-                } catch (e) {
-                    logger.error(`Failed to change Print The Shot setting ${key}`, e);
-                    ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 4000, 'error');
-                    if (type === 'boolean') this.checked = previous === true;
-                    else this.value = previous ?? '';
-                }
-                this.disabled = false;
-            });
-        });
-    })();
 }
 
-// Render DYE2 (Describe Your Espresso 2) settings — its own Extensions sub-page.
-export function renderDye2Settings() {
-    setTimeout(setupDye2SettingsListeners, 0);
+function setupDye2Extra(cardEl, refreshVersion) {
+    // Opening this card is the update check -- no button for it. The version
+    // block already painted from GET /plugins; checkDye2UpdatesIfDue installs
+    // anything that needs no new permission on its own (rate-limit aware) and
+    // what survives becomes a pendingUpdate the block repaints with its
+    // Approve button.
+    checkDye2UpdatesIfDue()
+        .then(() => refreshVersion())
+        .catch((e) => logger.error('DYE2 update check failed', e));
 
-    return `
-        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                <p class="leading-[1.2]" data-i18n-key="Describe Your Espresso">Describe Your Espresso</p>
-            </div>
-
-            <div class="content-stretch flex flex-col items-start relative w-full">
-                <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                    <!-- DYE2 master switch — gates the whole DYE2 dashboard header UI. Default OFF. -->
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[#385a92] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="DYE2">DYE2</p>
-                            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Show DYE auto-favourites and recipes on the dashboard header.">
-                                Show DYE auto-favourites and recipes on the dashboard header.
-                            </p>
-                        </div>
-                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                            <input type="checkbox" id="dye2-enabled" class="sr-only peer">
-                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
-                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                        </label>
-                    </div>
-
-                    <!-- Installed version, where Decaid tracks it from, and any update held back for asking new permissions. -->
-                    <div class="content-stretch flex flex-col gap-[10px] items-start relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[#385a92] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Plugin Version">Plugin Version</p>
-                        </div>
-                        <div id="dye2-version-info" class="w-full text-[24px] text-[var(--text-secondary)]">
-                            ${getTranslation('Checking')}…
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+    const toggle = cardEl.querySelector('#dye2-enabled');
+    if (!toggle) return;
+    const KEY = 'streamline.dye2Enabled';
+    let enabled = false;
+    try { enabled = localStorage.getItem(KEY) === 'true'; } catch (e) { /* private mode */ }
+    toggle.checked = enabled;
+    toggle.addEventListener('change', async function () {
+        const on = this.checked;
+        // Turning on requires the plugin installed, loaded, and >= its minimum
+        // version -- ensureDye2PluginReady prompts with a download link and
+        // returns false if not, in which case we revert the toggle.
+        if (on) {
+            const ready = await ensureDye2PluginReady();
+            if (!ready) { this.checked = false; return; }
+        }
+        try { localStorage.setItem(KEY, on ? 'true' : 'false'); } catch (e) { /* private mode */ }
+        if (typeof window.applyDye2Enabled === 'function') window.applyDye2Enabled(on);
+        try { ui.showToast(`DYE2 ${on ? 'enabled' : 'disabled'}`, 1500, 'success'); } catch (e) { /* ui not ready */ }
+        // Switching on is the moment the user cares whether the plugin is
+        // current. Deliberately not awaited before the toggle is saved: an
+        // update check is a network round-trip and DYE2 is already usable
+        // without it.
+        if (on) {
+            offerDye2Update()
+                .then((changed) => {
+                    if (changed) ui.showToast(getTranslation('DYE2 plugin updated'), 2500, 'success');
+                    return refreshVersion();
+                })
+                .catch((e) => logger.error('DYE2 update offer failed', e));
+        }
+    });
 }
 
-// Paint the DYE2 plugin card. Everything shown comes from the bridge (GET
-// /plugins): Decaid tracks where the plugin came from and installs new releases
-// itself, so there is no "latest version" to fetch and nothing to compare. The
-// only state that needs a human is a pendingUpdate — an update Decaid downloaded
-// and refused to install because it asks for permissions the installed version
-// does not hold. Unknowns stay "—" rather than being guessed at.
-function renderDye2VersionInfo(info) {
-    const el = document.getElementById('dye2-version-info');
-    if (!el) return;
-    const pill = (text, cls) =>
-        `<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full ${cls}">${text}</span>`;
+// Paint the version/source/install-state block shared by every plugin card.
+// Everything shown comes from the bridge (GET /plugins by default, or a
+// plugin override's own getVersionInfo): Decaid tracks where a plugin came
+// from and installs new releases itself, so there is nothing here to compare
+// against a "latest" fetched separately. The only state that needs a human is
+// a pendingUpdate -- an update Decaid downloaded and refused to install
+// because it asks for permissions the installed version does not hold.
+// Unknowns stay "—" rather than being guessed at. Returns a refresh() so the
+// caller (and an override's own listeners, e.g. DYE2's master switch) can
+// repaint after an install/update/approve.
+function renderPluginVersionInfo(el, pluginId, info, override) {
+    if (!el) return null;
     const button = (id, label) =>
-        `<button id="${id}" class="bg-[#385a92] h-[56px] px-[28px] rounded-[64px] text-white text-[22px] font-bold">${label}</button>`;
+        `<button id="${id}" class="bg-[#385a92] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold self-start">${label}</button>`;
 
+    // The pill states what Decaid currently thinks of this plugin, so it sits
+    // on the version line it describes rather than on a row of its own.
+    const pill = (text, cls) =>
+        `<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full whitespace-nowrap ${cls}">${text}</span>`;
     let status;
     if (!info.reachable) {
         status = pill(getTranslation('Could not check'), 'bg-[var(--profile-button-outline-color)]/30 text-[var(--text-primary)] opacity-70');
@@ -5939,13 +6668,13 @@ function renderDye2VersionInfo(info) {
     }
 
     const row = (label, value) => `
-        <div class="flex items-center justify-between w-full">
+        <div class="flex items-center justify-between gap-[24px] w-full">
             <span data-i18n-key="${label}">${getTranslation(label)}</span>
-            <span class="font-bold text-[var(--text-primary)]">${value}</span>
+            <span class="font-bold text-[var(--text-primary)] text-right break-all">${value}</span>
         </div>`;
 
-    // A tracked source is a repo plus the exact release tag or commit installed;
-    // a ZIP or folder install is a snapshot Decaid cannot update.
+    // A tracked source is a repo plus the exact release tag or commit
+    // installed; a ZIP or folder install is a snapshot Decaid cannot update.
     const src = info.source;
     let sourceText = '—';
     if (src?.kind === 'github_release') sourceText = `${escapeHtml(src.repo || '')} ${escapeHtml(src.releaseTag || '')}`.trim();
@@ -5953,114 +6682,237 @@ function renderDye2VersionInfo(info) {
     else if (src?.kind === 'local_zip') sourceText = getTranslation('Local ZIP');
     else if (src?.kind === 'local_folder') sourceText = getTranslation('Local folder');
 
-    // The added permissions are the whole point of the prompt, so list them
-    // verbatim — approving is consent to those, not to "an update".
+    const idPrefix = `plugin-${pluginId}`;
+
+    // Approving is consent to these specific permissions, not to "an update",
+    // so the button lives inside the panel that names them -- not in a shared
+    // action row further down where the two could be read apart.
     const pendingBlock = info.pending ? `
-        <div class="flex flex-col gap-[10px] w-full pt-[4px]">
-            <span class="text-[20px] text-[var(--text-primary)]">
+        <div class="flex flex-col gap-[12px] w-full rounded-[16px] bg-amber-500/10 border border-amber-500/30 p-[24px]">
+            <span class="text-[22px] text-[var(--text-primary)]">
                 v${escapeHtml(info.pending.version || '?')} ${getTranslation('is available but asks for new permissions')}:
             </span>
-            <span class="text-[20px] font-bold text-[var(--text-primary)] break-words">
+            <span class="text-[22px] font-bold text-[var(--text-primary)] break-words">
                 ${(info.pending.addedPermissions || []).map(escapeHtml).join(', ') || '—'}
             </span>
+            ${button(`${idPrefix}-approve-update`, getTranslation('Approve update'))}
+        </div>` : '';
+
+    const errorBlock = src?.lastError ? `
+        <div class="flex flex-col gap-[8px] w-full rounded-[16px] bg-amber-500/10 border border-amber-500/30 p-[24px]">
+            <span class="text-[22px] font-bold text-[var(--text-primary)]" data-i18n-key="Last error">${getTranslation('Last error')}</span>
+            <span class="text-[22px] text-[var(--text-primary)] break-words">${escapeHtml(src.lastError)}</span>
         </div>` : '';
 
     el.innerHTML = `
-        <div class="flex flex-col gap-[10px] w-full">
-            ${row('Installed version', info.installed ? `v${escapeHtml(info.installed)}` : '—')}
-            ${row('Source', sourceText)}
-            ${src?.lastError ? row('Last error', `<span class="text-amber-600">${escapeHtml(src.lastError)}</span>`) : ''}
-            ${pendingBlock}
-            <div class="flex items-center gap-[14px] flex-wrap pt-[4px]">
-                ${status}
-                ${info.reachable && !info.installed ? button('dye2-install-plugin', getTranslation('Install')) : ''}
-                ${info.pending ? button('dye2-approve-update', getTranslation('Approve update')) : ''}
+        <div class="flex flex-col gap-[12px] w-full">
+            <div class="flex items-center justify-between gap-[24px] w-full">
+                <span data-i18n-key="Version">${getTranslation('Version')}</span>
+                <span class="flex items-center gap-[14px] flex-wrap justify-end">
+                    <span class="font-bold text-[var(--text-primary)]">${info.installed ? `v${escapeHtml(info.installed)}` : '—'}</span>
+                    ${status}
+                </span>
             </div>
+            ${row('Source', sourceText)}
+            ${errorBlock}
+            ${pendingBlock}
+            ${info.reachable && !info.installed && override?.onInstall
+                ? `<div class="pt-[4px]">${button(`${idPrefix}-install`, getTranslation('Install'))}</div>` : ''}
         </div>`;
 
-    const refresh = () => getDye2VersionInfo().then(renderDye2VersionInfo).catch(() => {});
+    const refresh = async () => renderPluginVersionInfo(el, pluginId, await fetchPluginVersionInfo(pluginId, override), override);
     const busy = (btn, label) => { btn.disabled = true; btn.textContent = label; };
 
-    document.getElementById('dye2-install-plugin')?.addEventListener('click', async function () {
+    el.querySelector(`[id="${idPrefix}-install"]`)?.addEventListener('click', async function () {
         busy(this, `${getTranslation('Installing')}…`);
         try {
-            await installDye2Plugin();
-            ui.showToast(getTranslation('DYE2 plugin installed'), 2000, 'success');
+            await override.onInstall();
+            ui.showToast(getTranslation('Plugin installed'), 2000, 'success');
         } catch (e) {
-            logger.error('DYE2 install failed', e);
+            logger.error(`Plugin install failed (${pluginId})`, e);
             ui.showToast(`${getTranslation('Install failed')}: ${e.message || e}`, 4000, 'error');
         }
         refresh();
     });
 
-    document.getElementById('dye2-approve-update')?.addEventListener('click', async function () {
+    el.querySelector(`[id="${idPrefix}-approve-update"]`)?.addEventListener('click', async function () {
         busy(this, `${getTranslation('Updating')}…`);
         try {
-            const result = await approvePluginUpdate('dye2.reaplugin');
-            ui.showToast(`${getTranslation('DYE2 updated to')} v${result?.version || '?'}`, 2500, 'success');
+            const result = await approvePluginUpdate(pluginId);
+            ui.showToast(`${getTranslation('Plugin updated to')} v${result?.version || '?'}`, 2500, 'success');
         } catch (e) {
-            // 409: the release or branch moved after this permission delta was shown.
-            // Decaid has already recorded the new candidate, so re-reading shows the
-            // fresh delta to approve — retrying this call would only 409 again.
+            // 409: the release or branch moved after this permission delta was
+            // shown. Decaid has already recorded the new candidate, so
+            // re-reading shows the fresh delta to approve -- retrying this
+            // call would only 409 again.
             if (e.status === 409) {
                 ui.showToast(getTranslation('The update changed since it was shown — review it again'), 5000, 'error');
             } else {
-                logger.error('DYE2 update approval failed', e);
+                logger.error(`Plugin update approval failed (${pluginId})`, e);
                 ui.showToast(`${getTranslation('Update failed')}: ${e.message || e}`, 4000, 'error');
             }
         }
         refresh();
     });
+
+    return refresh;
 }
 
-// DYE2 master on/off. Persists streamline.dye2Enabled (default OFF). Flipping it
-// live-updates the dashboard header via the window.applyDye2Enabled bridge that
-// dyeStrip.js installs on the main page; if the header isn't mounted (e.g. deep in
-// settings on some flows) the flag still takes effect on the next dashboard load.
-function setupDye2SettingsListeners() {
-    // Opening this page is the update check — no button for it. Paint what the
-    // bridge already knows first so the card is never blank, then let the check
-    // (rate-limit aware, see checkDye2UpdatesIfDue) repaint it with the outcome.
-    // Decaid installs anything that needs no new permission on its own; what
-    // survives is a pendingUpdate, which the card renders with its Approve button.
-    getDye2VersionInfo()
-        .then(renderDye2VersionInfo)
-        .catch(() => renderDye2VersionInfo({ reachable: false, installed: null, loaded: false, source: null, pending: null }));
-    checkDye2UpdatesIfDue()
-        .then(renderDye2VersionInfo)
-        .catch((e) => logger.error('DYE2 update check failed', e));
+// Default version-info source: the plugins array the card list already
+// fetched, mapped through pluginViewModel into the {reachable, installed,
+// loaded, source, pending} shape renderPluginVersionInfo expects. A
+// plugin-specific override (DYE2) can supply its own async getVersionInfo
+// instead.
+async function fetchPluginVersionInfo(pluginId, override) {
+    if (override?.getVersionInfo) {
+        try { return await override.getVersionInfo(); }
+        catch (e) { return { reachable: false, installed: null, loaded: false, source: null, pending: null }; }
+    }
+    const plugins = await getPlugins();
+    const vm = pluginViewModel(plugins, pluginId);
+    return { reachable: vm.reachable, installed: vm.version, loaded: vm.loaded, source: vm.source, pending: vm.pending };
+}
 
-    const toggle = document.getElementById('dye2-enabled');
-    if (!toggle) return;
-    const KEY = 'streamline.dye2Enabled';
-    let enabled = false;
-    try { enabled = localStorage.getItem(KEY) === 'true'; } catch (e) { /* private mode */ }
-    toggle.checked = enabled;
-    toggle.addEventListener('change', async function () {
-        const on = this.checked;
-        // Turning on requires the plugin installed, loaded, and >= its minimum
-        // version — ensureDye2PluginReady prompts with a download link and
-        // returns false if not, in which case we revert the toggle.
-        if (on) {
-            const ready = await ensureDye2PluginReady();
-            if (!ready) { this.checked = false; return; }
-        }
-        try { localStorage.setItem(KEY, on ? 'true' : 'false'); } catch (e) { /* private mode */ }
-        if (typeof window.applyDye2Enabled === 'function') window.applyDye2Enabled(on);
-        try { ui.showToast(`DYE2 ${on ? 'enabled' : 'disabled'}`, 1500, 'success'); } catch (e) { /* ui not ready */ }
-        // Switching on is the moment the user cares whether the plugin is current.
-        // Deliberately not awaited before the toggle is saved: an update check is a
-        // network round-trip and DYE2 is already usable without it.
-        if (on) {
-            offerDye2Update()
-                .then((changed) => {
-                    if (changed) ui.showToast(getTranslation('DYE2 plugin updated'), 2500, 'success');
-                    return getDye2VersionInfo().then(renderDye2VersionInfo);
-                })
-                .catch((e) => logger.error('DYE2 update offer failed', e));
+// One card per plugin, built entirely from GET /plugins (plus, for the rare
+// plugin that needs one, PLUGIN_CARD_OVERRIDES). `plugins` is the array the
+// caller already fetched once for the whole list -- see window.loadPluginList
+// -- so N cards cost one network round trip, not N. Manifest text (name,
+// description) is untrusted and always goes through escapeHtml.
+// A plugin's settings, in three tiers: who it is (name, description), what
+// state it is in (enabled, version, source, the actions that change those), and
+// what it lets you configure (its manifest settings). Tiers are separated by
+// hairline rules rather than by headings -- a "Plugin Version" heading in the
+// same blue and weight as the plugin's own name made the two read as equals,
+// which is how the old page lost its hierarchy.
+//
+// `asPage` is the per-plugin page, where the settings shell has already printed
+// the plugin's name as the page title; the list fallback renders the name
+// inline instead so its cards stay self-identifying.
+function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
+    const override = pluginCardOverride(pluginId);
+    const vm = pluginViewModel(plugins, pluginId);
+    const titleKey = vm.name || override.fallbackTitle || pluginId;
+    const title = getTranslation(titleKey);
+    const description = vm.plugin ? pluginDescription(vm.plugin) : (override.fallbackDescription ? getTranslation(override.fallbackDescription) : '');
+    const uiUrl = vm.plugin ? pluginUiUrl(vm.plugin) : null;
+
+    const rule = `<div class="h-px w-full bg-[var(--profile-button-outline-color)] opacity-40"></div>`;
+
+    const heading = asPage ? '' : `
+        <div class="flex items-center gap-[12px] flex-wrap font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[30px] leading-[1.2]">
+            <span data-i18n-key="${escapeHtml(titleKey)}">${escapeHtml(title)}</span>
+        </div>`;
+
+    // Reads at arm's length on a tablet, so it is capped near 70 characters
+    // rather than run the full width of the settings pane.
+    const descriptionHtml = description ? `
+        <p class="font-['Inter:Regular',sans-serif] leading-[1.45] text-[var(--text-primary)] opacity-80 text-[24px] max-w-[62ch]"
+           data-i18n-key="${escapeHtml(description)}">${escapeHtml(getTranslation(description))}</p>` : '';
+
+    // Sits on the description's own line, right-aligned in the same column as
+    // the enable toggle and every other control -- the actions keep one edge,
+    // and the button does not cost a row of its own.
+    const openHtml = uiUrl ? `
+        <a href="${escapeHtml(uiUrl)}" class="bg-[#385a92] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold inline-flex items-center justify-center flex-shrink-0"
+           data-i18n-key="Open">Open</a>` : '';
+
+    // The generic on/off row. DYE2 replaces it with its own master switch
+    // (PLUGIN_CARD_OVERRIDES.replacesToggle), which gates the dashboard header
+    // rather than the plugin's loaded state.
+    const toggleRow = override.replacesToggle ? '' : `
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <span class="font-['Inter:SemiBold',sans-serif] font-semibold text-[var(--text-primary)] text-[26px]" data-i18n-key="Enabled">${getTranslation('Enabled')}</span>
+            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                <input type="checkbox" class="sr-only peer plugin-enable-toggle" ${vm.loaded ? 'checked' : ''}>
+                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
+                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+            </label>
+        </div>`;
+
+    const schemaControls = vm.settingsKeys.map(key => {
+        const html = renderPluginSettingControl(key, vm.settingsSchema[key], `plugin-${pluginId}`);
+        if (!html) logger.warn(`${pluginId}: no control for setting ${key} of type ${vm.settingsSchema[key]?.type}`);
+        return html;
+    }).join('');
+
+    return `
+        <div class="flex flex-col gap-[30px] w-full py-[10px]" data-plugin-card="${escapeHtml(pluginId)}">
+            ${heading || descriptionHtml || openHtml ? `
+            <div class="flex flex-col gap-[16px] w-full">
+                ${heading}
+                <div class="flex items-start justify-between gap-[24px] w-full">
+                    ${descriptionHtml || '<span></span>'}
+                    ${openHtml}
+                </div>
+            </div>` : ''}
+
+            ${rule}
+
+            <div class="flex flex-col gap-[24px] w-full">
+                ${toggleRow}
+                ${override.renderExtra ? override.renderExtra() : ''}
+                <div data-role="plugin-version-info" class="w-full text-[22px] text-[var(--text-secondary)]">${getTranslation('Checking')}…</div>
+            </div>
+
+            ${schemaControls ? `
+            ${rule}
+            <div class="flex flex-col gap-[30px] w-full">${schemaControls}</div>` : ''}
+        </div>`;
+}
+
+// Wire the listeners a freshly-rendered card needs: the version-info fetch
+// and its install/approve-update buttons, the generic enable toggle (unless
+// an override replaces it), and the manifest's own settings schema, using the
+// same read-once/cache-locally pattern Shot Uploader's controls use.
+function setupPluginCard(cardEl, pluginId, plugins) {
+    const override = pluginCardOverride(pluginId);
+    const vm = pluginViewModel(plugins, pluginId);
+
+    const versionEl = cardEl.querySelector('[data-role="plugin-version-info"]');
+    let refreshVersion = () => {};
+    fetchPluginVersionInfo(pluginId, override).then(info => {
+        if (!cardEl.isConnected) return;
+        const refresh = renderPluginVersionInfo(versionEl, pluginId, info, override);
+        if (refresh) refreshVersion = refresh;
+    }).catch(() => {
+        if (cardEl.isConnected) {
+            renderPluginVersionInfo(versionEl, pluginId, { reachable: false, installed: null, loaded: false, source: null, pending: null }, override);
         }
     });
+
+    if (override.setupExtra) override.setupExtra(cardEl, () => refreshVersion());
+
+    cardEl.querySelector('.plugin-enable-toggle')?.addEventListener('change', function () {
+        window.togglePlugin(pluginId, this.checked, this);
+    });
+
+    const schema = vm.settingsSchema;
+    const keys = vm.settingsKeys;
+    if (keys.length === 0) return;
+
+    (async () => {
+        let settings;
+        try {
+            settings = await getPluginSettings(pluginId, { strict: true }) || {};
+        } catch (e) {
+            logger.warn(`Plugin settings unavailable for ${pluginId}:`, e);
+            return;
+        }
+        if (!cardEl.isConnected) return;
+
+        bindPluginSettingControls(cardEl, {
+            pluginId,
+            idPrefix: `plugin-${pluginId}`,
+            schema, keys, settings,
+            ensureLoaded: async () => {
+                if (vm.loaded) return;
+                await enablePlugin(pluginId);
+                vm.loaded = true;
+            },
+        });
+    })();
 }
+
 
 // Whether the visualizer plugin currently has a stored (secure) password.
 // PR #588: secure values are returned as { isSet } state, never plaintext.
@@ -6426,7 +7278,7 @@ async function initFirmwareCheck() {
 // machine. One constant so the number cannot drift between the three places.
 // Keep in sync with FIRMWARE_ESTIMATED_TOTAL_SECONDS in firmware-progress.js —
 // that's this same number driving the countdown, not an independent guess.
-const FIRMWARE_DURATION_NOTE = 'The whole update takes at least 50 minutes. Do not power off the machine or leave this page until it finishes.';
+const FIRMWARE_DURATION_NOTE = 'The whole update takes at least 50 minutes. Do not power off the machine and leave this page until it finishes.';
 
 // Phase -> user-facing line. Shared by the live progress callback and the page
 // re-render, so a rejoined update reads identically to one watched throughout.
@@ -6833,25 +7685,60 @@ export function renderGeneralSettings() {
     `;
 }
 
+// Which main category the subcategory panel currently shows. Only the panel
+// itself knows, and an async repaint (ensurePluginNav) that lands after the user
+// has moved on must not overwrite another category's rows.
+let lastRenderedMainCategory = null;
+
+// The rows a main category shows: its static subcategories, plus -- for
+// Extensions -- one row per plugin the connected Decaid reports. Dynamic rows
+// are appended here rather than written into settings-tree.js, which stays the
+// single source of truth for the structure that does not depend on what is
+// installed.
+export function subcategoriesFor(mainCategoryKey) {
+    const category = settingsTree[mainCategoryKey];
+    const statics = (category?.subcategories || []).filter(subcat => !subcat.bengleOnly || isBengleMachine());
+    if (mainCategoryKey !== 'extensions') return statics;
+
+    // Visualizer and Shot Uploader already have hand-built pages of their own
+    // (credentials, account linking) that the generic card cannot replace, so
+    // they must not also appear as a second, poorer row for the same plugin.
+    const dedicated = new Set(Object.values(PLUGIN_BACKED_SUBCATEGORIES));
+    const pluginRows = extensionPluginNavEntries().filter(row => !dedicated.has(row.pluginId));
+    // The aggregate Plugins page is the fallback for "no plugins, or the bridge
+    // could not be reached" -- once there are per-plugin rows it is one more row
+    // that says nothing the others do not.
+    const keepAggregate = pluginRows.length === 0;
+    return [
+        ...statics.filter(subcat => keepAggregate || subcat.settingsCategory !== 'plugins'),
+        ...pluginRows,
+    ];
+}
+
 // Render subcategories for a selected main category
 export function renderSubcategories(mainCategoryKey) {
-    const category = settingsTree[mainCategoryKey];
-    if (!category || !category.subcategories || category.subcategories.length === 0) {
+    lastRenderedMainCategory = mainCategoryKey;
+    // Refreshed on every visit to Extensions: a plugin installed from the Decaid
+    // dashboard since the last visit appears without reloading the skin.
+    if (mainCategoryKey === 'extensions') ensurePluginNav();
+
+    const subcategories = subcategoriesFor(mainCategoryKey);
+    if (subcategories.length === 0) {
         return `<div class="p-4 text-center text-gray-500" data-i18n-key="No sub-categories.">No sub-categories.</div>`;
     }
 
     let subcategoryItems = '';
-    category.subcategories
-        .filter((subcat) => !subcat.bengleOnly || isBengleMachine())
-        .forEach((subcat) => {
+    subcategories.forEach((subcat) => {
         const prefixMatch = subcat.name.match(/^(\d+\.\s*)/);
         const prefix = prefixMatch ? prefixMatch[1] : '';
         const label = prefix ? subcat.name.slice(prefix.length) : subcat.name;
+        // A plugin row's label is its manifest name -- third-party text, so it is
+        // escaped here like every other manifest string that reaches innerHTML.
         subcategoryItems += `
             <li>
                 <button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center"
-                        data-category="${subcat.settingsCategory}">
-                    ${prefix}<span data-i18n-key="${subcat.i18nKey || label}">${label}</span>
+                        data-category="${escapeHtml(subcat.settingsCategory)}">
+                    ${prefix}<span data-i18n-key="${escapeHtml(subcat.i18nKey || label)}">${escapeHtml(label)}</span>
                 </button>
             </li>
         `;
@@ -7005,15 +7892,28 @@ async function _preloadSettingsInternal() {
 
         // Handle Workflow result
         if (workflowResult.status === 'fulfilled') {
-            settingsCache.workflow = workflowResult.value;
+            const workflow = workflowResult.value;
+            // Steam and hot water stage a full copy of their block, so the
+            // staged block replaces the fetched one field by field.
+            if (workflow && typeof workflow === 'object') {
+                if (pendingChanges.workflow.steamSettings) {
+                    workflow.steamSettings = mergeStagedOverFetched(
+                        workflow.steamSettings || {}, pendingChanges.workflow.steamSettings);
+                }
+                if (pendingChanges.workflow.hotWaterData) {
+                    workflow.hotWaterData = mergeStagedOverFetched(
+                        workflow.hotWaterData || {}, pendingChanges.workflow.hotWaterData);
+                }
+            }
+            settingsCache.workflow = workflow;
         } else {
             console.error('Error loading workflow data:', workflowResult.reason);
         }
 
         // Update cache with results
-        settingsCache.rea = reaSettings ? { ...reaSettings, ...pendingChanges.rea } : reaSettings;
-        settingsCache.de1 = de1Settings;
-        settingsCache.de1Advanced = de1AdvancedSettings;
+        settingsCache.rea = mergeStagedOverFetched(reaSettings, pendingChanges.rea);
+        settingsCache.de1 = mergeStagedOverFetched(de1Settings, pendingChanges.de1);
+        settingsCache.de1Advanced = mergeStagedOverFetched(de1AdvancedSettings, pendingChanges.de1Advanced);
         settingsCache.appInfo = appInfo;
         settingsCache.machineInfo = machineInfo;
         // Keep the shared Bengle gate fresh (the machine may have changed since
@@ -7086,8 +7986,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // Pre-seed cache from IDB backup for instant render, then fetch from network in background
     await preSeedFromIDB();
     Object.entries(initialReaChanges).forEach(([key, value]) => updateReaSetting(key, value, false));
+    machineDriftChecked = false;
     preloadSettings().then(() => {
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+        // After the network values are in: the IDB pre-seed is the skin's own
+        // last snapshot, so comparing against it would only ever compare the
+        // record with itself.
+        checkMachineSettingsDrift().catch(e => logger.warn('Machine settings check failed:', e));
     });
 
     // Initialize WebSocket for live device state updates
@@ -7102,10 +8007,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         cancelBtn.addEventListener('click', () => {
             resetPendingChanges();
             // Exiting settings straight from the Lighting page must not leave a
-            // preview colour latched on the strip — and a deferred cross-state
-            // palette PUT flushes first (flush → clear, one transition).
-            ledFlushDirty();
-            ledClearPreview();
+            // preview colour latched on the strip — one PUT of the real palette
+            // settles both that and any deferred cross-state edit. Also
+            // release this page's manual sequence run (a state-triggered run
+            // is untouched -- it belongs to app.js, not this page).
+            ledRestoreStrip();
+            ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
             calReleaseScaleWs();
@@ -7131,10 +8038,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             }
             ui.showToast('Settings updated', 3000, 'success');
             // Exiting settings straight from the Lighting page must not leave a
-            // preview colour latched on the strip — and a deferred cross-state
-            // palette PUT flushes first (flush → clear, one transition).
-            ledFlushDirty();
-            ledClearPreview();
+            // preview colour latched on the strip — one PUT of the real palette
+            // settles both that and any deferred cross-state edit. Also
+            // release this page's manual sequence run (a state-triggered run
+            // is untouched -- it belongs to app.js, not this page).
+            ledRestoreStrip();
+            ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
             calReleaseScaleWs();
@@ -7309,8 +8218,10 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     window.resetDe1Settings = async function() {
         try {
             await resetDe1Settings();
-            settingsCache.de1Advanced = await getDe1AdvancedSettings();
-            settingsCache.de1 = await getDe1Settings();
+            // A reset is this skin's own doing, so the defaults it produces
+            // become the known state -- otherwise the next visit would offer to
+            // undo a reset the user just asked for.
+            await syncMachineSettingsRecord();
             ui.showToast('Machine settings reset to defaults', 3000, 'success');
             if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
         } catch (error) {
@@ -7323,59 +8234,79 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // declaration, so anything else 404s. Built off API_BASE_URL, not a literal
     // localhost, so it stays right when the bridge hostname is configured.
 
-    // Plugin manager
+    // Plugin manager — the single dynamic Extensions node (settings-tree.js
+    // 'plugins'). Every installed plugin gets a full generic settings card
+    // (renderPluginCard/setupPluginCard) built from this one getPlugins() call,
+    // so a future plugin needs zero skin code to get a page: it just has to be
+    // installed and reported by the bridge. PLUGIN_CARD_OVERRIDES adds a card
+    // for a self-installable plugin (currently only DYE2) even when it is not
+    // yet in the list — see that const's own comment for why the manifest alone
+    // cannot support that generically.
+    // One plugin's page. Same card, same setup path as the list used to use --
+    // only the container differs, so a plugin's controls behave identically
+    // whether it is reached from its own nav row or (with none installed) from
+    // the aggregate page.
+    window.loadPluginPage = async function(pluginId) {
+        const container = document.getElementById('plugin-page-container');
+        if (!container || container.dataset.pluginPage !== pluginId) return;
+        try {
+            const { getPlugins } = await import('../modules/api.js');
+            const plugins = await getPlugins();
+            // Navigated away while the bridge was answering.
+            if (container.dataset.pluginPage !== pluginId || !container.isConnected) return;
+            if (!plugins) {
+                container.innerHTML = `<p class="text-[24px] text-[var(--text-primary)] opacity-60" data-i18n-key="Could not check">${getTranslation('Could not check')}</p>`;
+                return;
+            }
+            pluginNavCache = plugins;
+            const name = plugins.find(p => p?.id === pluginId)?.name
+                || pluginCardOverride(pluginId).fallbackTitle || pluginId;
+            container.innerHTML = renderPluginPageTitle(name) + renderPluginCard(pluginId, plugins, { asPage: true });
+            translatePage();
+            container.querySelectorAll('[data-plugin-card]').forEach(cardEl => {
+                setupPluginCard(cardEl, cardEl.dataset.pluginCard, plugins);
+            });
+        } catch (err) {
+            logger.error(`Failed to load plugin ${pluginId}:`, err);
+            container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugin: ${escapeHtml(err.message)}</p>`;
+        }
+    };
+
     window.loadPluginList = async function() {
         const container = document.getElementById('plugin-list-container');
         if (!container) return;
         try {
             const { getPlugins } = await import('../modules/api.js');
             const plugins = await getPlugins();
-            if (!plugins || plugins.length === 0) {
+            if (!plugins) {
+                container.innerHTML = `<p class="text-[24px] text-[var(--text-primary)] opacity-60" data-i18n-key="Could not check">${getTranslation('Could not check')}</p>`;
+                return;
+            }
+            const installedIds = plugins.map(p => p?.id).filter(Boolean);
+            const selfInstallableIds = Object.keys(PLUGIN_CARD_OVERRIDES)
+                .filter(id => PLUGIN_CARD_OVERRIDES[id].onInstall && !installedIds.includes(id));
+            const ids = [...installedIds, ...selfInstallableIds];
+
+            if (ids.length === 0) {
                 container.innerHTML = `<p class="text-[24px] text-[var(--text-primary)] opacity-60" data-i18n-key="No plugins installed.">No plugins installed.</p>`;
                 return;
             }
-            // Manifest text is third-party content -- plugins install from arbitrary
-            // GitHub repos -- so every field is escaped before it reaches innerHTML.
-            container.innerHTML = plugins.map((p, i) => {
-                const uiUrl = pluginUiUrl(p);
-                const description = pluginDescription(p);
-                return `
-                ${i > 0 ? '<div class="h-0 relative w-full"><hr class="border-t border-[#c9c9c9] w-full" /></div>' : ''}
-                <div class="flex items-center justify-between w-full py-[30px] gap-[24px]">
-                    <div class="flex flex-col gap-[8px] flex-1 min-w-0">
-                        <div class="flex items-center gap-[12px] flex-wrap">
-                            <span class="font-bold text-[#385a92] text-[28px] leading-tight">${escapeHtml(p.name || p.id)}</span>
-                            <span class="text-[20px] text-[var(--text-primary)] opacity-50">v${escapeHtml(p.version || '?')}</span>
-                            ${uiUrl ? `<a href="${escapeHtml(uiUrl)}" class="bg-[#385a92] h-[54px] px-[40px] rounded-[54px] text-white text-[22px] font-bold flex items-center justify-center" data-i18n-key="Open">Open</a>` : ''}
-                        </div>
-                        ${description ? `<p class="text-[22px] text-[var(--text-primary)] leading-[1.4] opacity-75">${escapeHtml(description)}</p>` : ''}
-                    </div>
-                    <div class="flex flex-col items-center gap-[6px] flex-shrink-0">
-                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                            <input type="checkbox"
-                                   class="sr-only peer"
-                                   ${p.loaded ? 'checked' : ''}
-                                   data-plugin-id="${escapeHtml(p.id)}">
-                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]"></div>
-                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                        </label>
-                        <span class="text-[18px] text-[var(--text-primary)] opacity-60">${p.loaded ? 'Enabled' : 'Disabled'}</span>
-                    </div>
-                </div>
-            `;
-            }).join('');
 
-            // Listener rather than an inline onchange: the id is manifest text, and
-            // Decaid's id rule allows an apostrophe, which would end the JS string
-            // in an inline handler. Nothing about an id can escape a data attribute.
-            container.querySelectorAll('input[data-plugin-id]').forEach(input => {
-                input.addEventListener('change', function () {
-                    window.togglePlugin(this.dataset.pluginId, this.checked, this);
-                });
+            // Manifest text is third-party content -- plugins install from arbitrary
+            // GitHub repos -- so every field renderPluginCard shows is escaped
+            // before it reaches innerHTML.
+            container.innerHTML = ids.map((id, i) => `
+                ${i > 0 ? '<div class="h-0 relative w-full"><hr class="border-t border-[#c9c9c9] w-full" /></div>' : ''}
+                ${renderPluginCard(id, plugins)}
+            `).join('');
+            translatePage();
+
+            container.querySelectorAll('[data-plugin-card]').forEach(cardEl => {
+                setupPluginCard(cardEl, cardEl.dataset.pluginCard, plugins);
             });
         } catch (err) {
             logger.error('Failed to load plugins:', err);
-            container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugins: ${err.message}</p>`;
+            container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugins: ${escapeHtml(err.message)}</p>`;
         }
     };
 
@@ -7782,6 +8713,8 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
 
     // Acknowledging is per visit, not per session -- sensorCalWarningAck is
     // re-armed on leaving the page.
+    window.machineDriftRestore = machineDriftRestore;
+    window.machineDriftKeep = machineDriftKeep;
     window.sensorCalWarningProceed = function() {
         ({ shown: sensorCalWarningShown, ack: sensorCalWarningAck } = sensorCalWarningNextState(
             { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'ack').state);
@@ -7794,6 +8727,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     window.sensorCalWarningCancel = function() {
         document.getElementById('sensor-cal-warning-modal')?.close();
         document.querySelector('.settings-subnav-btn[data-category="calib_defaultload"]')?.click();
+    };
+
+    // Clearing the error re-opens initSensorCal's re-entry gate, so the
+    // re-render below performs exactly one fresh attempt.
+    window.sensorCalRetryLoad = function() {
+        sensorCalLoadError = '';
+        sensorCalRerender();
     };
 
     window.sensorCalInput = function(id, value) {
@@ -8569,7 +9509,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         const input = document.getElementById('calibFanInput');
         if (input) {
             let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(0, Math.min(100, newValue));
+            newValue = Math.max(0, Math.min(FAN_THRESHOLD_MAX, newValue));
             input.value = newValue;
             input.dispatchEvent(new Event('change'));
         }
@@ -8581,7 +9521,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         const fill = document.getElementById('fan-track-fill');
         if (input) {
             let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(0, Math.min(100, newValue));
+            newValue = Math.max(0, Math.min(FAN_THRESHOLD_MAX, newValue));
             input.value = newValue;
             if (display) display.textContent = newValue;
             if (fill) fill.style.width = newValue + '%';
@@ -8687,7 +9627,6 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
 const PLUGIN_BACKED_SUBCATEGORIES = {
     extention1: 'visualizer.reaplugin',
     shotupload: 'shot-upload.reaplugin',
-    dye2: 'dye2.reaplugin',
 };
 
 let pluginKeywordsLoaded = false;
@@ -8793,8 +9732,7 @@ function setupSettingsSearch(activateResult) {
         Object.entries(settingsTree).forEach(([mainCategory, category]) => {
             const mainLabel = getTranslation(category.i18nKey || category.name);
             const mainMatches = mainLabel.toLowerCase().includes(searchTerm);
-            category.subcategories
-                .filter(subcategory => !subcategory.bengleOnly || isBengleMachine())
+            subcategoriesFor(mainCategory)
                 .filter(subcategory => {
                     const label = getTranslation(subcategory.i18nKey || subcategory.name.replace(/^\d+\.\s*/, ''));
                     return mainMatches
@@ -8851,7 +9789,8 @@ export function cleanupSettings() {
     _settingsNumpadTimer = null;
     clearTimeout(ledPutTimer);
     ledPutTimer = null;
-    ledClearPreview();
+    ledRestoreStrip();
+    ledSeqReleaseManual();
     if (calWsClaimed) calReleaseScaleWs();
 }
 
@@ -8886,6 +9825,11 @@ export function initDeviceWebSocket() {
         // onDisconnect callback
         () => {
             logger.warn('Device WebSocket disconnected');
+            // The Decaid link is down -- any run (manual OR trigger) has
+            // nothing to talk to any more. Unconditional: a dead link is not
+            // a routine exit, so there is no hand-back to attempt.
+            ledRunForceStop();
+            if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
         }
     );
 
@@ -9128,6 +10072,19 @@ window.handleWakeLockToggle = async function(enabled) {
         console.error('Error toggling wake lock:', error);
         ui.showToast('Failed to toggle wake lock', 5000, 'error');
     }
+};
+
+window.handleWakeProfileToggle = function(enabled) {
+    localStorage.setItem('wakeProfileEnabled', enabled ? 'true' : 'false');
+    const row = document.getElementById('wake-profile-select-row');
+    if (row) row.hidden = !enabled;
+    if (enabled && !localStorage.getItem('wakeProfileId')) {
+        ui.showToast('Select a profile to load on wake', 3000, 'info');
+    }
+};
+
+window.handleWakeProfileSelect = function(profileId) {
+    localStorage.setItem('wakeProfileId', profileId);
 };
 
 // Presence Detection handlers

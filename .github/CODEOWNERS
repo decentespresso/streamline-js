@@ -1,0 +1,28 @@
+# Default owner for everything not matched below.
+*                                   @allofmeng
+
+# Connection stack, settings navigation, and generated assets.
+# Changes here need explicit maintainer review.
+/src/modules/api.js                 @allofmeng
+/src/modules/settingsSync.js        @allofmeng
+/src/settings/settings-tree.js      @allofmeng
+/src/css/app.css                    @allofmeng
+/src/modules/echarts-streamline.min.js @allofmeng
+
+# Release, version, and skin identity.
+/.github/workflows/                 @allofmeng
+/.github/CODEOWNERS                 @allofmeng
+/src/version.js                     @allofmeng
+/package.json                       @allofmeng
+/package-lock.json                  @allofmeng
+/skin-manifest.json                 @allofmeng
+/RELEASE.md                         @allofmeng
+
+# Translation source is synced from Google Sheets by the release workflow.
+/src/ui/                            @allofmeng
+
+# Agent and contributor rules.
+/AGENTS.md                          @allofmeng
+/CLAUDE.md                          @allofmeng
+/CONTRIBUTING.md                    @allofmeng
+/LICENSE.txt                        @allofmeng

@@ -49,6 +49,20 @@ let searchTimer = null;
 let searchScrollTop = 0;
 let searchActive = false;
 
+// Warm the sensor calibration read the moment Settings is reached, not when
+// the user opens Sensor Calibration -- so the table usually already has
+// values instead of a loading flash. Mirrors prefetchSettingsPage() in
+// router.js: a background, fire-and-forget dynamic import plus one narrow
+// call, not a blocking part of the shell's own mount. warmSensorCalibration()
+// owns its own re-entry gate (the same shouldStartSensorCalLoad the page's
+// own read uses), so this is safe to call once per shell mount without any
+// guard here.
+function warmSensorCalibrationInBackground() {
+    import('./settings.js')
+        .then(module => module.warmSensorCalibration())
+        .catch(() => {});
+}
+
 function setActive(buttons, activeButton) {
     buttons.forEach(button => {
         const active = button === activeButton;
@@ -345,6 +359,7 @@ export async function initializeSettingsShell() {
     searchActive = false;
     resetSettingsSession();
     startSettingsData();
+    warmSensorCalibrationInBackground();
     bindShell(root);
     initResizableSeparators();
     const saved = readSettingsLocation();

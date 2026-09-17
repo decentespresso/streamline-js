@@ -7,6 +7,7 @@ import {
     resolveSteamStopMode,
     MILK_PROBE_ABSENT_AFTER_MS,
     resolveMilkProbePresence,
+    selectMilkProbeSensorId,
     applyMilkProbeGate,
     resolveSteamTileMode,
     milkTelemetryText,
@@ -146,6 +147,39 @@ test('a fresh positive reading revives an absent probe', () => {
     assert.equal(s.present, false);
     s = resolveMilkProbePresence(s, 21.0, 50000);
     assert.deepEqual(s, { present: true, lastPositiveMs: 50000 });
+});
+
+// ── selectMilkProbeSensorId ─────────────────────────────────────────────────
+// Picks the Bengle milk probe out of a GET /api/v1/sensors response. Matched
+// by info.name (a documented SensorManifest field), never by the sensor's
+// `id`, which is an undocumented reaprime implementation detail. Never
+// invents an id for a malformed/empty/non-matching response.
+
+test('sensor select: empty/malformed responses resolve to no probe', () => {
+    assert.equal(selectMilkProbeSensorId([]), null);
+    assert.equal(selectMilkProbeSensorId(null), null);
+    assert.equal(selectMilkProbeSensorId(undefined), null);
+    assert.equal(selectMilkProbeSensorId('not an array'), null);
+});
+
+test('sensor select: a sensor list with no milk probe resolves to no probe', () => {
+    const sensors = [
+        { id: 'de1-temp-sensor', info: { name: 'DE1 Group Temp', vendor: 'DecentEspresso' } },
+    ];
+    assert.equal(selectMilkProbeSensorId(sensors), null);
+});
+
+test('sensor select: finds the Bengle milk probe by name', () => {
+    const sensors = [
+        { id: 'de1-temp-sensor', info: { name: 'DE1 Group Temp', vendor: 'DecentEspresso' } },
+        { id: '17B33560-milkprobe', info: { name: 'Bengle Milk Probe', vendor: 'DecentEspresso' } },
+    ];
+    assert.equal(selectMilkProbeSensorId(sensors), '17B33560-milkprobe');
+});
+
+test('sensor select: a name match with no usable id resolves to no probe', () => {
+    const sensors = [{ info: { name: 'Bengle Milk Probe' } }, { id: '', info: { name: 'Bengle Milk Probe' } }];
+    assert.equal(selectMilkProbeSensorId(sensors), null);
 });
 
 // ── applyMilkProbeGate ──────────────────────────────────────────────────────

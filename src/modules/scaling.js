@@ -6,6 +6,7 @@ export function initScaling() {
     const designWidth = 1920;
     const designHeight = 1200;
     let baselineHeight = window.innerHeight;
+    let keyboardWasShrunk = false;
 
     // Detect if device is mobile
     function isMobileDevice() {
@@ -102,6 +103,16 @@ export function initScaling() {
         const keyboardShrunk = inputFocused && rawHeight < baselineHeight * 0.85;
         const screenHeight = keyboardShrunk ? baselineHeight : rawHeight;
         if (!keyboardShrunk) baselineHeight = rawHeight;
+
+        // The canvas is deliberately kept at its pre-keyboard size above (so
+        // the main chart/controls don't jump), but that means the real
+        // on-screen keyboard can cover the focused field with nothing to
+        // trigger the browser's normal "scroll input into view" behavior.
+        // Do it ourselves, once, on the rising edge.
+        if (keyboardShrunk && !keyboardWasShrunk) {
+            requestAnimationFrame(() => activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+        }
+        keyboardWasShrunk = keyboardShrunk;
 
         // Width always fills. What happens vertically depends on the screen's aspect
         // relative to the 16:10 design canvas:

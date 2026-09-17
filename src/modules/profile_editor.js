@@ -7,6 +7,8 @@ import { callPluginEndpoint, getPluginSettings } from './api.js';
 import { validateProfileStructure } from './profileManager.js';
 import { loadECharts } from './echarts-loader.js';
 import { renderChart } from './echarts-renderer.js';
+import { parseTclProfile, isLikelyTclProfile } from './tcl-profile.js';
+import { FIELD_LIMITS, EXIT_TYPES, EXIT_UNIT_MAP, EXIT_STEP_MAP, EXIT_MAX_MAP, DEFAULT_LIMITER_RANGE } from './profile-field-limits.js';
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -119,14 +121,11 @@ function maskIcon(svgPath, size, color) {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-// Rea API only supports pressure/flow exit types (profile.dart:129 ExitType
-// enum). 'off' is a UI-only state that maps to `step.exit = null` on save.
-// Weight-based stop is expressed via profile-level `target_weight`; time-based
-// stop is expressed via step `seconds`.
-const EXIT_TYPES    = ['pressure', 'flow', 'off'];
-const EXIT_UNIT_MAP = { pressure: 'bar', flow: 'mL/s' };
-const EXIT_STEP_MAP = { pressure: 0.1, flow: 0.1 };
-const EXIT_MAX_MAP  = { pressure: 12,  flow: 8 };
+// EXIT_TYPES/EXIT_UNIT_MAP/EXIT_STEP_MAP/EXIT_MAX_MAP and FIELD_LIMITS live in
+// profile-field-limits.js (imported above) so the legacy-TCL importer clamps
+// against the exact same bounds this editor enforces, rather than a second
+// copy that can drift the way the grid/text tabs once did (see that module's
+// header comment).
 
 // A step with no `exit` has no exit condition, so it reads as 'off'. Both tabs
 // go through this so they agree: the grid used to default a missing exit to
@@ -139,31 +138,6 @@ function readExitDef(step) {
     }
     return { type: e.type, condition: e.condition || 'over', value: e.value ?? 0 };
 }
-
-// Single source of truth for every numeric field's bounds. The grid and text
-// tabs each used to carry their own copy, and they had drifted: weight/volume
-// clamped at 1000 in the grid but 500 in the text tab, pressure at 12 vs 16.
-// The same field would clamp differently depending on which tab you edited in.
-const FIELD_LIMITS = {
-    // 105 is the ceiling the TCL skin enforces (skin.tcl:1848). The grid's ±
-    // buttons used to allow 110 while its numpad clamped to 105 — and the
-    // numpad's own label read "0–110".
-    temperature:   { min: 0, max: 105, step: 0.5 },
-    flow:          { min: 0, max: 15,  step: 0.1 },
-    // 0 bar is a valid "pump off" target, same as a 0 limiter — the grid used
-    // to set min 1, making it impossible to reach from the − button.
-    pressure:      { min: 0, max: 12,  step: 0.1 },
-    flowLimit:     { min: 0, max: 8,   step: 0.1 }, // flow limit on a pressure step
-    pressureLimit: { min: 0, max: 12,  step: 0.1 }, // pressure limit on a flow step
-    weight:        { min: 0, max: 500, step: 1 },
-    // 127 is the protocol ceiling, not a taste call: frame length goes over the
-    // wire as F8_1_7 (de1app binary.tcl:1053), whose encoder clamps anything
-    // above 127 — "Numbers over 127 are not allowed this F8_1_7; limiting at
-    // 127" (binary.tcl:555-559). The old 300 let the grid show a duration the
-    // machine could never run, with the truncation logged only firmware-side.
-    seconds:       { min: 0, max: 127, step: 1 },
-    volume:        { min: 0, max: 500, step: 1 },
-};
 
 // Builds a numpad config from a FIELD_LIMITS entry so the displayed range label
 // can never disagree with the range actually enforced.
@@ -393,7 +367,7 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
 // pick a step that actually carries a limiter -- profiles routinely limit only
 // their last step, and the earlier steps' dead `value: 0` limiters keep a stale
 // range. Live limiters agree within a profile, so the first live one wins.
-const DEFAULT_LIMITER_RANGE = 0.6;
+// DEFAULT_LIMITER_RANGE itself lives in profile-field-limits.js (imported above).
 
 function limitedSteps(pump) {
     return (editorState.profile?.steps || []).filter(s => s.pump === pump && s.limiter);
@@ -1579,7 +1553,7 @@ function renderSettingsTab() {
                 fileInput = document.createElement('input');
                 fileInput.type = 'file';
                 fileInput.id = 'pe-upload-input';
-                fileInput.accept = '.json';
+                fileInput.accept = '.json,.tcl';
                 fileInput.style.display = 'none';
                 document.body.appendChild(fileInput);
             }
@@ -1588,7 +1562,16 @@ function renderSettingsTab() {
                 const file = e.target.files[0];
                 if (!file) return;
                 try {
-                    const parsed = JSON.parse(await file.text());
+                    const text = await file.text();
+                    // Legacy de1app/Visualizer profiles are Tcl, not JSON — branch on
+                    // the extension first, and fall back to sniffing the content (a
+                    // JSON profile always starts with '{') for a misnamed file, so
+                    // this one button still handles both formats. The Tcl branch is
+                    // converted to this app's JSON profile shape entirely in
+                    // tcl-profile.js — nothing downstream of this point (including
+                    // validateProfileStructure and reloadEditorWithProfile) ever sees Tcl.
+                    const isTcl = /\.tcl$/i.test(file.name || '') || (!/\.json$/i.test(file.name || '') && isLikelyTclProfile(text));
+                    const parsed = isTcl ? parseTclProfile(text) : JSON.parse(text);
                     const validation = validateProfileStructure(parsed);
                     if (!validation.isValid) throw new Error(validation.errorMessage);
                     reloadEditorWithProfile(parsed, null);
@@ -1663,9 +1646,9 @@ function renderSettingsTab() {
                         : msg;
                     return;
                 }
-                const { init: initPM, availableProfiles } = await import('./profileManager.js');
+                const { init: initPM, resolveImportedProfile } = await import('./profileManager.js');
                 await initPM();
-                const rec = availableProfiles[result.profileId];
+                const rec = await resolveImportedProfile(result.profileId);
                 if (!rec) throw new Error('Profile not found after import');
                 reloadEditorWithProfile(rec.profile, rec);
                 showToast(`Imported: ${rec.profile.title}`, 2500, 'success');
@@ -2395,6 +2378,100 @@ function resolveFinalTitle({ title, existingTitles, sourceId, sourceTitle, asNew
     return `${trimmed} (${n})`;
 }
 
+// Shared tail of a successful save (including the no-op "nothing changed"
+// case, which reports success without writing anything): hint the selector to
+// pre-select this profile, toast, and navigate back.
+function finishSaveSuccess(id) {
+    sessionStorage.setItem('lastEditedProfileKey', id);
+    showToast(getTranslation('Saved profile'), 2000, 'success');
+    setTimeout(() => { loadPage('src/profiles/profile_selector.html'); }, 1000);
+}
+
+// Save routing for a profile opened from a local-only draft (see
+// profileManager.js duplicateProfileAsDraft / createOrUpdateDraft). Never
+// throws — called from saveProfile without an await, so an escaped rejection
+// here would be an unhandled promise rejection rather than the usual toast.
+async function saveDraftEdit(draftRecord) {
+    try {
+        const { uniqueProfileTitle } = await import('./profileManager.js');
+        // Same auto-suffix saveProfile applies before minting/renaming a real
+        // record — a draft can otherwise be renamed (or promoted) onto a title
+        // another profile or draft already holds, which then confuses any
+        // title-keyed lookup (resolveProfileKeyByTitle and friends).
+        const currentTitle = editorState.profile.title.trim();
+        const dedupedTitle = uniqueProfileTitle(currentTitle, draftRecord.id);
+        if (dedupedTitle !== currentTitle) {
+            editorState.profile.title = dedupedTitle;
+            const titleDisplay = document.getElementById('editor-title-display');
+            if (titleDisplay) titleDisplay.textContent = dedupedTitle;
+        }
+
+        const sourceProfile = normalizeLegacySteps(deepCopy(draftRecord.profile));
+        const execChanged = executionChanged(sourceProfile, editorState.profile);
+
+        if (!execChanged) {
+            // Rename-only (or literally untouched): stays a local draft, no
+            // server round trip — same content still dedups against whatever
+            // it was copied from.
+            const { createOrUpdateDraft } = await import('./profileManager.js');
+            const updated = await createOrUpdateDraft({
+                draftId: draftRecord.id,
+                profile: editorState.profile,
+                parentId: draftRecord.parentId,
+            });
+            editorState.sourceProfileRecord = updated;
+            _baselineProfileJson = JSON.stringify(editorState.profile);
+            finishSaveSuccess(updated.id);
+            return;
+        }
+
+        // Real content change — promote out of the draft bucket into a real,
+        // server-backed profile. Same content-addressed dedup risk as any
+        // other fork (see forkDeduped in saveProfile below): if the edit still
+        // hashes the same as an existing record, POST hands that back instead
+        // of minting a new one.
+        const { uploadProfileWithParent } = await import('./api.js');
+        const { availableProfiles, remapFavorite, deleteProfileDraft } = await import('./profileManager.js');
+        const sentTitle = editorState.profile.title.trim();
+        const saved = await uploadProfileWithParent(editorState.profile, draftRecord.parentId);
+        // Same tell as forkDeduped in saveProfile: a POST that lands back on the
+        // parent, or comes back under a title we didn't send, means the server
+        // silently deduped it onto an existing record instead of minting ours.
+        const deduped = !saved
+            || (draftRecord.parentId && saved.id === draftRecord.parentId)
+            || (saved.profile?.title || '') !== sentTitle;
+        if (deduped) {
+            showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+            return;
+        }
+
+        await deleteProfileDraft(draftRecord.id);
+        await remapFavorite(draftRecord.id, saved.id);
+
+        // Tile edits (dose/yield/grind/brew-temp/steam) made while this draft
+        // was the active profile were saved to KV keyed to its draft id —
+        // carry them over to the new id or they're orphaned in KV forever.
+        const { getProfileOverride, saveProfileOverride, clearProfileOverride } = await import('./profile-overrides.js');
+        const carriedOverride = getProfileOverride(draftRecord.id);
+        if (carriedOverride) {
+            const merged = await saveProfileOverride(saved.id, carriedOverride);
+            await clearProfileOverride(draftRecord.id);
+            saved.metadata = { ...(saved.metadata || {}), ...merged };
+        }
+
+        availableProfiles[saved.id] = saved;
+
+        editorState.sourceProfileRecord = saved;
+        editorState.sourceProfileId = saved.id;
+        _baselineProfileJson = JSON.stringify(editorState.profile);
+
+        finishSaveSuccess(saved.id);
+    } catch (err) {
+        console.error('Draft save failed:', err);
+        showToast(`${getTranslation('Upload failed!')} ${err.message}`, 4000, 'error');
+    }
+}
+
 async function saveProfile({ asNew = false } = {}) {
     if (!editorState.profile.title?.trim()) {
         showToast(getTranslation('Invalid name'), 3000, 'error');
@@ -2415,6 +2492,13 @@ async function saveProfile({ asNew = false } = {}) {
         // fix). SAVE AS NEW (asNew=true) is the explicit save-as instead.
         const src = currentSaveSource();
 
+        // Editing a local-only draft (see profileManager.js duplicateProfileAsDraft
+        // / createOrUpdateDraft) follows a completely separate routing: it only
+        // reaches the server once its content actually diverges from the draft.
+        if (src?.isDraft) {
+            return saveDraftEdit(src);
+        }
+
         // Compare against the source put through the same normalisation the
         // editor ran on load (initializeProfileEditor). Without it every profile
         // still carrying legacy fields reads as modified the instant it opens —
@@ -2425,23 +2509,25 @@ async function saveProfile({ asNew = false } = {}) {
 
         // No-op save guard — nothing changed, so there is nothing worth writing.
         // Two shapes of "nothing changed":
-        //  - an existing profile reopened and saved untouched (compare to source);
+        //  - an existing profile reopened and saved untouched: there is nothing
+        //    to write, but the user's intent was "keep this", so report success
+        //    and leave the editor exactly as a real save would.
         //  - a brand-new profile saved straight off the Add Profile template,
         //    which has no source record, so compare to the load-time baseline.
         //    Blocking it keeps a generic "New Profile" of stock defaults out of
-        //    the list; the user still has to name it or edit something.
+        //    the list; the user still has to name it or edit something, so stay
+        //    on the editor — the toast names the way forward (renaming is the
+        //    save-as route, titleChanged below, which does mint a record).
         // An uploaded file also has no source record and also resets the
         // baseline, but saving it verbatim is the whole point of uploading —
         // _hasImportedInSession excludes it from the template check.
-        // Either way stay on the editor rather than bouncing to the selector: the
-        // user pressed Save meaning to keep something, and navigating away reads
-        // as success. The toast names the way forward — renaming and pressing
-        // SAVE AS NEW is the save-as route, which does mint a record.
         const editedJson = JSON.stringify(editorState.profile);
-        const unchanged = sourceProfileJson
-            ? sourceProfileJson === editedJson
-            : (!_hasImportedInSession && editedJson === _baselineProfileJson);
-        if (unchanged) {
+        if (sourceProfileJson) {
+            if (sourceProfileJson === editedJson) {
+                finishSaveSuccess(src.id);
+                return;
+            }
+        } else if (!_hasImportedInSession && editedJson === _baselineProfileJson) {
             showToast(getTranslation('Pick a new name to save'), 3000, 'info');
             return;
         }
@@ -2499,6 +2585,24 @@ async function saveProfile({ asNew = false } = {}) {
 
         // Legacy-field stripping + REA Profile-model adaptation happens at the
         // api.js write boundary (sanitizeProfileForRea), covering every path.
+
+        // POST /profiles is content-addressed (ProfileController.create): if the
+        // execution hash we submit already matches a stored record — most often
+        // the very default/profile we're forking away from, because our
+        // executionChanged() diff is a raw JSON compare over a wider field set
+        // than the server's hash — it silently hands back that EXISTING record
+        // (its own id, its own title) instead of minting ours. The HTTP response
+        // still reads as success (201 via jsonCreated) either way, so the only
+        // reliable tell from here is comparing what we sent against what we got
+        // back: the returned id landing on the record we're forking away from,
+        // or the returned title silently not being the one we typed.
+        const sentTitle = finalTitle;
+        const forkDeduped = (record, avoidId) => {
+            if (!record) return true;
+            if (avoidId && record.id === avoidId) return true;
+            return (record.profile?.title || '') !== sentTitle;
+        };
+
         let saved;
         if (target === 'put') {
             // Presentation-only change (title/author/notes, no execution
@@ -2509,12 +2613,20 @@ async function saveProfile({ asNew = false } = {}) {
             // Forced fork — PUT is rejected server-side for a default. The
             // default itself stays as the parent/reset point (never hidden).
             saved = await uploadProfileWithParent(editorState.profile, src.id);
+            if (forkDeduped(saved, src.id)) {
+                showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+                return;
+            }
         } else if (!src || asNew) {
             // New profile / uploaded file, or an explicit Save As New with a
             // real execution change: a plain POST. src?.id links provenance
             // (getProfileLineage) but the source's visibility is never
             // touched — Save As New leaves the original completely untouched.
             saved = await uploadProfileWithParent(editorState.profile, src?.id ?? null);
+            if (forkDeduped(saved, src?.id ?? null)) {
+                showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+                return;
+            }
         } else {
             // Plain SAVE overwriting an existing user profile with a real
             // execution change: the content rehashes to a new id, so keep the
@@ -2523,6 +2635,14 @@ async function saveProfile({ asNew = false } = {}) {
             // via parentId, so /lineage returns the full history the Revert
             // picker reads.
             saved = await uploadProfileWithParent(editorState.profile, src.id);
+            // A dedup here would return src itself — flipping it visible then
+            // straight back to hidden a few lines down and erasing the user's
+            // only copy of the profile they thought they were editing. Bail
+            // before either visibility call runs.
+            if (forkDeduped(saved, src.id)) {
+                showToast(getTranslation('This change matches an existing profile — nothing new was saved'), 4000, 'info');
+                return;
+            }
             if (saved.visibility !== 'visible') {
                 saved = await updateProfileVisibility(saved.id, 'visible');
             }
@@ -2547,11 +2667,7 @@ async function saveProfile({ asNew = false } = {}) {
         _baselineProfileJson = JSON.stringify(editorState.profile);
         updateSaveAsNewButtonState();
 
-        // Hint to selector so it pre-selects the profile we just edited.
-        sessionStorage.setItem('lastEditedProfileKey', saved.id);
-
-        showToast(getTranslation('Saved profile'), 2000, 'success');
-        setTimeout(() => { loadPage('src/profiles/profile_selector.html'); }, 1000);
+        finishSaveSuccess(saved.id);
     } catch (err) {
         console.error('Profile save failed:', err);
         // Every failure path here is a write to Rea Prime (POST/PUT), so the
@@ -2855,6 +2971,19 @@ export async function initializeProfileEditor() {
         saveProfile({ asNew: true });
     });
     if (closeBtn) closeBtn.addEventListener('click', cancelEditor);
+
+    // Version history — only for an already-saved, non-default, non-draft
+    // profile. A draft never reached the server, so it has no lineage to show.
+    // No #editor-history-btn in this page's current layout yet; guarded so
+    // this stays inert until the button is added back.
+    const historyBtn = document.getElementById('editor-history-btn');
+    if (historyBtn) {
+        historyBtn.addEventListener('click', openVersionHistory);
+        if (editorState.sourceProfileId && !editorState.sourceProfileRecord?.isDefault && !editorState.sourceProfileRecord?.isDraft) {
+            historyBtn.classList.remove('hidden');
+            historyBtn.classList.add('flex');
+        }
+    }
 
     console.log('Profile Editor: Initialization complete.');
 }

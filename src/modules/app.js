@@ -1,4 +1,4 @@
-import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShotIds, getShots, getValueFromStore, verifyVisualizerCredentials, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting } from './api.js';
+import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShotIds, getShots, getValueFromStore, verifyVisualizerCredentials, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket } from './api.js';
 import { initScaling } from './scaling.js';
 import * as chart from './chart.js';
 import * as ui from './ui.js';
@@ -13,10 +13,11 @@ import { loadPage, initRouter, isSubPage, prefetchSettingsPage } from './router.
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
+import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
 import { setMachineModel, isBengleMachine, setRefillKitPresent, isRefillKitPresent } from './machine.js';
 import { classifyStopReason, canonicalStopReason, STOP_TARGET_WEIGHT, STOP_TARGET_VOLUME, STOP_PROFILE_ENDED } from './stop-reason.js';
-import { resolveMilkProbePresence } from './steam-mode.js';
+import { resolveMilkProbePresence, MILK_PROBE_ABSENT_AFTER_MS, selectMilkProbeSensorId } from './steam-mode.js';
 import { readTimeToReadyFrame, heatingSecondsLeft } from './heating-countdown.js';
 import { workflowTileValues, changedTileValues } from './workflow-watch.js';
 import { isCupWarmerOn, readCupWarmerTarget, resolvePrewarm, getCupWarmerState, setCupWarmerState, patchCupWarmerState, invalidateCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY } from './cup-warmer.js';
@@ -106,7 +107,7 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                         const tempC = fromDisplayTemp(parseFloat(newVal));
                         el.textContent = type === 'temperature' ? formatTemp(tempC, 0) :
                                         type === 'grind' ? newVal :
-                                        type === 'steam-duration' ? `${newVal}s` :
+                                        type === 'steam-duration' ? window.app.ui.formatSteamDuration((newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal)) :
                                         type === 'steam-flow' ? newVal :
                                         type === 'flush' ? `${newVal}s` :
                                         type === 'hot-water-vol' ? `${newVal}ml` :
@@ -131,6 +132,12 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             const v = (newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal);
                             window.app.ui.updateSteamDisplay({ targetSteamDuration: v });
                             window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v));
+                            // Per-profile save, same call the tile's +/- and presets make
+                            // (ui.js) — this full-screen numpad entry point is mobile/tablet
+                            // only (initMobileValueInputs guards on shouldUseNumpad()) and
+                            // was missing it entirely, so a value typed here never stuck
+                            // across a profile switch even though +/- worked fine.
+                            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: v });
                         } else if (type === 'steam-flow') {
                             // Numpad blanks a bare "0" to ''. Unlike duration, 0 steam
                             // flow has no meaning (steam is gated on duration, not flow),
@@ -140,6 +147,7 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             const v = (newVal === '' || isNaN(parsed) || parsed < 0.4) ? 0.4 : parsed;
                             window.app.ui.updateSteamDisplay({ targetSteamFlow: v });
                             window.app.ui.pushSteamSetting('flow', window.app.api.setTargetSteamFlow(v));
+                            window.app?.saveContextToActiveProfile?.({ targetSteamFlow: v });
                         } else if (type === 'flush') {
                             window.app.ui.updateFlushValue(parseFloat(newVal));
                             window.app.ui.updateFlushDisplay(parseFloat(newVal));
@@ -188,6 +196,14 @@ function formatStateString(text) {
 
 let shotStartTime = null;
 let shotEndedAt = null;
+// Bumped every time a new shot actually starts. shotStartTime itself can't
+// serve as a "same shot?" token: it's nulled by the machine-snapshot feed
+// (leaves ESPRESSO state) independently of the shotState feed's 'stop', so a
+// weight-stop captured while it happened to already be null, followed by a
+// second shot that also starts and ends before a slow 'finalize' arrives,
+// would read as null === null and misidentify the shots as the same one.
+// A counter that only ever increases has no such collision.
+let shotGeneration = 0;
 const SHOT_RESTART_COOLDOWN_MS = 5000;
 let dataTimeout;
 let de1DeviceId = null;
@@ -229,24 +245,87 @@ function deviceListHasScale(devices) {
 
 // Scale auto-retry on disconnect
 let scaleAutoRetryCount = 0;
+let scaleAutoRetryWaitCount = 0;
 let scaleAutoRetryTimer = null;
 const SCALE_AUTO_RETRY_MAX = 3;
+const SCALE_AUTO_RETRY_MAX_WAITS = 6; // ~30s at SCALE_AUTO_RETRY_INTERVAL_MS, comfortably past Decaid's ~15s scan window
 const SCALE_AUTO_RETRY_INTERVAL_MS = 5000;
 
 function clearScaleAutoRetry() {
     clearTimeout(scaleAutoRetryTimer);
     scaleAutoRetryTimer = null;
     scaleAutoRetryCount = 0;
+    scaleAutoRetryWaitCount = 0;
+}
+
+// Decides what an auto-retry tick should do. Pulled out pure so sleep/wake
+// timing bugs (like the one this guards against) are testable without a
+// WebSocket or a timer: reaprime's De1StateManager deliberately skips its own
+// post-wake scan burst when a preferred scale id is set, because its
+// background ScaleWatch reacquires the scale passively — a scan from here
+// during that window competes for the BLE radio and can fail the reacquire
+// (observed as a GATT Error 133). So while the machine is asleep we must not
+// even keep the chain armed (onScaleDisconnect re-arms it for a real drop),
+// and while host is scanning or we're in the post-wake grace window we must
+// wait without burning a retry, not scan. Waits are bounded by their own
+// budget (separate from the retry budget): isScaleScanning only updates when
+// a devices-WS payload carries a 'scanning' key, so if that socket drops
+// mid-scan the flag can stay stuck true forever — without a wait budget the
+// chain would re-arm every tick with no termination condition.
+export function scaleAutoRetryDecision({
+    scaleConnected,
+    retryCount,
+    maxRetries,
+    hasScaleId,
+    powerMode,
+    machineAsleep,
+    inWakeGrace,
+    hostScanning,
+    waitCount,
+    maxWaits,
+}) {
+    if (
+        scaleConnected ||
+        retryCount >= maxRetries ||
+        !hasScaleId ||
+        powerMode === 'disconnect' ||
+        machineAsleep ||
+        waitCount >= maxWaits
+    ) {
+        return 'stop';
+    }
+    if (inWakeGrace || hostScanning) {
+        return 'wait';
+    }
+    return 'retry';
 }
 
 async function attemptScaleAutoRetry() {
-    if (isScaleConnected) { clearScaleAutoRetry(); return; }
-    if (scaleAutoRetryCount >= SCALE_AUTO_RETRY_MAX) { clearScaleAutoRetry(); return; }
-    if (!getScaleDeviceId()) { clearScaleAutoRetry(); return; }
+    let scalePowerMode;
     try {
         const reaSettings = await getReaSettings();
-        if (reaSettings?.scalePowerMode === 'disconnect') { clearScaleAutoRetry(); return; }
-    } catch (_) { /* proceed */ }
+        scalePowerMode = reaSettings?.scalePowerMode;
+    } catch (_) { /* proceed, treat as not-disconnect */ }
+
+    const decision = scaleAutoRetryDecision({
+        scaleConnected: isScaleConnected,
+        retryCount: scaleAutoRetryCount,
+        maxRetries: SCALE_AUTO_RETRY_MAX,
+        hasScaleId: !!getScaleDeviceId(),
+        powerMode: scalePowerMode,
+        machineAsleep: previousState.state === MachineState.SLEEPING,
+        inWakeGrace: isInWakeGracePeriod,
+        hostScanning: isScaleScanning,
+        waitCount: scaleAutoRetryWaitCount,
+        maxWaits: SCALE_AUTO_RETRY_MAX_WAITS,
+    });
+
+    if (decision === 'stop') { clearScaleAutoRetry(); return; }
+    if (decision === 'wait') {
+        scaleAutoRetryWaitCount++;
+        scaleAutoRetryTimer = setTimeout(attemptScaleAutoRetry, SCALE_AUTO_RETRY_INTERVAL_MS);
+        return;
+    }
 
     scaleAutoRetryCount++;
     logger.info(`Scale auto-retry ${scaleAutoRetryCount}/${SCALE_AUTO_RETRY_MAX}`);
@@ -583,12 +662,20 @@ function applyScreensaverAction(state) {
 }
 
 // ── Milk probe (Bengle) ──────────────────────────────────────────────────────
-// Fed one snapshot milkTemperature per frame (contract: 0/absent = no probe or
-// no reading). Presence survives brief 0-glitches and drops only after a
-// sustained absence (resolveMilkProbePresence, steam-mode.js). The main-screen
-// steam tile consumes this through ui.setMilkProbePresent (Milk-mode gating +
-// probe-loss un-arm); the settings steam page through window.app.getMilkProbe
-// (render-time state) and window.onMilkProbeUpdate (live ticks + presence flips).
+// A Bengle's onboard milk probe is NOT part of the machine snapshot: reaprime's
+// MachineSnapshot has no milkTemperature field (confirmed against reaprime's
+// machine.dart and rest_v1.yml's MachineSnapshot schema — neither has ever had
+// one). The value only exists on SteamSnapshot, which itself is never streamed
+// live; the actual live path is the generic sensor bus — GET /api/v1/sensors
+// lists the probe (auto-registered by reaprime's BengleProbeBridge while
+// physically attached) and ws/v1/sensors/<id>/snapshot streams its readings.
+// pollMilkProbeSensor() below owns discovery/(re)subscription; each resolved
+// reading is folded here the same way a per-frame value would be, so presence
+// survives brief drop-outs and only clears after a sustained absence
+// (resolveMilkProbePresence, steam-mode.js). The main-screen steam tile
+// consumes this through ui.setMilkProbePresent (Milk-mode gating + probe-loss
+// un-arm); the settings steam page through window.app.getMilkProbe (render-time
+// state) and window.onMilkProbeUpdate (live ticks + presence flips).
 let milkProbeState = { present: false, lastPositiveMs: null };
 let latestMilkTemp = 0; // last positive reading while present; 0 when absent
 function updateMilkProbeFromSnapshot(tempC) {
@@ -603,6 +690,58 @@ function updateMilkProbeFromSnapshot(tempC) {
     window.onMilkProbeUpdate?.(milkProbeState.present, latestMilkTemp);
 }
 window.app.getMilkProbe = () => ({ present: milkProbeState.present, temperature: latestMilkTemp });
+
+// Sensor-bus feed for the milk probe (see comment above). currentMilkSensorId
+// tracks which sensor id the snapshot socket is bound to so a change (or
+// disappearance) on the next poll re-subscribes instead of leaking a socket.
+// latestSensorReadingAtMs marks when a reading last actually arrived; a
+// reading older than MILK_PROBE_ABSENT_AFTER_MS is treated as no reading this
+// tick, same as resolveMilkProbePresence would treat a 0/absent snapshot field.
+let currentMilkSensorId = null;
+let latestSensorTemp = null;
+let latestSensorReadingAtMs = null;
+
+function handleMilkSensorSnapshot(frame) {
+    const t = frame?.temperature;
+    if (typeof t === 'number' && isFinite(t)) {
+        latestSensorTemp = t;
+        latestSensorReadingAtMs = Date.now();
+    }
+}
+
+const MILK_PROBE_SENSOR_POLL_MS = 3000; // comfortably under MILK_PROBE_ABSENT_AFTER_MS (5s)
+
+async function pollMilkProbeSensor() {
+    let sensors;
+    try {
+        sensors = await getSensors();
+    } catch (error) {
+        logger.warn('Milk-probe sensor poll failed:', error);
+        return;
+    }
+    const id = selectMilkProbeSensorId(sensors);
+    if (id === currentMilkSensorId) return;
+    currentMilkSensorId = id;
+    latestSensorTemp = null;
+    latestSensorReadingAtMs = null;
+    if (id) {
+        connectSensorSnapshotWebSocket(id, handleMilkSensorSnapshot);
+    } else {
+        closeSensorSnapshotWebSocket();
+    }
+}
+
+function initMilkProbeSensorPolling() {
+    pollMilkProbeSensor();
+    setInterval(pollMilkProbeSensor, MILK_PROBE_SENSOR_POLL_MS);
+}
+
+/** Reading to feed updateMilkProbeFromSnapshot this machine-snapshot tick. */
+function currentMilkProbeReading() {
+    if (latestSensorReadingAtMs === null) return undefined;
+    if (Date.now() - latestSensorReadingAtMs >= MILK_PROBE_ABSENT_AFTER_MS) return undefined;
+    return latestSensorTemp;
+}
 
 function handleData(data) {
     if (!data?.state) {
@@ -676,6 +815,11 @@ function handleData(data) {
     if (wasSleeping && state !== MachineState.SLEEPING && state !== MachineState.ERROR) {
         logger.info('Machine woke from sleep. Reloading initial data.');
         loadInitialData();
+
+        if (api.isWakeProfileEnabled()) {
+            const wakeProfileId = api.getWakeProfileId();
+            if (wakeProfileId) profileManager.loadProfileForWake(wakeProfileId);
+        }
 
         // Hold off "[Reconnect]" — REA fires devices ws scanning ~3s after wake.
         // Show "Scanning..." until grace window expires or scanning flag arrives.
@@ -754,6 +898,21 @@ function handleData(data) {
             history.refreshToNewestShot(previousNewestId);
         })();
     }
+
+    // Bengle LED colour-sequence trigger (led-strip-runner.js): reacts to the
+    // SAME snapshot stream this function already owns rather than opening a
+    // second subscription -- only on an actual state change, not every frame
+    // at ~10 Hz. A no-op for non-Bengle machines (the Lighting settings page
+    // that configures triggerStates is Bengle-only, so there is nothing to
+    // resolve) and for a machine with no sequence mapped to this state. On
+    // ERROR (the machine link itself is down, per isDe1Connected above) stop
+    // unconditionally -- manual or trigger -- rather than resolve a trigger
+    // for a state nothing should ever be mapped to.
+    if (state !== previousState.state) {
+        if (state === MachineState.ERROR) ledStripForceStop();
+        else ledStripOnMachineStateChange(state);
+    }
+
     previousState = data.state; // Update previous state
 
     // Update GHC stop button opacity: active (not idle/sleeping/error) = fully opaque
@@ -782,7 +941,7 @@ function handleData(data) {
     });
     ui.updateSleepButton(state);
     ui.updateTemperatures({ mix: data.mixTemperature, group: data.groupTemperature, steam: data.steamTemperature });
-    updateMilkProbeFromSnapshot(data.milkTemperature);
+    updateMilkProbeFromSnapshot(currentMilkProbeReading());
 
     // Update Chart and Shot Data Table
     if (MachineState.ESPRESSO.includes(state)) {
@@ -794,6 +953,7 @@ function handleData(data) {
                     return;
                 }
                 shotStartTime = new Date(data.timestamp);
+                shotGeneration++;
                 // Feed frames during this shot re-assert it; stays false in
                 // gateway mode so the fallback heuristics run at shot end.
                 seqTrackedShot = false;
@@ -1074,17 +1234,30 @@ function stopReasonText(key, value) {
     return `${getTranslation(key)} ${value}`;
 }
 
+// Weight-stop label with no number (see formatStopReason) — the translated key
+// still ends in a colon meant for an appended value, so drop it rather than
+// show a dangling "Stopped by weight:". Handles the half-width colon used by
+// most languages and the full-width "：" used by the zh rows, each optionally
+// preceded by a space (fr: "poids :").
+function stopReasonLabel(key) {
+    return getTranslation(key).replace(/[:：]\s*$/, '');
+}
+
 // Render a canonical stop reason (see stop-reason.js) as the toast text. Both
 // the shotState feed and the gateway-mode fallback answer in that one
 // vocabulary, so this is the only place the four messages are built.
-function formatStopReason(reason, { weight, volume, totalS }) {
+// `weight` is still computed by both callers — canonicalStopReason/
+// classifyStopReason need it to decide the reason — it is just no longer
+// rendered, so it is not destructured here.
+function formatStopReason(reason, { volume, totalS }) {
     switch (reason) {
-        // decision.data is freeform on the wire (additionalProperties: true), so
-        // projectedWeight can parse to NaN. Say nothing rather than "NaN g" —
-        // the generic message below is still true.
+        // Weight is intentionally not shown for now: projectedWeight is a live
+        // estimate that can read a couple grams off the settled annotations.actualYield,
+        // and showing a number that then silently corrects itself a few seconds
+        // later (see the 'finalize' handling below) read as more confusing than
+        // just naming the reason.
         case STOP_TARGET_WEIGHT:
-            if (!Number.isFinite(weight)) break;
-            return stopReasonText('Stopped by weight:', `${weight.toFixed(1)}g`);
+            return stopReasonLabel('Stopped by weight:');
         case STOP_TARGET_VOLUME:
             return stopReasonText('Stopped by volume:', `${Math.round(volume)}ml`);
         case STOP_PROFILE_ENDED:
@@ -1124,8 +1297,23 @@ function shotStateStopMessage(decision, machineHasAutonomousSAW) {
     const reason = canonicalStopReason(decision.reason, {
         machineHasAutonomousSAW, isScaleConnected, weight, targetWeight, totalS, profileSeconds,
     });
-    return formatStopReason(reason, { weight, volume, totalS });
+    return { text: formatStopReason(reason, { weight, volume, totalS }), reason };
 }
+
+// Set once a weight-stop toast has fired for the shot currently settling, so
+// the 'finalize' branch below knows whether a corrected weight is worth
+// fetching. projectedWeight at 'stop' is a live estimate; annotations.actualYield
+// only exists a few seconds later, once the server has measured the decaying
+// post-stop flow and clamped for a removed cup — 'finalize' is exactly that
+// "settling closed" moment, so it's the first point the real number exists.
+// `gen` is the shotGeneration at the moment of the stop: currentShot
+// (shotData.js) has no id of its own, so this stands in for one — if a new
+// shot has started by the time 'finalize' arrives, shotGeneration has moved
+// on and the guard below skips writing a stale shot's yield onto it. A
+// counter, not shotStartTime, because shotStartTime is nulled independently
+// by the machine-snapshot feed and can be null at both capture and check time
+// even after a full extra shot has started and ended in between.
+let seqWeightStop = null; // { shotId, gen } | null
 
 function handleShotStateEvent(frame) {
     if (!frame?.event) return;
@@ -1162,17 +1350,37 @@ function handleShotStateEvent(frame) {
                 : (d.details || `${getTranslation('Shot Stopped')}: ${shotData.getTotalTime().toFixed(1)}s`),
                 4000, 'error');
             break;
-        case 'stop':
-            ui.showToast(shotStateStopMessage(d, frame.machineHasAutonomousSAW), 6000, 'info');
+        case 'stop': {
+            const { text, reason } = shotStateStopMessage(d, frame.machineHasAutonomousSAW);
+            ui.showToast(text, 6000, 'info');
+            seqWeightStop = reason === STOP_TARGET_WEIGHT ? { shotId: frame.shotId, gen: shotGeneration } : null;
             seqRefreshHistory(frame.shotId);
             break;
+        }
         case 'terminal':
             // Abnormal end (error / disconnect).
             ui.showToast(d.details || `${getTranslation('Shot Stopped')}: ${shotData.getTotalTime().toFixed(1)}s`, 6000, 'error');
+            seqWeightStop = null;
             seqRefreshHistory(frame.shotId);
             break;
         case 'finalize':
-            // Post-stop settling closed — the shot record is persisted.
+            // Post-stop settling closed — the shot record is persisted, so
+            // annotations.actualYield now exists if the shot was weight-stopped.
+            // Correct the shot-total card with the real settled figure. No
+            // toast: the 'stop' toast no longer shows a number to correct
+            // (see formatStopReason), so a second toast here would just repeat
+            // the same text with nothing new to say.
+            if (frame.shotId && seqWeightStop?.shotId === frame.shotId) {
+                const capturedGen = seqWeightStop.gen;
+                seqWeightStop = null;
+                api.getShots({ ids: frame.shotId, limit: 1 }).then(({ items } = {}) => {
+                    const actualYield = items?.[0]?.annotations?.actualYield;
+                    if (!Number.isFinite(actualYield)) return;
+                    // Only stamp the card if this is still the same shot —
+                    // a new shot may have started while the fetch was in flight.
+                    if (shotGeneration === capturedGen) shotData.setFinalWeight(actualYield);
+                }).catch(error => logger.warn('Could not fetch actualYield for finalized shot:', error));
+            }
             seqRefreshHistory(frame.shotId);
             break;
         // advance frames: chart already tracks step changes via profileFrame
@@ -1914,6 +2122,7 @@ async function initMainPageOnce() {
         setTimeout(() => { restoreBrightnessFromStorage(); }, 1500);
         ensureGatewayModeTracking();
         resetDataTimeout();
+        initMilkProbeSensorPolling();
         connectShotSettingsWebSocket(handleShotSettingsData);
         void initVisualizer().catch(error => logger.error('Visualizer initialization failed:', error));
         mainPageInitialized = true;

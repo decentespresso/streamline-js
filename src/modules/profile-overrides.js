@@ -20,7 +20,7 @@ export const OVERRIDES_NAMESPACE = 'streamlineProfileOverrides';
 
 // The tile values a user can override. Anything else in a record's metadata
 // (source, filename, ...) is Decaid's and is never written here.
-export const OVERRIDE_KEYS = ['targetDoseWeight', 'targetYield', 'grinderSetting', 'brewTemperature'];
+export const OVERRIDE_KEYS = ['targetDoseWeight', 'targetYield', 'grinderSetting', 'brewTemperature', 'targetSteamDuration', 'targetSteamFlow'];
 
 let overrides = {};      // profileId -> { targetDoseWeight, targetYield, ... }
 let kv = null;           // injected in tests; otherwise api.js, imported lazily

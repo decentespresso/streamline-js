@@ -201,6 +201,79 @@ function lift(module, patterns) {
     });
 }
 
+// ── Hot water: the store records intent before the machine does (api.js) ─────
+{
+    const body = lift('api.js', [
+        /export const HOT_WATER_VOLUME_LAST_VALUE_KEY = .*;/,
+        /export const HOT_WATER_TEMP_LAST_VALUE_KEY = .*;/,
+        /export async function setTargetHotWaterVolume\(volume\) \{[\s\S]*?\r?\n\}/,
+        /export async function setTargetHotWaterTemp\(temp\) \{[\s\S]*?\r?\n\}/,
+    ]);
+
+    // One ordered log of both sides, so "which happened first" is the assertion.
+    const build = ({ putFails = false } = {}) => {
+        const order = [];
+        const api = new Function(
+            'logger', 'persistSharedValue', 'updateWorkflow',
+            `${body}\nreturn { setTargetHotWaterVolume, setTargetHotWaterTemp };`,
+        )(
+            { warn() {}, error() {} },
+            async (key, value) => { order.push(['kv', key, value]); },
+            async (patch) => {
+                order.push(['workflow', patch]);
+                if (putFails) throw new Error('503 Workflow request queue timed out');
+                return patch;
+            },
+        );
+        return { api, order };
+    };
+
+    test('the hot-water target is remembered in KV before it reaches the machine', async () => {
+        // Storing afterwards left the store holding the OLD value while the
+        // workflow and the machine already held the new one. Hot water is echoed
+        // back by a shotSettings frame, so resyncDriftedShotSettings ran inside
+        // that window, read the user's own change as drift, and pushed the old
+        // value back -- the tile flashed the new number and snapped back.
+        const temp = build();
+        await temp.api.setTargetHotWaterTemp(67);
+        assert.deepEqual(temp.order, [
+            ['kv', 'last-hot-water-temp', 67],
+            ['workflow', { hotWaterData: { targetTemperature: 67 } }],
+        ]);
+
+        const vol = build();
+        await vol.api.setTargetHotWaterVolume(120);
+        assert.deepEqual(vol.order, [
+            ['kv', 'last-hot-water-volume', 120],
+            ['workflow', { hotWaterData: { volume: 120 } }],
+        ]);
+    });
+
+    test('a push that never lands still leaves the intent recorded', async () => {
+        // PUT /workflow can queue for 30s and come back 503. With nothing stored,
+        // the next drift check would replay the stale value over what the user
+        // asked for; with it stored, the same check restores their setting.
+        for (const [call, key, value] of [
+            ['setTargetHotWaterTemp', 'last-hot-water-temp', 67],
+            ['setTargetHotWaterVolume', 'last-hot-water-volume', 120],
+        ]) {
+            const { api, order } = build({ putFails: true });
+            await assert.rejects(api[call](value));
+            assert.deepEqual(order[0], ['kv', key, value]);
+        }
+    });
+
+    test('a string from a preset or the numpad is stored as a number', async () => {
+        const { api, order } = build();
+        await api.setTargetHotWaterTemp('67');
+        await api.setTargetHotWaterVolume('120');
+        assert.deepEqual(order.filter(([kind]) => kind === 'kv'), [
+            ['kv', 'last-hot-water-temp', 67],
+            ['kv', 'last-hot-water-volume', 120],
+        ]);
+    });
+}
+
 // ── After-boot drift check on shotSettings frames (app.js) ───────────────────
 {
     const body = lift('app.js', [

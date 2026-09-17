@@ -138,6 +138,28 @@ export function resolveMilkProbePresence(prev, tempC, nowMs) {
     };
 }
 
+// The reaprime name a Bengle's onboard milk probe registers under once
+// attached (BengleMilkProbe.info.name in reaprime, auto-registered by
+// BengleProbeBridge — GET /api/v1/sensors is empty until then). Matched on
+// name rather than vendor because the sensor list's `id` is an opaque,
+// undocumented reaprime implementation detail (`${machineDeviceId}-milkprobe`)
+// that must not be relied on as a stable contract.
+const MILK_PROBE_SENSOR_NAME = 'Bengle Milk Probe';
+
+/**
+ * Pick the milk-probe sensor id out of a GET /api/v1/sensors response, if any
+ * is currently registered. Returns null (never fakes an id) when the list is
+ * empty, malformed, or has no matching entry — e.g. no Bengle connected, or a
+ * Bengle connected with the probe not physically attached.
+ * @param {Array<{id?:string, info?:{name?:string}}>} sensors  GET /api/v1/sensors response
+ * @returns {string|null}
+ */
+export function selectMilkProbeSensorId(sensors) {
+    if (!Array.isArray(sensors)) return null;
+    const match = sensors.find((s) => s?.info?.name === MILK_PROBE_SENSOR_NAME && typeof s?.id === 'string' && s.id);
+    return match?.id ?? null;
+}
+
 /**
  * Gate a resolved steam-stop mode on probe presence: 'temperature' is only
  * offerable with a probe attached; without one it falls back to the

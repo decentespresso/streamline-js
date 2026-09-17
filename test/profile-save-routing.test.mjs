@@ -234,4 +234,117 @@ assert.ok(remapMatch, 'the favorite-remap guard not found in profile_editor.js')
 assert.ok(remapMatch[0].includes('!src?.isDefault') && remapMatch[0].includes('!asNew'),
     'favorite remap must be gated on both !isDefault and !asNew, not on titleChanged');
 
+// ── 5. POST dedup collision after a genuine execution change ────────────────
+// POST /profiles is content-addressed (ProfileController.create): it can hand
+// back an EXISTING record — same id we tried to fork away from, or a totally
+// unrelated profile with a coincidentally matching hash — while still
+// answering 201. saveProfile's forkDeduped() guard is the only thing standing
+// between that and a false "Saved profile" toast, so pin its behaviour
+// directly from the real source rather than a hand-written mirror.
+const forkDedupedSrc = editorSource.match(/const forkDeduped = \(record, avoidId\) => \{[\s\S]*?\n {8}\};/)?.[0];
+assert.ok(forkDedupedSrc, 'forkDeduped guard must exist in the save path');
+const runForkDeduped = new Function('sentTitle', 'record', 'avoidId',
+    `${forkDedupedSrc}\nreturn forkDeduped(record, avoidId);`);
+
+assert.strictEqual(
+    runForkDeduped('My Fork', { id: 'profile:new', profile: { title: 'My Fork' } }, 'profile:old'),
+    false,
+    'a genuinely new record (different id, our title) must not be flagged as deduped');
+assert.strictEqual(
+    runForkDeduped('My Fork', { id: 'profile:old', profile: { title: 'Original' } }, 'profile:old'),
+    true,
+    'the server handing back the record we forked away from must be flagged as deduped');
+assert.strictEqual(
+    runForkDeduped('My Fork', { id: 'profile:other', profile: { title: 'Some Other Profile' } }, 'profile:old'),
+    true,
+    'a hash collision with an unrelated profile (our title not echoed back) must be flagged as deduped');
+assert.strictEqual(
+    runForkDeduped('My Fork', null, 'profile:old'),
+    true,
+    'no record at all must be treated as a failed fork, not a silent success');
+
+// Every uploadProfileWithParent call in the POST branches must be guarded by
+// forkDeduped before the routine touches availableProfiles/editorState or
+// reports success — a branch added later without the guard would reintroduce
+// the false-success bug this fix closes.
+const saveProfileStart = editorSource.indexOf('async function saveProfile({ asNew = false } = {}) {');
+const saveProfileEnd = editorSource.indexOf('\nfunction promptConfirm(', saveProfileStart + 1);
+assert.ok(saveProfileStart >= 0 && saveProfileEnd > saveProfileStart, 'saveProfile() must be found in the editor source');
+const saveProfileSrc = editorSource.slice(saveProfileStart, saveProfileEnd);
+const uploadCallRe = /saved = await uploadProfileWithParent\([^)]*\);/g;
+const uploadCallMatches = [...saveProfileSrc.matchAll(uploadCallRe)];
+assert.strictEqual(uploadCallMatches.length, 3, 'expected exactly three POST (uploadProfileWithParent) call sites in saveProfile');
+uploadCallMatches.forEach((m, i) => {
+    const sliceStart = m.index + m[0].length;
+    const sliceEnd = uploadCallMatches[i + 1]?.index ?? saveProfileSrc.length;
+    const afterCall = saveProfileSrc.slice(sliceStart, sliceEnd);
+    assert.ok(/forkDeduped\(saved,/.test(afterCall),
+        `uploadProfileWithParent call #${i + 1} must be followed by its own forkDeduped() guard before the next branch`);
+});
+
+// ── 6. Draft save routing (copy now, edit later) ────────────────────────────
+// A draft (profileManager.js duplicateProfileAsDraft / createOrUpdateDraft)
+// lives only in the streamline-app KV bucket until its content actually
+// diverges from what it was copied with — see saveDraftEdit in
+// profile_editor.js. Mirrors the same execChanged split saveProfile uses,
+// so a rename-only edit of a draft never round-trips to the server.
+function routeDraft(draftRecord, edited) {
+    const sourceProfile = normalizeLegacySteps(deepCopy(draftRecord.profile));
+    return executionChanged(sourceProfile, edited) ? 'promote' : 'stay-draft';
+}
+
+const draft = { id: 'draft:1', parentId: 'profile:parent', profile: mkProfile('Rao Allongé (2)', [flowStep()]) };
+assert.strictEqual(routeDraft(draft, asEdited(draft)), 'stay-draft',
+    'opening a draft and saving it untouched must not reach the server');
+
+const draftRenamed = asEdited(draft);
+draftRenamed.title = 'Rao Allongé (3)';
+assert.strictEqual(routeDraft(draft, draftRenamed), 'stay-draft',
+    'renaming a draft with no execution change must update the KV copy in place, not POST');
+
+const draftEdited = asEdited(draft);
+draftEdited.steps[0].flow = 3;
+assert.strictEqual(routeDraft(draft, draftEdited), 'promote',
+    'a real execution change on a draft must promote it to a server-backed profile');
+
+// Pin saveDraftEdit's own dedup guard directly from the source (same
+// technique as forkDeduped above) rather than a hand-written mirror.
+const draftEditStart = editorSource.indexOf('async function saveDraftEdit(draftRecord) {');
+assert.ok(draftEditStart >= 0, 'saveDraftEdit must exist in the editor source');
+const draftDedupedSrc = editorSource.match(/const deduped = !saved\n[\s\S]*?;\n/)?.[0];
+assert.ok(draftDedupedSrc, 'saveDraftEdit dedup guard must exist');
+const runDraftDeduped = new Function('saved', 'draftRecord', 'sentTitle',
+    `${draftDedupedSrc}\nreturn deduped;`);
+
+assert.strictEqual(
+    runDraftDeduped({ id: 'profile:new', profile: { title: 'My Draft' } }, { parentId: 'profile:parent' }, 'My Draft'),
+    false, 'a genuinely new record must not be flagged as deduped');
+assert.strictEqual(
+    runDraftDeduped({ id: 'profile:parent', profile: { title: 'Original' } }, { parentId: 'profile:parent' }, 'My Draft'),
+    true, 'the server handing back the draft\'s own parent must be flagged as deduped');
+assert.strictEqual(
+    runDraftDeduped({ id: 'profile:other', profile: { title: 'Some Other Profile' } }, { parentId: 'profile:parent' }, 'My Draft'),
+    true, 'a hash collision with an unrelated profile must be flagged as deduped');
+assert.strictEqual(
+    runDraftDeduped(null, { parentId: 'profile:parent' }, 'My Draft'),
+    true, 'no record at all must be treated as a failed promotion');
+
+// Pin profileManager.js's uniqueProfileTitle directly from source.
+const pmSource = readFileSync(new URL('../src/modules/profileManager.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const uniqueTitleSrc = pmSource.match(/function uniqueProfileTitle\(baseTitle, excludeId\) \{[\s\S]*?\n\}/)?.[0];
+assert.ok(uniqueTitleSrc, 'uniqueProfileTitle must exist in profileManager.js');
+const runUniqueTitle = new Function('availableProfiles', 'baseTitle', 'excludeId',
+    `${uniqueTitleSrc}\nreturn uniqueProfileTitle(baseTitle, excludeId);`);
+
+const existing = {
+    a: { profile: { title: 'Rao Allongé' } },
+    b: { profile: { title: 'Rao Allongé (2)' } },
+};
+assert.strictEqual(runUniqueTitle(existing, 'Londinium', null), 'Londinium',
+    'a title with no collision is returned unchanged');
+assert.strictEqual(runUniqueTitle(existing, 'Rao Allongé', null), 'Rao Allongé (3)',
+    'a collision skips past every already-taken suffix');
+assert.strictEqual(runUniqueTitle(existing, 'Rao Allongé', 'a'), 'Rao Allongé',
+    'a record keeping its own title is excluded from its own collision check');
+
 console.log('profile-save-routing: all assertions passed');

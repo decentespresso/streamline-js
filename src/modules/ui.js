@@ -686,6 +686,17 @@ export function setMilkProbePresent(present) {
     updateSteamPresetDisplay();
 }
 
+// 0s reads as "Off" -- duration 0 already sends the steam-off command
+// (steamHeaterFor in api.js zeroes targetTemperature alongside it), so the
+// tile should say so rather than show a number that looks like a very short
+// steam time.
+export function formatSteamDuration(v) {
+    // Lowercase 'off' (not 'OFF') is the exact CSV key: the translation sheet
+    // carries both, and case-insensitive lookup would resolve to whichever one
+    // parses last (see i18n-parser.js keyIndex), which is not this one.
+    return v === 0 ? getTranslation('off') : `${v}s`;
+}
+
 export function updateSteamDisplay(data) {
     const durationEl = document.getElementById('steam-duration-value');
     const flowEl = document.getElementById('steam-flow-value');
@@ -727,7 +738,7 @@ export function updateSteamDisplay(data) {
         modeTimeEl.className = INACTIVE;
         modeFlowEl.className = INACTIVE;
     } else if (steamMode === 'time') {
-        durationEl.textContent = `${currentSteamDuration}s`;
+        durationEl.textContent = formatSteamDuration(currentSteamDuration);
         durationEl.classList.remove('text-[20px]');
         durationEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
         flowEl.classList.remove('text-[26px]', 'font-bold');
@@ -735,7 +746,7 @@ export function updateSteamDisplay(data) {
         modeTimeEl.className = ACTIVE;
         modeFlowEl.className = INACTIVE;
     } else { // flow mode
-        durationEl.textContent = `${currentSteamDuration}s`;
+        durationEl.textContent = formatSteamDuration(currentSteamDuration);
         flowEl.classList.remove('text-[20px]');
         flowEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
         durationEl.classList.remove('text-[26px]', 'font-bold');
@@ -822,6 +833,8 @@ function scheduleSteamApi() {
     steamApiDebounce = setTimeout(() => {
         if (steamMode === 'time') {
             pushSteamSetting(steamSyncField(steamMode), setTargetSteamDuration(currentSteamDuration));
+            // Per-profile save, same call the dose/yield/temp tiles make.
+            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
         } else if (steamMode === 'temperature') {
             // Milk stop now has a KV record of its own, so it takes the same
             // marked-and-retried path as duration and flow (steamSyncField maps
@@ -829,6 +842,7 @@ function scheduleSteamApi() {
             pushSteamSetting(steamSyncField(steamMode), setStopAtTemperature(currentMilkStop));
         } else {
             pushSteamSetting(steamSyncField(steamMode), setTargetSteamFlow(currentSteamFlow));
+            window.app?.saveContextToActiveProfile?.({ targetSteamFlow: currentSteamFlow });
         }
     }, API_DEBOUNCE_MS);
 }
@@ -1793,6 +1807,7 @@ export function initUI(callbacks) {
                 if (newValue === undefined) return;
 
                 pushSteamSetting('duration', setTargetSteamDuration(newValue));
+                window.app?.saveContextToActiveProfile?.({ targetSteamDuration: newValue });
                 updateSteamDisplay({ targetSteamDuration: newValue });
 
                 syncPresetHighlight(steamPresets, t => t === button.textContent.trim());
@@ -1917,6 +1932,7 @@ export function initUI(callbacks) {
                 if (newValue === undefined) return;
 
                 setTargetSteamFlow(newValue).catch(e => logger.error(e));
+                window.app?.saveContextToActiveProfile?.({ targetSteamFlow: newValue });
                 updateSteamDisplay({ targetSteamFlow: newValue });
 
                 highlightSteamFlowPreset(index);
@@ -2155,6 +2171,7 @@ export function initUI(callbacks) {
             }
             currentSteamDuration = value;
             pushSteamSetting('duration', setTargetSteamDuration(currentSteamDuration));
+            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
             updateSteamDisplay({ targetSteamDuration: currentSteamDuration });
         });
     }
@@ -2173,6 +2190,7 @@ export function initUI(callbacks) {
             }
             currentSteamFlow = value;
             setTargetSteamFlow(currentSteamFlow).catch(e => logger.error(e));
+            window.app?.saveContextToActiveProfile?.({ targetSteamFlow: currentSteamFlow });
             updateSteamDisplay({ targetSteamFlow: currentSteamFlow });
         });
     }

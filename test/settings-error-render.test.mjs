@@ -4,14 +4,16 @@ import { readFileSync } from 'node:fs';
 
 function loadRenderer() {
     const source = readFileSync(new URL('../src/settings/settings.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-    const helpersStart = source.indexOf('function escapeHtml');
-    const helpersEnd = source.indexOf('let screensaverImagesCache', helpersStart);
+    // escapeHtml moved to the DOM-free plugin-view.js so one implementation
+    // serves settings.js and the plugin cards; settings.js imports it.
+    const viewSource = readFileSync(new URL('../src/settings/plugin-view.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    const helpers = viewSource.match(/export function escapeHtml\(str\) \{[\s\S]*?\n\}/)?.[0].replace('export ', '');
     const rendererStart = source.indexOf('function renderErrorState');
     const rendererEnd = source.indexOf('function updateSettingsContentArea', rendererStart);
-    assert.ok(helpersStart >= 0 && helpersEnd > helpersStart && rendererStart >= 0 && rendererEnd > rendererStart);
+    assert.ok(helpers && rendererStart >= 0 && rendererEnd > rendererStart);
 
     return new Function(`
-        ${source.slice(helpersStart, helpersEnd)}
+        ${helpers}
         ${source.slice(rendererStart, rendererEnd)}
         return renderErrorState;
     `)();

@@ -40,7 +40,7 @@ export const ledHexToRgb = (hex) => {
  * @param {string[]} editedZoneKeys  zone keys being edited (e.g. ['frontStrip'])
  * @param {'awake'|'sleeping'} editedBank  palette bank being edited
  * @param {'awake'|'sleeping'} machineBank  bank the machine is rendering now
- * @returns {{front:string, back:string}}  12-char colours for previewLedStrip
+ * @returns {{front:string, back:string}}  12-char colours to drive onto the strip
  */
 export const ledPreviewComposite = (palette, editedZoneKeys, editedBank, machineBank) => {
     const pick = (zoneKey) => {
@@ -48,4 +48,44 @@ export const ledPreviewComposite = (palette, editedZoneKeys, editedBank, machine
         return palette?.[zoneKey]?.[bank] || '000000000000';
     };
     return { front: pick('frontStrip'), back: pick('backStrip') };
+};
+
+/**
+ * Compose the full LedStripState to PUT in order to show `front`/`back` on the
+ * strip RIGHT NOW.
+ *
+ * There is no live/preview register on this hardware. The firmware stores one
+ * palette — four MMR colour registers, front/rear × awake/sleeping — and
+ * renders `zone[bank]`, where `bank` is 'sleeping' only while the machine
+ * sleeps and 'awake' in every other state. `PUT /machine/ledStrip` writes those
+ * registers straight through, so the ONLY way to drive a colour onto the strip
+ * is to write it into the bank the machine is currently rendering. There is no
+ * staging step to roll back: whoever writes a live colour is responsible for
+ * writing the real palette back afterwards.
+ *
+ * The bank the machine is NOT rendering is carried through from `basePalette`
+ * untouched, so a live write only ever disturbs the half of the palette that is
+ * actually visible. `frontSwitch` mirrors the front strip — it is not an
+ * independent control (the firmware derives the HV switch colours from the
+ * front strip, and the server ignores `frontSwitch` on write).
+ *
+ * @param {object} basePalette  LedStripState-shaped map to carry the other bank from
+ * @param {string} front  12-char colour for the front strip
+ * @param {string} back   12-char colour for the rear strip
+ * @param {'awake'|'sleeping'} machineBank  bank the machine is rendering now
+ * @returns {{frontStrip:object, backStrip:object, frontSwitch:object}} LedStripState to PUT
+ */
+export const ledLiveWriteState = (basePalette, front, back, machineBank) => {
+    const bank = machineBank === 'sleeping' ? 'sleeping' : 'awake';
+    const other = bank === 'sleeping' ? 'awake' : 'sleeping';
+    const zone = (zoneKey, live) => ({
+        [bank]: live || '000000000000',
+        [other]: basePalette?.[zoneKey]?.[other] || '000000000000',
+    });
+    const frontStrip = zone('frontStrip', front);
+    return {
+        frontStrip,
+        backStrip: zone('backStrip', back),
+        frontSwitch: { awake: frontStrip.awake, sleeping: frontStrip.sleeping },
+    };
 };

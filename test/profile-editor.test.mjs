@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { DEFAULT_LIMITER_RANGE } from '../src/modules/profile-field-limits.js';
 
 // profile_editor.js pulls in browser-only modules, so lift the function out of
 // the source the same way the other editor tests do.
@@ -82,7 +83,10 @@ test('a real exit is passed through, with defaults filled in', () => {
 });
 
 test('off is reachable and leavable in the type cycle', () => {
-    const types = source.match(/const EXIT_TYPES\s*=\s*\[([^\]]*)\]/)[1]
+    // EXIT_TYPES moved into profile-field-limits.js so the legacy-TCL profile
+    // importer can share it without importing this DOM-touching module.
+    const limitsSource = readFileSync(new URL('../src/modules/profile-field-limits.js', import.meta.url), 'utf8');
+    const types = limitsSource.match(/export const EXIT_TYPES\s*=\s*\[([^\]]*)\]/)[1]
         .split(',').map((t) => t.trim().replace(/'/g, ''));
     assert.ok(types.includes('off'), 'off must stay in the cycle so an exit can be cleared');
     // Both tabs cycle with the same modulo step, so every type is reachable.
@@ -136,7 +140,10 @@ test('a real exit still survives the same round trip', () => {
 // really carries a limiter; editing it never creates one on a step that had
 // none; and a limiter added from a step card inherits the profile's tolerance
 // instead of a hardcoded 0.6.
-const limiterMatch = source.match(/const DEFAULT_LIMITER_RANGE[\s\S]*?\nfunction newLimiterRange\(pump\) \{[\s\S]*?\r?\n\}/);
+// DEFAULT_LIMITER_RANGE moved into profile-field-limits.js (imported above) so
+// the legacy-TCL importer can share it; it's injected below the same way the
+// other stubbed dependencies (createSpinner, ...) are.
+const limiterMatch = source.match(/function limitedSteps\(pump\) \{[\s\S]*?\nfunction newLimiterRange\(pump\) \{[\s\S]*?\r?\n\}/);
 const toleranceMatch = source.match(/const rangeControl = \(pump, unit\) => \{[\s\S]*?\r?\n        \};/);
 assert.ok(limiterMatch && toleranceMatch, 'limiter tolerance source not found in profile_editor.js');
 
@@ -146,9 +153,9 @@ function limiterEditor(steps) {
     const editorState = { profile: { steps } };
     const createSpinner = (value, _step, unit, onChange, opts) => ({ value, unit, onChange, ...opts });
     const api = new Function(
-        'editorState', 'createSpinner', 'getTranslation',
+        'editorState', 'createSpinner', 'getTranslation', 'DEFAULT_LIMITER_RANGE',
         `${limiterMatch[0]}\n${toleranceMatch[0]}\nreturn { rangeControl, newLimiterRange, limiterRangeOf };`
-    )(editorState, createSpinner, (x) => x);
+    )(editorState, createSpinner, (x) => x, DEFAULT_LIMITER_RANGE);
     const fields = {
         'bar-field': api.rangeControl('flow', 'bar'),
         'mls-field': api.rangeControl('pressure', 'mL/s'),
