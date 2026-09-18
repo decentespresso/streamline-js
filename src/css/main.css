@@ -641,6 +641,37 @@ body {
   mask-size: contain;
 }
 
+/* Skip-step arrow in the machine-status line (ui.js SKIP_STEP_GLYPH). Composes
+   with .pe-icon-mask for the shared mask mechanics; this class only adds the
+   size, mask-image and colour specific to this one instance. Colour is pinned
+   to --mimoja-blue-v2 (Figma's #385A92 in light mode) rather than
+   currentColor: the surrounding --status-clickable-color span is a different
+   blue (#1967D4) used for the plain ">>" text this replaced, and doesn't
+   match the Figma icon's own colour. */
+.skip-step-glyph {
+  vertical-align: middle;
+  width: 30px;
+  height: 22px;
+  background-color: var(--mimoja-blue-v2);
+  -webkit-mask-image: url('../ui/icons/icon_skip_step.svg');
+  mask-image: url('../ui/icons/icon_skip_step.svg');
+}
+
+/* Shared 72x45 bordered icon-button frame: #profile-select-btn, #profile-edit-btn
+   (index.html) and the skip-step glyph's box (ui.js SKIP_STEP_GLYPH). Figma
+   node 2662:781 "Frame 311" — border #C9C9C9. One class so the three stay in
+   sync instead of three copies of the same Tailwind arbitrary-value string. */
+.header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  width: 72px;
+  height: 45px;
+  border: 2px solid #c9c9c9;
+  border-radius: 10px;
+}
+
 /* ── Bengle Lighting settings ──────────────────────────────────────────────
    The page holds two different things: a palette that PERSISTS (Static
    Colours, with Save/Reset) and a sequence that is TRANSIENT (played onto the

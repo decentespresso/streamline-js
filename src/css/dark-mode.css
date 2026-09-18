@@ -67,6 +67,24 @@
     color: white;
 }
 
+/* Header profile actions: the Figma exports are near-black line art, so flip them
+   to the dark-theme foreground the same way the GHC icons are flipped. */
+[data-theme="dark"] #profile-select-btn img,
+[data-theme="dark"] #profile-edit-btn img {
+    filter: brightness(0) invert(1);
+}
+
+/* These three boxes hardcode Figma's light-mode border (#C9C9C9) inline since
+   --border-color's light value (#EAEAEA) is too low-contrast to match the
+   design. Restore the existing dark-mode border token here instead of also
+   hardcoding a dark hex, so this stays in sync with --border-color's dark
+   value everywhere else. */
+[data-theme="dark"] #profile-select-btn,
+[data-theme="dark"] #profile-edit-btn,
+[data-theme="dark"] .skip-step-icon-box {
+    border-color: var(--border-color);
+}
+
 [data-theme="dark"] footer {
     background-color: #101117;
     border-top-color: black;
