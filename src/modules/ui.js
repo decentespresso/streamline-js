@@ -1,4 +1,4 @@
-import { steamAdjustmentControls } from './auto-steam-flow.js';
+import { autoSteamDurationLabel, autoSteamPitcherLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
 import { openDB, getSetting, setSetting } from './idb.js';
@@ -87,18 +87,40 @@ let calibratedSteamPitcher = null;
 let calibratedSteamPitchers = [];
 let calibratedSteamConfigured = false;
 let calibratedSteamState = {};
+let autoSteamTargetLabel = null;
+let autoSteamTargetTimer = null;
+
+function clearAutoSteamTargetPreview() {
+    clearTimeout(autoSteamTargetTimer);
+    autoSteamTargetTimer = null;
+    autoSteamTargetLabel = null;
+}
+
+function showAutoSteamTargetBriefly(label) {
+    clearAutoSteamTargetPreview();
+    if (steamMode !== 'auto' || typeof label !== 'string' || !label) return;
+    autoSteamTargetLabel = label;
+    updateSteamDisplay({});
+    autoSteamTargetTimer = setTimeout(() => {
+        autoSteamTargetTimer = null;
+        autoSteamTargetLabel = null;
+        updateSteamDisplay({});
+    }, 1500);
+}
 
 function currentManualSteamMode() {
     return manualSteamMode({ milkAvailable: isBengleMachine() && milkProbePresent });
 }
 
 function disposeCalibratedSteamUI() {
+    clearAutoSteamTargetPreview();
     calibratedSteam?.dispose();
     calibratedSteam = null;
     for (const button of document.querySelectorAll('[data-auto-pitcher]')) button.onclick = null;
 }
 
 async function fallbackToManual(error) {
+    clearAutoSteamTargetPreview();
     try {
         await calibratedSteam?.fallbackToManual();
     } catch (fallbackError) {
@@ -109,6 +131,14 @@ async function fallbackToManual(error) {
     updateSteamDisplay({});
     updateSteamPresetDisplay();
     showToast(`${error.message} Using manual steam.`, 5000, 'error');
+}
+
+async function handleAutoSteamCalculationError(error) {
+    if (shouldKeepAutoSteamMode(error)) {
+        showToast(error.message, 5000, 'error');
+        return;
+    }
+    await fallbackToManual(error);
 }
 
 export function isAutoSteamMode() { return steamMode === 'auto' || calibratedSteamApplying; }
@@ -770,6 +800,9 @@ export function updateSteamDisplay(data) {
         }
     });
     flowEl.textContent = `${currentSteamFlow.toFixed(1)}`;
+    durationEl.style.fontSize = '';
+    durationEl.style.fontWeight = '';
+    durationEl.style.whiteSpace = '';
     const ACTIVE = 'text-[var(--mimoja-blue-v2)]';
     const INACTIVE = 'text-[var(--low-contrast-white)]';
     if (modeMilkEl) modeMilkEl.className = INACTIVE;
@@ -784,7 +817,13 @@ export function updateSteamDisplay(data) {
         modeTimeEl.className = INACTIVE;
         modeFlowEl.className = INACTIVE;
     } else if (steamMode === 'time' || steamMode === 'auto') {
-        durationEl.textContent = formatSteamDuration(currentSteamDuration);
+        const showingTarget = steamMode === 'auto' && autoSteamTargetLabel;
+        durationEl.textContent = steamMode === 'auto'
+            ? autoSteamDurationLabel(currentSteamDuration, autoSteamTargetLabel)
+            : formatSteamDuration(currentSteamDuration);
+        durationEl.style.fontSize = showingTarget ? '20px' : '';
+        durationEl.style.fontWeight = showingTarget ? '400' : '';
+        durationEl.style.whiteSpace = showingTarget ? 'nowrap' : '';
         durationEl.classList.remove('text-[20px]');
         durationEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
         flowEl.classList.remove('text-[26px]', 'font-bold');
@@ -907,7 +946,7 @@ function syncSteamPresets() {
 }
 
 function incrementSteam() {
-    if (steamMode === 'auto') { adjustAutoSteamFlow(0.1); return; }
+    if (steamMode === 'auto') { adjustAutoSteamSelection(0.1); return; }
     if (isAutoSteamMode()) return;
     const steamPlusBtn = document.getElementById('steam-plus');
     if (steamPlusBtn) { flashPlusMinusButton(steamPlusBtn); }
@@ -926,7 +965,7 @@ function incrementSteam() {
 }
 
 function decrementSteam() {
-    if (steamMode === 'auto') { adjustAutoSteamFlow(-0.1); return; }
+    if (steamMode === 'auto') { adjustAutoSteamSelection(-0.1); return; }
     if (isAutoSteamMode()) return;
     const steamMinusBtn = document.getElementById('steam-minus');
     if (steamMinusBtn) { flashPlusMinusButton(steamMinusBtn); }
@@ -949,9 +988,12 @@ function decrementSteam() {
     syncSteamPresets();
 }
 
-async function adjustAutoSteamFlow(delta) {
-    if (calibratedSteamApplying || !calibratedSteamState.adjustableFlow || currentMachineState !== 'idle') return;
-    try { await calibratedSteam.adjustFlow(delta); }
+async function adjustAutoSteamSelection(delta) {
+    if (calibratedSteamApplying || !calibratedSteamState.adjustableSelection || currentMachineState !== 'idle') return;
+    try {
+        const state = await calibratedSteam.adjustSelection(delta);
+        showAutoSteamTargetBriefly(state?.targetLabel);
+    }
     catch (error) { await fallbackToManual(error); }
 }
 
@@ -963,9 +1005,15 @@ function updateSteamPresetDisplay() {
     autoPresetContainer?.classList.toggle('hidden', steamMode !== 'auto');
     document.querySelectorAll('[data-auto-pitcher]').forEach(button => {
         const selected = button.dataset.autoPitcher === calibratedSteamPitcher;
+        const selectedTarget = selected && calibratedSteamState.adjustmentKind === 'calibration'
+            ? calibratedSteamState.targetLabel : null;
         button.classList.toggle('preset-active', selected);
         button.setAttribute('aria-pressed', String(selected));
         button.style.display = calibratedSteamPitchers.includes(button.dataset.autoPitcher) ? '' : 'none';
+        button.textContent = autoSteamPitcherLabel(button.dataset.autoPitcher, calibratedSteamPitcher, selectedTarget);
+        button.style.fontSize = selectedTarget ? '17px' : '';
+        button.style.minWidth = selectedTarget ? '92px' : '72px';
+        button.style.whiteSpace = 'nowrap';
         button.disabled = calibratedSteamApplying || !calibratedSteamConfigured;
     });
     const setup = document.getElementById('steam-auto-setup');
@@ -978,7 +1026,11 @@ function updateSteamPresetDisplay() {
             const icon = button.querySelector('svg');
             if (icon) icon.style.visibility = adjustment.visible ? '' : 'hidden';
             button.disabled = id === 'steam-minus' ? adjustment.minusDisabled : adjustment.plusDisabled;
-            button.setAttribute('aria-label', getTranslation(id === 'steam-minus' ? (steamMode === 'auto' ? 'Decrease Auto steam flow' : 'Decrease steam setting') : (steamMode === 'auto' ? 'Increase Auto steam flow' : 'Increase steam setting')));
+            const calibration = steamMode === 'auto' && calibratedSteamState.adjustmentKind === 'calibration';
+            const label = id === 'steam-minus'
+                ? (calibration ? 'Previous Auto steam calibration' : (steamMode === 'auto' ? 'Decrease Auto steam flow' : 'Decrease steam setting'))
+                : (calibration ? 'Next Auto steam calibration' : (steamMode === 'auto' ? 'Increase Auto steam flow' : 'Increase steam setting'));
+            button.setAttribute('aria-label', getTranslation(label));
         }
     }
     if (!timePresetContainer || !flowPresetContainer) return;
@@ -1297,6 +1349,7 @@ async function toggleSteamMode() {
     const next = modes[(currentIndex + 1 + modes.length) % modes.length];
 
     try {
+        if (next !== 'auto') clearAutoSteamTargetPreview();
         clearTimeout(steamApiDebounce);
         clearTimeout(steamSyncRetryTimer);
         if (next === 'auto') {
@@ -2344,7 +2397,10 @@ export function initUI(callbacks) {
     calibratedSteam = initCalibratedSteam({
         onAvailability(available) {
             calibratedSteamAvailable = available;
-            if (!available && steamMode === 'auto') steamMode = currentManualSteamMode();
+            if (!available && steamMode === 'auto') {
+                clearAutoSteamTargetPreview();
+                steamMode = currentManualSteamMode();
+            }
             const standard = document.getElementById('steam-mode-standard');
             const auto = document.getElementById('steam-mode-auto');
             if (standard) standard.style.display = available ? 'none' : '';
@@ -2363,7 +2419,10 @@ export function initUI(callbacks) {
             calibratedSteamPitchers = state.availablePitchers;
             calibratedSteamConfigured = state.configurationReady;
             if (calibratedSteamAvailable && state.active) steamMode = 'auto';
-            else if (steamMode === 'auto') steamMode = currentManualSteamMode();
+            else if (steamMode === 'auto') {
+                clearAutoSteamTargetPreview();
+                steamMode = currentManualSteamMode();
+            }
             if (state.busy) {
                 clearTimeout(steamApiDebounce);
                 clearTimeout(steamSyncRetryTimer);
@@ -2386,7 +2445,7 @@ export function initUI(callbacks) {
                 const pitcher = result.pitcherSource === 'tared' ? getTranslation('Milk only') : getTranslation(pitcherKey);
                 showToast(`${pitcher} · ${result.milkGrams} g · ${result.durationSeconds} s`, 4000);
             } catch (error) {
-                await fallbackToManual(error);
+                await handleAutoSteamCalculationError(error);
             }
         };
     }

@@ -383,10 +383,13 @@ temperature, duration and flow). Start from the GHC or the **Steam** button. Ste
 duration limit, or when you stop it.
 
 When the Auto Steam Calculator plugin is available, the same mode control also offers **Auto**.
-Choose a configured pitcher to calculate and arm the steam time. While Auto waits for a calculation
-or the next pitcher, it keeps the normal steam-heater target but sets the duration and milk-temperature
-stop to Off. The boiler therefore stays ready between drinks. Physically starting steam while Auto is
-Off can still produce a brief burst during the machine's state transition.
+In saved-calibration mode, use **−** / **+** to cycle the available calibrations; the selected milk
+target appears beside the active pitcher and briefly replaces the `0s` display after each change. In
+interpolation mode, the same buttons adjust flow in 0.1 ml/s steps within the calibrated range. Tap a
+configured pitcher to calculate and arm the steam time. While Auto waits for a calculation or the next
+pitcher, it keeps the normal steam-heater target but sets the duration and milk-temperature stop to Off.
+The boiler therefore stays ready between drinks. Physically starting steam while Auto is Off can still
+produce a brief burst during the machine's state transition.
 
 **Hot water.** Tap the *Hot Water* label to choose volume, temperature, duration or flow, then set
 the value. Start with the GHC or the **Water** button.

@@ -233,3 +233,15 @@ test('a missing description reads as empty, not "undefined"', () => {
     assert.equal(pluginDescription({}), '');
     assert.equal(pluginDescription(null), '');
 });
+
+test('plugin endpoint errors expose safe JSON messages and status metadata', () => {
+    const apiSource = readFileSync(new URL('../src/modules/api.js', import.meta.url), 'utf8');
+    const match = apiSource.match(/function pluginEndpointError\(pluginId, endpoint, status, errorBody\) \{[\s\S]*?\r?\n\}/);
+    assert.ok(match, 'pluginEndpointError not found in api.js');
+    const pluginEndpointError = new Function(`${match[0]}\nreturn pluginEndpointError;`)();
+    const error = pluginEndpointError('calibrated-steam.reaplugin', 'calculate', 422,
+        JSON.stringify({ code: 'invalid_milk_weight', message: 'Milk < 10 g · Medium pitcher' }));
+    assert.equal(error.message, 'Milk < 10 g · Medium pitcher');
+    assert.equal(error.status, 422);
+    assert.equal(error.code, 'invalid_milk_weight');
+});
