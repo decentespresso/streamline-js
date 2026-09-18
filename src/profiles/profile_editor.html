@@ -1,0 +1,69 @@
+<div id="scaled-content">
+<div class="bg-base-200 overflow-hidden flex-grow flex flex-col w-[1920px] h-full" role="main" aria-label="Profile Editor">
+
+    <!-- Header -->
+    <div id="subpage-header" class="flex justify-between items-center p-6 border-b border-base-300 bg-[var(--box-color)] h-[150px]">
+        <div class="flex items-center gap-4 flex-1">
+            <span id="editor-title-display" class="text-[37.5px] font-bold text-[var(--text-primary)] cursor-pointer select-none underline decoration-dashed" style="text-decoration-color: var(--low-contrast-white); text-underline-offset: 6px;">Untitled Profile</span>
+            <input id="editor-title-input" type="text" class="text-[37.5px] font-bold text-[var(--text-primary)] bg-transparent border-b-2 border-[var(--mimoja-blue)] outline-none hidden w-[400px]" />
+        </div>
+        <div class="flex items-center gap-[22.5px]">
+            <button id="editor-history-btn" class="settings-button hidden justify-center items-center min-h-0 w-[82.5px] h-[82.5px] text-[var(--mimoja-blue)] rounded-[67.5px] font-bold text-[32px]" title="Version" aria-label="Version">↺</button>
+            <button id="editor-cancel-btn" class="settings-button flex justify-center items-center min-h-0 w-[171px] h-[82.5px] whitespace-nowrap text-[var(--text-primary)] rounded-[67.5px] font-bold text-[24px] uppercase" data-i18n-key="Cancel" data-fit-text>CANCEL</button>
+            <button id="editor-save-btn" class="settings-button flex justify-center items-center bg-[var(--mimoja-blue)] text-white min-h-0 w-[240px] h-[82.5px] whitespace-nowrap font-bold text-[24px] rounded-[67.5px] uppercase" data-i18n-key="Save" data-fit-text>SAVE</button>
+        </div>
+    </div>
+
+    <!-- Tab bar -->
+    <div class="flex items-center px-6 h-[82px] border-b border-base-300 bg-[var(--box-color)]">
+        <div class="flex items-center gap-[12px] bg-[var(--box-color)] border-2 border-[var(--border-color)] rounded-[60px] px-[16px] h-[58px]">
+            <button class="editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase" data-tab="0" data-i18n-key="STEP">STEP</button>
+            <button class="editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase" data-tab="2" data-i18n-key="Summary">Summary</button>
+            <button class="editor-tab-btn font-bold px-[28px] h-[44px] rounded-[44px] transition-colors text-[20px] tracking-wide uppercase" data-tab="1" data-i18n-key="SETTINGS">SETTINGS</button>
+        </div>
+    </div>
+
+    <!-- Content area -->
+    <div class="flex-1 overflow-hidden bg-[var(--profile-button-background-color)]">
+
+        <!-- Tab 0: Steps -->
+        <div id="editor-tab-panel-0" class="editor-tab-panel h-full">
+            <div id="editor-steps-container" class="overflow-x-auto overflow-y-auto h-full">
+                <!-- Step cards rendered by JS -->
+            </div>
+        </div>
+
+        <!-- Tab 1: Settings -->
+        <div id="editor-tab-panel-1" class="editor-tab-panel h-full hidden">
+            <div id="editor-settings-container" class="p-[40px] flex gap-[40px] h-full">
+                <!-- Settings fields rendered by JS -->
+            </div>
+        </div>
+
+        <!-- Tab 2: Review -->
+        <div id="editor-tab-panel-2" class="editor-tab-panel h-full hidden overflow-hidden">
+            <div class="flex h-full bg-[var(--box-color)] rounded-[20px] mx-[30px] my-[20px] border-2 border-[var(--border-color)] overflow-hidden">
+                <!-- Left: Steps Review -->
+                <div id="review-steps-col" class="flex-1 border-r-2 border-[var(--border-color)] overflow-y-auto p-[30px] flex flex-col gap-[20px]">
+                    <p class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Summary">Summary</p>
+                    <div id="review-steps-list" class="flex gap-[30px]"></div>
+                </div>
+                <!-- Right: Graph + Settings -->
+                <div id="review-right-col" class="flex-1 overflow-y-auto p-[30px] flex flex-col gap-[20px]">
+                    <div class="flex flex-col gap-[14px]">
+                        <p class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Preview">Preview</p>
+                        <div id="review-graph" class="w-full h-[450px]"></div>
+                    </div>
+                    <div class="h-[2px] bg-[var(--border-color)]"></div>
+                    <div class="flex flex-col gap-[14px]">
+                        <p class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Profile settings">Profile settings</p>
+                        <ul id="review-settings-list" class="flex flex-col gap-[10px] list-disc list-inside text-[20px] text-[var(--text-primary)]"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+</div>

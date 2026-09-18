@@ -1,0 +1,761 @@
+/* Scaling container - initially hidden until scaled */
+#scaling-container {
+    overflow: hidden;
+}
+
+#scaled-content {
+    width: 1920px;
+    height: 1200px;
+    visibility: hidden;
+}
+
+#subpage-host {
+    width: 1920px;
+    height: 100%;
+}
+
+/* Subpage roots: settings/profile_editor carry h-full themselves, profile_selector
+   does not and stopped short of the canvas. Cover all of them in one place. */
+#subpage-host > div {
+    height: 100%;
+}
+
+/* Fixed-height header band. Without shrink:0 it is a shrinkable flex item, so any
+   overflow below it (profile_selector's grid asks for h-full = the whole root)
+   squeezes the header instead, and the button gaps come out short. */
+#subpage-header {
+    flex-shrink: 0;
+}
+
+/* h-full here means 100% of the root, which together with the header overflows it.
+   Flex instead so the grid takes what is left. */
+#profile-editor-grid {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+/* profile_selector's fixed panel heights (list 850, chart 675, notes 275) add up to
+   the design canvas exactly; grow the list and the graph so the pair still reaches
+   the bottom when the canvas is taller. Notes keeps its 275. */
+#profile-list,
+#profile-chart-wrap {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+#profile-chart-wrap {
+    display: flex;
+}
+
+#profile-chart-wrap > #plotly-chart {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+/* scaling.js grows #scaled-content past 1200 design rows on screens taller than
+   16:10 (4:3 iPads). These rules pass that height down so the extra space lands
+   in the chart rather than as an empty band at the bottom. */
+#main-page {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The header is a fixed 168px band. Without shrink:0 it is a shrinkable flex item,
+   and any overshoot in the growing chart below squeezes it to ~1px instead. */
+#main-page > header {
+    flex: 0 0 auto;
+}
+
+/* min-height:0 lets the column shrink past its content instead of overflowing
+   (flex items default to min-height:auto). */
+#main-page > div,
+#main-page main {
+    min-height: 0;
+}
+
+/* flex-basis 0, not auto: with auto, the chart's own content height feeds back
+   into the column's base size and the siblings (header band, telemetry row) get
+   shrunk to compensate. Basis 0 means these two absorb free space only. */
+#main-row {
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+#chart-wrap {
+    flex: 1 1 0;
+    min-height: 650px;   /* the design height -- never shrink below it */
+}
+
+/* Scoped to the main page on purpose: profile_selector.html reuses the
+   #plotly-chart id inside an auto-height wrapper, where height:100% collapses it. */
+#main-page #plotly-chart {
+    height: 100%;
+}
+
+/* Shot Settings sidebar is h-[1036px] (= 1200 - 168 header, near enough). Let it
+   stretch with the canvas; its own justify-around then spaces the rows evenly. */
+#shot-settings {
+    height: auto;
+}
+
+/* The footer band is absolutely placed against the canvas at top:958 (958 = 168
+   header + 790 chart row; the panels are h-60 = 240 tall, ending at 1198). Anchor
+   it to the bottom instead so it stays put when the canvas grows, and reserve its
+   242px inside <main> so the growing chart stops flush above it rather than
+   sliding underneath. Both are no-ops at the design height of 1200. */
+#main-page main {
+    padding-bottom: 242px;
+}
+
+#shot-history-panel,
+#shot-data-panel {
+    top: auto;
+    bottom: 2px;
+}
+
+/* Settings body is h-[1088px] = 1200 - 112 header. Grow it with the canvas so the
+   panels reach the bottom instead of leaving a bare strip of page background. */
+#settings-body {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+/* Fixed h-[790px] in the markup is 116 + 675 at design height; let it track the
+   chart column instead so the two stay flush when the canvas grows. */
+#ghc-controls {
+    height: auto;
+}
+
+#scaled-content.scaled {
+    visibility: visible;
+}
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-Thin.woff2') format('woff2'); font-weight: 100; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-ExtraLight.woff2') format('woff2'); font-weight: 200; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-Light.woff2') format('woff2'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-ExtraBold.woff2') format('woff2'); font-weight: 800; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('../ui/Inter-Black.woff2') format('woff2'); font-weight: 900; font-display: swap; }
+
+@font-face { font-family: 'NotoSansMono'; src: url('../ui/NotoSansMono-SemiBold.woff2') format('woff2'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'NotoSansMono'; src: url('../ui/NotoSansMono-ExtraBold.woff2') format('woff2'); font-weight: 800; font-display: swap; }
+
+html, body {
+    overflow: hidden;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+}
+
+.font-mono-custom {
+    font-family: 'NotoSansMono', monospace;
+}
+
+.font-inter-custom {
+    font-family: 'Inter', sans-serif;
+}
+
+:root {
+    --mimoja-blue-v2: #385A92;
+    --mimoja-blue: #385A92;
+
+    --profile-button-outline-color: #c5cdda;
+    --profile-button-background-color: #FFFFFF;
+    --profile-button-text-color: #7583b0;
+    --box-color: #f8f9fb;
+    --profileselectorbg: #FFFFFF;
+    --low-contrast-white: #959595;
+    --text-primary: #121212; /* Renamed from --dark-gray */
+    --text-primary-disabled: #c8cacc;
+    --preset-value-color: #AAAAAA;
+    --preset-value-color-disabled: #e3e4e6;
+    --preset-label-selected-color: #777777;
+    --green: #65Ac8a;
+    --button-grey: #EDEDED;
+
+    /* Plus Minus Flash Colors (Light Mode) */
+    --plus-minus-flash-on-color: #b8b8b8;
+    --plus-minus-flash-on-color2: #cfcfcf;
+    --plus-minus-flash-off-color: #ededed;
+
+    /* Theme toggle colors */
+    --bg--togglebtn: #FFFFFF;
+    --btn-togglebgcolor: #959595;
+    --bgmain-color : #FFFFFF;
+    --data-card-title-text-color:#707485;
+    /* left label text colors */
+    --left-label-text : #385992;
+    /*status mesg */
+    --heatingstatus:#1967d4;
+    --status-ready-green:#17c29a;
+    --status-green-color: #0CA581;
+    --status-red-color: #DA515E;
+    --status-clickable-color: #1967d4;
+    --fav-button-wait:#e3e4e6;
+
+    /* Presence Settings (Light Mode) */
+    --presence-card-bg: #f8f9fb;
+    --presence-card-alt-bg: #ffffff;
+    --presence-card-text: #121212;
+    --presence-input-bg: #ffffff;
+    --presence-input-text: #121212;
+    --presence-input-border: #c5cdda;
+    --button-primary-bg: #385a92;
+    --button-primary-text: #ffffff;
+    --button-secondary-bg: #e8e8e8;
+    --button-secondary-text: #121212;
+    /* bg colors in profile editor */
+    --secondary-button-bg:#b6c3d7; 
+    --secondary-button-outline:#385a92;
+}
+
+[data-theme='dark'] {
+    --profile-button-outline-color: #17191e;
+    --profile-button-background-color: #292c38;
+    --profile-button-text-color: #FFFFFF;
+    --box-color: #17191e;
+    --profileselectorbg:#17191e;
+    --button-grey: #2a2d36;
+    --secondary-button-bg: #2a3a5a;
+    /* Plus Minus Flash Colors (Dark Mode) */
+    --plus-minus-flash-on-color: #4a4f5e;
+    --plus-minus-flash-on-color2: #3a3e4a;
+    --plus-minus-flash-off-color: #2a2d36;
+    --bgmain-color : #101217;
+    --mimoja-blue-v2: #415996;
+    --text-primary: #e8e8e8;
+    --text-primary-disabled: #4a4a4a;
+    --preset-value-color: #4e5559;
+    --preset-value-color-disabled: #262a2c;
+    --preset-label-selected-color: #999999;
+    --data-card-title-text-color:#707485;
+     /* left label text colors */
+    --left-label-text :#415996;
+    --status-green-color: #0CA581; /* Same as light mode */
+    --status-red-color: #DA515E;   /* Same as light mode */
+    --status-clickable-color: #415996;
+
+    /* Presence Settings (Dark Mode) */
+    --presence-card-bg: #17181D;
+    --presence-card-alt-bg: #2d3a52;
+    --presence-card-text: #e8e8e8;
+    --presence-input-bg: #292c38;
+    --presence-input-text: #e8e8e8;
+    --presence-input-border: #415996;
+    --button-primary-bg: #415996;
+    --button-primary-text: #e8e8e8;
+    --button-secondary-bg: #292c38;
+    --button-secondary-text: #e8e8e8;
+}
+
+/* In-app webview: the host OS owns fullscreen, so the toggle is dead weight on
+   every page. index.html, profile_selector.html and settings.html each have their
+   own #fullscreen-toggle-btn and the sub-page ones are injected by the router
+   after boot, so this is a rule on <html> rather than a per-button hide.
+   help-overlay.css deliberately outranks this on the main page (two IDs beats
+   one) to keep that slot laid out but invisible for the help button. */
+.is-webview #fullscreen-toggle-btn {
+    display: none !important;
+}
+
+/* New classes for status messages */
+/* Status messages -- skin.tcl:653-657. The font names are decorative; the real
+   size is load_font's numeric arg, and the weight is whichever .ttf it points
+   at. Inter-HeavyBold24 is load_font "$InterSemiBold" 17 (skin.tcl:283) and
+   mono18 is NotoSansMono-SemiBold 17 (skin.tcl:330), so all three are N=17 ->
+   int(0.65*17) = 11pt = 33px, SemiBold 600. */
+.status-msg-green {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 33px;
+    color: var(--status-green-color);
+}
+
+.status-msg-red {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 33px;
+    color: var(--status-red-color);
+}
+
+.status-msg-clickable {
+    font-family: 'NotoSansMono', monospace;
+    font-weight: 600;
+    font-size: 33px;
+    color: var(--status-clickable-color);
+    cursor: pointer;
+}
+
+.profile-selector-bg {
+    background-color: var(--profileselectorbg);
+}
+
+.flash {
+    background-color: #395ab9 !important;
+    color: white !important;
+    border-radius: 0.5rem;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+#theme-toggle:checked + .togglebtn-change::before {
+    transition: 0.3s;
+    transform: translateX(23px);
+}
+
+.togglebtn-change {
+    background-color: var(--bg--togglebtn);
+}
+
+.togglebtn-change::before {
+    content: '';
+    display: block;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background-color: var(--btn-togglebgcolor);
+    transition: 0.3s;
+    transform: translateX(0);
+}
+
+.no-select {
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@keyframes button-flash {
+    0% { background-color: var(--plus-minus-flash-on-color2); }
+    14% { background-color: var(--plus-minus-flash-on-color); } /* Approximately 40ms into a 280ms animation */
+    71% { background-color: var(--plus-minus-flash-on-color2); } /* Approximately 200ms into a 280ms animation */
+    100% { background-color: transparent; } /* Revert to original, allowing CSS classes to take over */
+}
+
+.flash-animation {
+    animation: button-flash 0.28s linear forwards; /* 'forwards' keeps the end state */
+}
+
+/* Brightness Slider Styling */
+.brightness-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 200px;
+  height: 8px;
+  border-radius: 5px;
+  /* Unfilled by default. syncBrightnessSliderFill() in settings.js paints the
+     filled portion from the value, aligned to the thumb centre. This used to be
+     a fixed 75% stop, so the bar showed 75% on first paint regardless of the
+     actual brightness, until the user dragged it. */
+  background: #e8e8e8;
+  outline: none;
+  cursor: pointer;
+}
+
+.brightness-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #385a92;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 2px solid #c5cdda;
+  transition: all 0.2s ease;
+}
+
+.brightness-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(56, 90, 146, 0.4);
+}
+
+.brightness-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #385a92;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  border: 2px solid #c5cdda;
+  transition: all 0.2s ease;
+}
+
+.brightness-slider::-moz-range-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(56, 90, 146, 0.4);
+}
+
+.brightness-slider::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+.brightness-slider::-moz-range-progress {
+  background: #385a92;
+  height: 8px;
+  border-radius: 5px;
+}
+
+/* Brightness Toggle Button Styling */
+.brightness-toggle-checkbox {
+  display: none;
+}
+
+.brightness-toggle-label {
+  display: block;
+  width: 104.8px;
+  height: 62.88px;
+  background-color: #e8e8e8;
+  border: 2px solid #c9c9c9;
+  border-radius: 2617.374px;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.3s ease;
+}
+
+.brightness-toggle-label::after {
+  content: '';
+  position: absolute;
+  width: 41.92px;
+  height: 41.92px;
+  background-color: #c9c9c9;
+  border-radius: 50%;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+  transition: left 0.3s ease;
+}
+
+.brightness-toggle-checkbox:checked + .brightness-toggle-label {
+  background-color: #385a92;
+  border-color: #385a92;
+}
+
+.brightness-toggle-checkbox:checked + .brightness-toggle-label::after {
+  background-color: #ffffff;
+  left: calc(100% - 41.92px - 8px);
+}
+
+/* Button styling for Wake Lock and Presence Settings */
+.btn.btn-primary {
+  background-color: var(--button-primary-bg);
+  color: var(--button-primary-text);
+  border-color: var(--button-primary-bg);
+}
+
+.btn.btn-primary:hover {
+  background-color: var(--button-primary-bg);
+  opacity: 0.9;
+}
+
+.btn {
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+  border-color: var(--button-secondary-bg);
+}
+
+.btn:hover {
+  background-color: var(--button-secondary-bg);
+  opacity: 0.9;
+}
+
+/* Toggle styling for Wake Lock and Presence Settings */
+.toggle {
+  background-color: #e8e8e8;
+  border-color: #c5cdda;
+}
+
+.toggle:checked {
+  background-color: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
+}
+
+[data-theme='dark'] .toggle {
+  background-color: #292c38;
+  border-color: #415996;
+}
+
+[data-theme='dark'] .toggle:checked {
+  background-color: var(--button-primary-bg);
+  border-color: var(--button-primary-bg);
+}
+
+/* Save-As / Overwrite dialog backdrop — plus a soft blur behind the modal so
+   the editor reads as dimmed. */
+.pe-save-dialog::backdrop {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+[data-theme='dark'] .pe-save-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* Profile editor scrollbars. The steps grid scrolls sideways and the summary
+   columns scroll down, but on a touch device Chromium uses overlay scrollbars
+   that fade out — so there was nothing on screen saying the panel scrolls at
+   all. Declaring ::-webkit-scrollbar switches that pane back to a classic
+   space-taking scrollbar, which is what makes the trough permanently visible;
+   the colours just make it legible.
+
+   Neutral translucent rather than var(--mimoja-blue): dark mode redefines that
+   token to #292c38, which would vanish against a dark panel. These id
+   selectors outrank the app-wide [data-theme="dark"] scrollbar rules in
+   dark-mode.css, so both themes are set here. */
+#editor-steps-container,
+#review-steps-col,
+#review-right-col {
+  scrollbar-color: rgba(0, 0, 0, 0.42) rgba(0, 0, 0, 0.10); /* Firefox + Chromium 121+ */
+  scrollbar-gutter: stable;
+}
+#editor-steps-container::-webkit-scrollbar,
+#review-steps-col::-webkit-scrollbar,
+#review-right-col::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+#editor-steps-container::-webkit-scrollbar-track,
+#review-steps-col::-webkit-scrollbar-track,
+#review-right-col::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 8px;
+}
+#editor-steps-container::-webkit-scrollbar-thumb,
+#review-steps-col::-webkit-scrollbar-thumb,
+#review-right-col::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.42);
+  border-radius: 8px;
+  /* Inset the thumb so the track reads as a groove either side of it. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+#editor-steps-container::-webkit-scrollbar-thumb:hover,
+#review-steps-col::-webkit-scrollbar-thumb:hover,
+#review-right-col::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.62);
+}
+
+[data-theme='dark'] #editor-steps-container,
+[data-theme='dark'] #review-steps-col,
+[data-theme='dark'] #review-right-col {
+  scrollbar-color: rgba(255, 255, 255, 0.42) rgba(255, 255, 255, 0.10);
+}
+[data-theme='dark'] #editor-steps-container::-webkit-scrollbar-track,
+[data-theme='dark'] #review-steps-col::-webkit-scrollbar-track,
+[data-theme='dark'] #review-right-col::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.10);
+}
+[data-theme='dark'] #editor-steps-container::-webkit-scrollbar-thumb,
+[data-theme='dark'] #review-steps-col::-webkit-scrollbar-thumb,
+[data-theme='dark'] #review-right-col::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.42);
+}
+[data-theme='dark'] #editor-steps-container::-webkit-scrollbar-thumb:hover,
+[data-theme='dark'] #review-steps-col::-webkit-scrollbar-thumb:hover,
+[data-theme='dark'] #review-right-col::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.62);
+}
+
+/* ── Bengle Lighting settings ──────────────────────────────────────────────
+   The page holds two different things: a palette that PERSISTS (Static
+   Colours, with Save/Reset) and a sequence that is TRANSIENT (played onto the
+   strip, saved locally as you type). They are split into two tabs because
+   they have different commitment models -- mixing them is what made one long
+   column unreadable, and it left "Save" looking like it applied to the
+   sequence, which it never did.
+
+   No new palette: everything below is built from the tokens already in this
+   file. --led-muted is scoped to this page only because --text-secondary is
+   referenced across settings.js but never defined anywhere; defining it
+   globally would restyle unrelated settings categories. */
+.led-page {
+  --led-muted: #6f7480;
+  --led-tint: rgba(56, 90, 146, 0.12); /* --mimoja-blue @ 12%; color-mix() is unsupported on older embedded WebViews */
+  --led-hairline: var(--profile-button-outline-color);
+}
+[data-theme='dark'] .led-page {
+  --led-muted: #9aa0ad;
+  --led-tint: rgba(65, 89, 150, 0.22);
+}
+.led-muted { color: var(--led-muted); }
+.led-label {
+  color: var(--left-label-text);
+  font-weight: 700;
+}
+
+/* Page-level tabs. A recessed track with one raised active pill, deliberately
+   a different shape from the flat side-by-side Zone/State segments below it,
+   so the two levels of navigation do not read as the same control. */
+.led-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  background-color: var(--box-color);
+  border: 1px solid var(--led-hairline);
+}
+.led-tab {
+  flex: 1;
+  min-height: 64px;
+  padding: 0 32px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--led-muted);
+  font-weight: 700;
+  font-size: 26px;
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.led-tab[aria-selected='true'] {
+  background-color: var(--mimoja-blue);
+  color: #fff;
+}
+.led-tab:focus-visible { outline: 3px solid var(--mimoja-blue); outline-offset: 2px; }
+
+/* Transport bar -- the one loud element on the Sequence tab. It carries the
+   play control, the loop switch, and the colours that are on the strip RIGHT
+   NOW, so the page shows what the machine is doing instead of only describing
+   it. The swatches are patched live by ledSeqPaintActiveStep. */
+.led-transport {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 18px 22px;
+  border-radius: 14px;
+  background-color: var(--box-color);
+  border: 1px solid var(--led-hairline);
+}
+.led-transport-btn {
+  min-height: 64px;
+  padding: 0 40px;
+  border: 0;
+  border-radius: 32px;
+  background-color: var(--mimoja-blue);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.led-transport-btn[data-mode='stop'] { background-color: var(--status-red-color); }
+.led-transport-btn:disabled { opacity: 0.4; cursor: default; }
+.led-now {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.led-now-swatch {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 2px solid var(--led-hairline);
+}
+
+/* Step rows. The two colours of a step are the front and rear of ONE moment,
+   so they sit together in a single bordered cell split by a hairline rather
+   than floating as two unrelated inputs. */
+.led-step {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border: 2px solid var(--led-hairline);
+  border-left: 6px solid var(--led-hairline);
+  border-radius: 12px;
+  transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
+}
+/* Toggled by the runner directly (ledSeqPaintActiveStep), not a re-render --
+   the playback tick must never rebuild the page under the user's fingers. */
+.led-step.led-seq-step-active {
+  border-color: var(--mimoja-blue);
+  border-left-color: var(--mimoja-blue);
+  background-color: var(--led-tint);
+}
+.led-step-index {
+  width: 32px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--led-muted);
+  font-variant-numeric: tabular-nums;
+}
+.led-step-colors {
+  display: flex;
+  border: 2px solid var(--led-hairline);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.led-step-colors input[type='color'] {
+  width: 56px;
+  height: 44px;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+.led-step-colors input[type='color'] + input[type='color'] {
+  border-left: 2px solid var(--led-hairline);
+}
+.led-step-duration {
+  width: 108px;
+  height: 44px;
+  padding: 0 10px;
+  font-size: 18px;
+  border-radius: 8px;
+  border: 2px solid var(--led-hairline);
+  background-color: var(--profile-button-background-color);
+  color: var(--text-primary);
+}
+.led-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--led-hairline);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.led-icon-btn:disabled { opacity: 0.3; cursor: default; }
+.led-icon-btn[data-variant='remove'] {
+  border-color: var(--status-red-color);
+  color: var(--status-red-color);
+}
+
+/* Auto-run state chips. */
+.led-chip {
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 24px;
+  border: 1px solid var(--led-hairline);
+  background-color: var(--box-color);
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease-out, color 0.15s ease-out;
+}
+.led-chip[aria-pressed='true'] {
+  background-color: var(--mimoja-blue);
+  border-color: var(--mimoja-blue);
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-tab, .led-step, .led-chip { transition: none; }
+}
