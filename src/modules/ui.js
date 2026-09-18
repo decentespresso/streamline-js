@@ -1011,7 +1011,7 @@ function updateSteamPresetDisplay() {
         button.setAttribute('aria-pressed', String(selected));
         button.style.display = calibratedSteamPitchers.includes(button.dataset.autoPitcher) ? '' : 'none';
         button.textContent = autoSteamPitcherLabel(button.dataset.autoPitcher, calibratedSteamPitcher, selectedTarget);
-        button.style.fontSize = selectedTarget ? '17px' : '';
+        button.style.fontSize = '';
         button.style.minWidth = selectedTarget ? '92px' : '72px';
         button.style.whiteSpace = 'nowrap';
         button.disabled = calibratedSteamApplying || !calibratedSteamConfigured;
