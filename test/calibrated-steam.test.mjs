@@ -39,7 +39,9 @@ test('only the loaded compatible plugin activates Auto Calc', () => {
 
 function harness() {
     let now = 1000;
-    let result = { apiVersion: 4, durationSeconds: 30, milkGrams: 180, pitcher: 'small', calibrationRevision: 'v1', workflowPatch: { steamSettings: { duration: 30, flow: 1.5 } } };
+    let result = { apiVersion: 5, durationSeconds: 30, milkGrams: 180, pitcher: 'small', calibrationRevision: 'v1',
+        calibrationKey: 'one', targetTemperatureC: 60, targetLabel: '140.0 °F',
+        workflowPatch: { steamSettings: { duration: 30, flow: 1.5 } } };
     let workflow = { id: 'one', profile: { title: 'A' }, steamSettings: { flow: 1.5, targetTemperature: 150, duration: 25, stopAtTemperature: 0 } };
     let state = 'idle';
     let failWrite = false;
@@ -63,7 +65,7 @@ function harness() {
 
 test('preview never writes; applying rechecks and returns the verified calculation', async () => {
     const h = harness();
-    const preview = await h.controller.preview('auto');
+    const preview = await h.controller.preview('auto', { calibrationKey: 'one', expectedFlow: 1.5 });
     assert.deepEqual(h.writes, []);
     await h.controller.apply(preview);
     assert.deepEqual(h.writes, [30]);
@@ -75,15 +77,39 @@ test('requested Auto flow is sent on both reads and a different returned flow ca
     const controller = createCalibratedSteamController({
         getContext: async () => ({ workflow: { steamSettings: { stopAtTemperature: 0 } }, machine: { state: 'idle' } }),
         getSamples: () => [800, 400, 0].map(ageMs => ({ weightGrams: 350, ageMs })),
-        calculate: async body => { requests.push(body); return { apiVersion: 4, pitcher: 'small', milkGrams: 200, durationSeconds: 20, calibrationRevision: 'one', workflowPatch: { steamSettings: { flow: returnedFlow, duration: 20 } } }; },
+        calculate: async body => { requests.push(body); return { apiVersion: 5, pitcher: 'small', milkGrams: 200,
+            durationSeconds: 20, calibrationRevision: 'one', calibrationKey: null, targetTemperatureC: 60,
+            targetLabel: '140.0 °F', workflowPatch: { steamSettings: { flow: returnedFlow, duration: 20 } } }; },
         apply: async result => writes.push(result), now: () => 1000,
     });
-    await controller.apply(await controller.preview('small', 1.1));
+    await controller.apply(await controller.preview('small', { flow: 1.1 }));
     assert.deepEqual(requests.map(r => r.flow), [1.1, 1.1]);
     assert.equal(writes.length, 1);
     returnedFlow = 0.4;
-    await assert.rejects(controller.preview('small', 1.1), /invalid calculation/);
+    await assert.rejects(controller.preview('small', { flow: 1.1 }), /invalid calculation/);
     assert.equal(writes.length, 1);
+});
+
+test('saved calibration key is sent on both reads and stale key results cannot be applied', async () => {
+    const requests = [];
+    let returnedKey = 'choice-a';
+    const controller = createCalibratedSteamController({
+        getContext: async () => ({ workflow: { steamSettings: { stopAtTemperature: 0 } }, machine: { state: 'idle' } }),
+        getSamples: () => [800, 400, 0].map(ageMs => ({ weightGrams: 350, ageMs })),
+        calculate: async body => {
+            requests.push(body);
+            return { apiVersion: 5, pitcher: 'small', milkGrams: 200, durationSeconds: 20,
+                calibrationRevision: 'one', calibrationKey: returnedKey, targetTemperatureC: 60,
+                targetLabel: '140.0 °F', workflowPatch: { steamSettings: { flow: 1.2, duration: 20 } } };
+        },
+        apply: async () => {},
+        now: () => 1000,
+    });
+    await controller.apply(await controller.preview('small', { calibrationKey: 'choice-a', expectedFlow: 1.2 }));
+    assert.deepEqual(requests.map(request => request.calibrationKey), ['choice-a', 'choice-a']);
+    assert.equal(requests.some(request => Object.hasOwn(request, 'flow')), false);
+    returnedKey = 'choice-b';
+    await assert.rejects(controller.preview('small', { calibrationKey: 'choice-a', expectedFlow: 1.2 }), /invalid calculation/);
 });
 
 test('changed scale, pitcher, settings, workflow or machine state prevents an old preview applying', async () => {
@@ -91,7 +117,7 @@ test('changed scale, pitcher, settings, workflow or machine state prevents an ol
         h => h.changeResult({ calibrationRevision: 'v2' }), h => h.state('steam'),
         h => h.changeWorkflow({ id: 'two', steamSettings: {} }), h => h.disable(), h => h.time(20000)]) {
         const h = harness();
-        const preview = await h.controller.preview('auto');
+        const preview = await h.controller.preview('auto', { calibrationKey: 'one', expectedFlow: 1.5 });
         change(h);
         await assert.rejects(h.controller.apply(preview));
         assert.deepEqual(h.writes, []);
@@ -100,7 +126,7 @@ test('changed scale, pitcher, settings, workflow or machine state prevents an ol
 
 test('failed writes propagate and cannot be reported as success', async () => {
     const h = harness();
-    const preview = await h.controller.preview('auto');
+    const preview = await h.controller.preview('auto', { calibrationKey: 'one', expectedFlow: 1.5 });
     h.failWrite();
     await assert.rejects(h.controller.apply(preview), /Write failed/);
 });
@@ -125,14 +151,14 @@ test('a slow calculation response cannot revive expired observations', async () 
         calculate: async () => { clock = 2600; return { durationSeconds: 30, milkGrams: 180 }; },
         apply: async () => assert.fail('expired'), now: () => clock,
     });
-    await assert.rejects(controller.preview(), /expired/i);
+    await assert.rejects(controller.preview('auto', { flow: 1 }), /expired/i);
 });
 
 
 test('a mismatched calculator contract is rejected before applying', async () => {
     const h = harness();
     h.changeResult({ apiVersion: 3 });
-    await assert.rejects(h.controller.preview('small'), /invalid calculation/);
+    await assert.rejects(h.controller.preview('small', { calibrationKey: 'one', expectedFlow: 1.5 }), /invalid calculation/);
     assert.deepEqual(h.writes, []);
 });
 
@@ -140,7 +166,7 @@ test('out-of-range plugin flow is rejected before any machine write', async () =
     for (const flow of [0.39, 2.51]) {
         const h = harness();
         h.changeResult({ workflowPatch: { steamSettings: { duration: 30, flow } } });
-        await assert.rejects(h.controller.preview('small'), /invalid calculation/);
+        await assert.rejects(h.controller.preview('small', { calibrationKey: 'one', expectedFlow: 1.5 }), /invalid calculation/);
         assert.deepEqual(h.writes, []);
     }
 });

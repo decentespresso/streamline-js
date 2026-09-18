@@ -1,4 +1,4 @@
-import { autoSteamFlowSettings } from './auto-steam-flow.js';
+import { autoSteamSelectionSettings } from './auto-steam-flow.js';
 
 export const AUTO_STEAM_SESSION_KEY = 'streamline.autoSteamSession';
 export const AUTO_STEAM_PITCHERS = ['small', 'medium', 'large', 'auto'];
@@ -27,22 +27,43 @@ export function createAutoSteamSession({ saved = {}, getContext, getRestoreConte
     let operationPromise = null, resetPromise = null;
     let offConfirmed = false, needsReset = false, retryBlocked = false;
     let cancellation = 0, configurationKey = saved.configurationKey ?? null;
-    let flow = saved.flow ?? null, flowSettings = null;
+    let flow = saved.flow ?? null;
+    let calibrationKey = typeof saved.calibrationKey === 'string' ? saved.calibrationKey : null;
+    let selectionSettings = null;
+    const selectedCalibration = () => selectionSettings?.kind === 'calibration'
+        ? selectionSettings.choices.find(choice => choice.key === calibrationKey) ?? null
+        : null;
     const snapshot = () => ({ active, busy, ready, pitcher, manual, applied, disabled, availablePitchers: [...availablePitchers], configurationReady,
-        flow, adjustableFlow: flowSettings?.adjustable === true, minimumFlow: flowSettings?.minimum, maximumFlow: flowSettings?.maximum });
+        flow, calibrationKey, targetTemperatureC: selectedCalibration()?.targetTemperatureC ?? null,
+        targetLabel: selectedCalibration()?.targetLabel ?? null,
+        calibrationChoices: selectionSettings?.kind === 'calibration' ? selectionSettings.choices.map(choice => ({ ...choice })) : [],
+        adjustmentKind: selectionSettings?.kind ?? null, adjustableSelection: selectionSettings?.adjustable === true,
+        minimumFlow: selectionSettings?.minimum, maximumFlow: selectionSettings?.maximum });
     function publish() {
-        persist({ active, manual, pitcher, flow, configurationKey });
+        persist({ active, manual, pitcher, flow, calibrationKey, configurationKey });
         if (!disposed) onChange(snapshot());
     }
     function updateStatus(status) {
-        const key = JSON.stringify(status.settings ?? {});
+        const key = JSON.stringify({ settings: status.settings ?? {}, flowCalibration: status.flowCalibration ?? null });
         const changed = configurationKey !== null && configurationKey !== key;
         configurationKey = key;
         if (changed) offConfirmed = false;
-        flowSettings = autoSteamFlowSettings(status);
-        if (flowSettings && (changed || !flowSettings.adjustable || !Number.isFinite(flow) || flow < flowSettings.minimum || flow > flowSettings.maximum)) flow = flowSettings.defaultFlow;
+        selectionSettings = autoSteamSelectionSettings(status);
+        if (selectionSettings?.kind === 'calibration') {
+            if (!selectionSettings.choices.some(choice => choice.key === calibrationKey)) {
+                calibrationKey = selectionSettings.defaultCalibrationKey;
+            }
+            flow = selectedCalibration()?.flow ?? null;
+        } else if (selectionSettings?.kind === 'flow') {
+            if (!Number.isFinite(flow) || flow < selectionSettings.minimum || flow > selectionSettings.maximum) {
+                flow = selectionSettings.defaultFlow;
+            }
+        } else {
+            flow = null;
+        }
         availablePitchers = Array.isArray(status.availablePitchers) ? AUTO_STEAM_PITCHERS.filter(choice => status.availablePitchers.includes(choice)) : [];
-        configurationReady = status.calibrationActive !== true && status.apiVersion === 4 && status.ready === true && availablePitchers.length > 0 && flowSettings !== null;
+        configurationReady = status.calibrationActive !== true && status.apiVersion === 5 && status.ready === true &&
+            availablePitchers.length > 0 && selectionSettings !== null;
         if (!availablePitchers.includes(pitcher)) {
             pitcher = availablePitchers.includes(status.settings?.defaultPitcher) ? status.settings.defaultPitcher : (availablePitchers[0] ?? null);
         }
@@ -69,7 +90,7 @@ export function createAutoSteamSession({ saved = {}, getContext, getRestoreConte
     async function off(current) {
         current ||= await context();
         const status = current.pluginStatus || await getStatus();
-        if (status.apiVersion !== 4) throw new Error('Update the Auto Steam Calculator extension.');
+        if (status.apiVersion !== 5) throw new Error('Update the Auto Steam Calculator extension and skin.');
         updateStatus(status);
         if (status.calibrationActive) throw new Error('Finish or cancel guided calibration in the extension settings first.');
         const steam = { duration: 0, stopAtTemperature: 0, flow: current.workflow.steamSettings.flow };
@@ -139,18 +160,30 @@ export function createAutoSteamSession({ saved = {}, getContext, getRestoreConte
             });
         },
         leave,
-        async adjustFlow(delta) {
+        async adjustSelection(delta) {
             if (!active || disabled) throw new Error('Select Auto steam mode first.');
-            if (!Number.isFinite(delta)) throw new Error('Choose a valid flow adjustment.');
+            if (!Number.isFinite(delta) || delta === 0) throw new Error('Choose a valid Auto steam adjustment.');
             return run(async () => {
                 const current = await context();
                 updateStatus(current.pluginStatus || await getStatus());
-                if (!configurationReady || !flowSettings?.adjustable) throw new Error('Complete multiple-flow calibration before adjusting Auto flow.');
-                const next = Math.max(flowSettings.minimum, Math.min(flowSettings.maximum, Math.round((flow + delta) * 10) / 10));
-                if (next === flow) return;
-                flow = next; cancellation++; ready = false; applied = null; offConfirmed = false; needsReset = true;
+                if (!configurationReady || !selectionSettings?.adjustable) throw new Error('Configure more than one Auto steam choice before adjusting it.');
+                if (selectionSettings.kind === 'calibration') {
+                    const currentIndex = selectionSettings.choices.findIndex(choice => choice.key === calibrationKey);
+                    const direction = delta > 0 ? 1 : -1;
+                    const nextIndex = (currentIndex + direction + selectionSettings.choices.length) % selectionSettings.choices.length;
+                    const next = selectionSettings.choices[nextIndex];
+                    calibrationKey = next.key;
+                    flow = next.flow;
+                } else {
+                    const next = Math.max(selectionSettings.minimum,
+                        Math.min(selectionSettings.maximum, Math.round((flow + delta) * 10) / 10));
+                    if (next === flow) return snapshot();
+                    flow = next;
+                }
+                cancellation++; ready = false; applied = null; offConfirmed = false; needsReset = true;
                 await off(current);
                 needsReset = false;
+                return snapshot();
             });
         },
         async select(choice) {
@@ -167,7 +200,10 @@ export function createAutoSteamSession({ saved = {}, getContext, getRestoreConte
                 if (!Number.isInteger(targetTemperature) || targetTemperature < 135 || targetTemperature > 165) {
                     throw new Error('Set the heater temperature in normal Steam settings, then calculate again.');
                 }
-                const result = await calculate(pitcher, flow);
+                const selection = selectionSettings.kind === 'calibration'
+                    ? { calibrationKey, expectedFlow: flow }
+                    : { flow };
+                const result = await calculate(pitcher, selection);
                 await context();
                 if (startedAt !== cancellation) return null;
                 if (disabled) throw new Error('Auto Steam Calculator was disabled.');

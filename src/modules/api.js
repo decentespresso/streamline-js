@@ -2467,6 +2467,18 @@ export async function setPluginSettings(pluginId, settings) {
     }
 }
 
+function pluginEndpointError(pluginId, endpoint, status, errorBody) {
+    let details = null;
+    try { details = JSON.parse(errorBody); } catch {}
+    const message = typeof details?.message === 'string' && details.message
+        ? details.message
+        : `Failed to call plugin endpoint ${pluginId}/${endpoint}. Status: ${status}${errorBody ? `, Body: ${errorBody}` : ''}`;
+    const error = new Error(message);
+    error.status = status;
+    if (typeof details?.code === 'string') error.code = details.code;
+    return error;
+}
+
 export async function callPluginEndpoint(pluginId, endpoint, body, method = 'POST') {
     try {
         const response = await fetch(`${API_BASE_URL}/plugins/${pluginId}/${endpoint}`, {
@@ -2479,7 +2491,7 @@ export async function callPluginEndpoint(pluginId, endpoint, body, method = 'POS
 
         if (!response.ok) {
             const errorBody = await response.text();
-            throw new Error(`Failed to call plugin endpoint ${pluginId}/${endpoint}. Status: ${response.status}, Body: ${errorBody}`);
+            throw pluginEndpointError(pluginId, endpoint, response.status, errorBody);
         }
         
         const contentType = response.headers.get('content-type');

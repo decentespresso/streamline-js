@@ -36,15 +36,21 @@ export function createCalibratedSteamController({ getContext, getSamples, calcul
     function check(token) {
         if (token !== generation) throw new Error('Calculation cancelled.');
     }
-    async function capture(pitcher, token, flow) {
+    async function capture(pitcher, token, selection = {}) {
         const startedAt = now();
         const { workflow, machine } = await getContext();
         check(token);
         const steam = workflow?.steamSettings;
         const sampledAt = now();
         const samples = getSamples();
+        const calibrationKey = typeof selection.calibrationKey === 'string' ? selection.calibrationKey : null;
+        const requestedFlow = Number.isFinite(selection.flow) ? selection.flow : null;
+        const expectedFlow = calibrationKey ? selection.expectedFlow : requestedFlow;
+        if ((calibrationKey === null) === (requestedFlow === null)) {
+            throw new Error('Choose one Auto steam calibration or flow.');
+        }
         const result = await calculate({
-            samples, pitcher, ...(flow === undefined ? {} : { flow }),
+            samples, pitcher, ...(calibrationKey === null ? { flow: requestedFlow } : { calibrationKey }),
             machineState: typeof machine?.state === 'object' ? machine.state.state : machine?.state,
             stopAtTemperature: steam?.stopAtTemperature ?? 0,
         });
@@ -55,19 +61,23 @@ export function createCalibratedSteamController({ getContext, getSamples, calcul
             !Number.isFinite(newestAge) || newestAge + receivedAt - sampledAt > 1500) {
             throw new Error('Scale or machine observations expired. Calculate again.');
         }
-        if (result?.apiVersion !== 4 || !Number.isFinite(result.workflowPatch?.steamSettings?.flow) ||
+        if (result?.apiVersion !== 5 || !Number.isFinite(result.workflowPatch?.steamSettings?.flow) ||
             result.workflowPatch.steamSettings.flow < 0.4 || result.workflowPatch.steamSettings.flow > 2.5 ||
-            (flow !== undefined && result.workflowPatch.steamSettings.flow !== flow) ||
-            !Number.isInteger(result?.durationSeconds) || result.durationSeconds < 1 || result.durationSeconds > 255 || !Number.isFinite(result.milkGrams)) {
+            result.workflowPatch.steamSettings.flow !== expectedFlow ||
+            (calibrationKey === null ? result.calibrationKey !== null : result.calibrationKey !== calibrationKey) ||
+            !Number.isFinite(result.targetTemperatureC) || result.targetTemperatureC <= 0 || result.targetTemperatureC > 100 ||
+            typeof result.targetLabel !== 'string' || result.targetLabel.length === 0 || result.targetLabel.length > 32 ||
+            !Number.isInteger(result?.durationSeconds) || result.durationSeconds < 1 || result.durationSeconds > 255 ||
+            !Number.isFinite(result.milkGrams)) {
             throw new Error('The plugin returned an invalid calculation.');
         }
-        return { result, pitcher, flow, token, createdAt: now(), workflowKey: JSON.stringify(workflow) };
+        return { result, pitcher, selection: { ...selection }, token, createdAt: now(), workflowKey: JSON.stringify(workflow) };
     }
     return {
         cancel() { generation++; },
-        preview(pitcher = 'auto', flow) {
+        preview(pitcher = 'auto', selection) {
             if (applying) return Promise.reject(new Error('A steam time is already being applied.'));
-            return capture(pitcher, ++generation, flow);
+            return capture(pitcher, ++generation, selection);
         },
         async apply(preview) {
             if (applying) throw new Error('A steam time is already being applied.');
@@ -75,11 +85,14 @@ export function createCalibratedSteamController({ getContext, getSamples, calcul
             if (now() - preview.createdAt > 15000 || now() < preview.createdAt) throw new Error('Preview expired. Calculate again.');
             applying = true;
             try {
-                const fresh = await capture(preview.pitcher, preview.token, preview.flow);
+                const fresh = await capture(preview.pitcher, preview.token, preview.selection);
                 const old = preview.result;
                 const next = fresh.result;
                 if (preview.workflowKey !== fresh.workflowKey || old.calibrationRevision !== next.calibrationRevision ||
-                    old.pitcher !== next.pitcher || old.durationSeconds !== next.durationSeconds || old.workflowPatch.steamSettings.flow !== next.workflowPatch.steamSettings.flow || Math.abs(old.milkGrams - next.milkGrams) > 2) {
+                    old.pitcher !== next.pitcher || old.durationSeconds !== next.durationSeconds ||
+                    old.calibrationKey !== next.calibrationKey || old.targetTemperatureC !== next.targetTemperatureC ||
+                    old.targetLabel !== next.targetLabel || old.workflowPatch.steamSettings.flow !== next.workflowPatch.steamSettings.flow ||
+                    Math.abs(old.milkGrams - next.milkGrams) > 2) {
                     throw new Error('The scale, pitcher or settings changed. Calculate again.');
                 }
                 check(preview.token);

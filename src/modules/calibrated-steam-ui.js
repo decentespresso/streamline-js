@@ -58,7 +58,7 @@ export function initCalibratedSteam({ onAvailability, onChange, onSteamSettings,
                 await writeAutoSteamSettings(steam);
                 if (!disposed) onSteamSettings(steam);
             },
-            calculate: async (pitcher, flow) => calculator.apply(await calculator.preview(pitcher, flow)),
+            calculate: async (pitcher, selection) => calculator.apply(await calculator.preview(pitcher, selection)),
             persist: value => localStorage.setItem(AUTO_STEAM_SESSION_KEY, JSON.stringify(value)),
             onChange,
         });
@@ -104,7 +104,7 @@ export function initCalibratedSteam({ onAvailability, onChange, onSteamSettings,
         async leave() { await initialized; return session.leave(); },
         async fallbackToManual() { await initialized; return session?.disable(); },
         async select(pitcher) { await initialized; return session.select(pitcher); },
-        async adjustFlow(delta) { await initialized; return session.adjustFlow(delta); },
+        async adjustSelection(delta) { await initialized; return session.adjustSelection(delta); },
         observeMachine(state) { lifecycle?.observeMachine(state).catch(onError); },
         dispose() {
             disposed = true;
