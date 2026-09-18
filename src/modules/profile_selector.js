@@ -567,6 +567,15 @@ function renderProfileNotes(notesElement, rawNotes, expanded = false) {
     });
 }
 
+// RESET only makes sense on a saved copy (has a parentId to revert to) --
+// an original profile has nothing to reset, so the button stays out of the
+// way instead of being clickable just to show an error toast.
+function updateResetButtonVisibility(profileRecord) {
+    const btn = document.getElementById('reset_btn');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !profileRecord?.parentId);
+}
+
 function updateSelectedProfileView(profileItem) {
     console.log('updateSelectedProfileView: Updating selected profile view');
     if (!profileItem) {
@@ -582,6 +591,7 @@ function updateSelectedProfileView(profileItem) {
         }
         plotProfile(null); // Clear chart
         selectedProfileKey = null;
+        updateResetButtonVisibility(null);
         return;
     }
 
@@ -600,6 +610,7 @@ function updateSelectedProfileView(profileItem) {
 
     const profileRecord = availableProfiles[selectedProfileKey];
     console.log('updateSelectedProfileView: Profile record found:', !!profileRecord);
+    updateResetButtonVisibility(profileRecord);
 
     if (profileRecord && profileRecord.profile) {
         const profile = profileRecord.profile;
