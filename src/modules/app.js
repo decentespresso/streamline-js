@@ -15,6 +15,7 @@ import { logger } from './logger.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
 import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
+import { resolveProfileKeyByTitle } from './active-profile.js';
 import { setMachineModel, isBengleMachine, setRefillKitPresent, isRefillKitPresent } from './machine.js';
 import { classifyStopReason, canonicalStopReason, STOP_TARGET_WEIGHT, STOP_TARGET_VOLUME, STOP_PROFILE_ENDED } from './stop-reason.js';
 import { resolveMilkProbePresence, MILK_PROBE_ABSENT_AFTER_MS, selectMilkProbeSensorId } from './steam-mode.js';
@@ -2228,6 +2229,22 @@ function wireExpandedChart() {
     });
 }
 
+// Which profile record is the header currently showing? Normally the active
+// record, but a boot that has rendered #profile-name from the workflow title
+// before the profile list resolved has no active record yet — fall back to
+// matching the rendered (translated) title via the same tested helper
+// active-profile.js uses for this exact problem (case-insensitive, prefers a
+// user's edited fork over a bundled default sharing its title). Shared by the
+// header edit button and the #profile-name long-press context menu so they
+// can never disagree.
+function resolveHeaderProfileRecord(profileNameEl) {
+    const active = profileManager.getActiveProfileRecord();
+    if (active) return active;
+    const shownTitle = (profileNameEl?.textContent ?? '').trim();
+    const key = resolveProfileKeyByTitle(profileManager.availableProfiles, shownTitle, profileManager.translateProfileTitle);
+    return key ? profileManager.availableProfiles[key] : null;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         logger.info('App DOMContentLoaded: Starting initialization.');
@@ -2419,11 +2436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 profileNameEl,
                 () => loadPage('src/profiles/profile_selector.html'),
                 (el) => {
-                    const activeRecord = profileManager.getActiveProfileRecord()
-                        ?? Object.values(profileManager.availableProfiles).find(r => {
-                            const t = profileManager.translateProfileTitle(r.profile?.title ?? '');
-                            return t === el.textContent.trim();
-                        }) ?? null;
+                    const activeRecord = resolveHeaderProfileRecord(el);
                     const profileTitle = activeRecord
                         ? profileManager.translateProfileTitle(activeRecord.profile.title)
                         : null;
@@ -2456,6 +2469,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                     openContextMenu(el, items);
                 }
             );
+        }
+
+        // Explicit header buttons for the same two actions. The long-press menu
+        // above stays as the secondary path (it also carries "Use Profile
+        // Defaults"), so both are wired and share resolveHeaderProfileRecord.
+        const profileSelectBtn = document.getElementById('profile-select-btn');
+        if (profileSelectBtn) {
+            profileSelectBtn.addEventListener('click', () => {
+                loadPage('src/profiles/profile_selector.html');
+            });
+        }
+
+        const profileEditBtn = document.getElementById('profile-edit-btn');
+        if (profileEditBtn) {
+            profileEditBtn.addEventListener('click', () => {
+                // Resolved at click time, not at wire time: the profile list is
+                // still loading when this runs during boot.
+                const activeRecord = resolveHeaderProfileRecord(profileNameEl);
+                if (!activeRecord) {
+                    logger.info('Edit Profile button: no active profile record yet, ignoring tap.');
+                    ui.showToast('No profile loaded yet', 3000, 'error');
+                    return;
+                }
+                window.__pendingEditProfile = activeRecord;
+                loadPage('src/profiles/profile_editor.html');
+            });
         }
 
         // Add event listener for the settings button

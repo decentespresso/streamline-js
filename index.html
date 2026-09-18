@@ -230,19 +230,45 @@
                 <!-- Left column: header + chart -->
                 <div class="flex flex-col flex-1 min-w-0">
                     <div class="relative h-[140px]">
-                        <div class="absolute top-[30px] left-[40px]">
-                            <h1 id="profile-name" class="w-[556px] justify-start text-[var(--mimoja-blue)] text-nowrap text-[33px] font-semibold font-['Inter'] leading-8 tracking-wide no-select" aria-live="polite">
-                                Current Profile
-                            </h1>
-                            <div id="telemetry-row" class="h-9 pt-10 inline-flex justify-start items-center gap-[22px] whitespace-nowrap" aria-label="Machine Telemetry">
-                                <p id="mix-info-container"><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Mix">Mix</span>&nbsp;&nbsp;<span id="data-mix-temp" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
-                                <p><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Group">Group</span>&nbsp;&nbsp;<span id="data-group-temp" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
+                        <div class="absolute top-[30px] left-[40px] right-[44px]">
+                            <!-- Reserve #machine-status' 556px box (plus a 12px gutter) so the name and
+                                 its buttons can never run under it. That box is anchored right-[44px] in
+                                 the same band, and the band loses 172px when #ghc-controls is shown, so
+                                 the budget has to be measured from the right edge, not assumed. -->
+                            <div class="flex items-center gap-[22px] max-w-[calc(100%_-_568px)]">
+                                <!-- max-w (not w): the h1 shrinks to the name's actual width so the
+                                     buttons sit right next to short names, and only clips to 556px +
+                                     ellipsis for a name that would otherwise run long. min-w-0 + truncate
+                                     let it give way first when the GHC column narrows the band.
+                                     textContent is unaffected, so the title-matching lookups in
+                                     profileManager/profile_selector still see the full name. -->
+                                <h1 id="profile-name" class="max-w-[556px] min-w-0 shrink truncate py-[6px] -my-[6px] justify-start text-[var(--mimoja-blue)] text-nowrap text-[33px] font-semibold font-['Inter'] leading-8 tracking-wide no-select" aria-live="polite">
+                                    Current Profile
+                                </h1>
+                                <!-- Explicit header affordances for the two actions that are otherwise
+                                     only reachable by long-pressing #profile-name (app.js keeps that
+                                     context menu as the secondary path). -->
+                                <button id="profile-select-btn" class="shrink-0 header-icon-btn" aria-label="Browse Profiles">
+                                    <img src="src/ui/icons/icon_profile_select.svg" alt="" class="w-full h-full" aria-hidden="true">
+                                </button>
+                                <button id="profile-edit-btn" class="shrink-0 header-icon-btn" aria-label="Edit Profile">
+                                    <img src="src/ui/icons/icon_profile_edit.svg" alt="" class="w-[25px] h-[25px]" aria-hidden="true">
+                                </button>
+                            </div>
+                            <!-- min-w-full so Weight's ml-auto has room to push right, while the row
+                                 still grows past it for a long-language line — i18n.fitTelemetry
+                                 watches the row's own box to decide when to scale it down. -->
+                            <div id="telemetry-row" class="h-9 pt-10 inline-flex min-w-full justify-start items-center gap-[22px] whitespace-nowrap" aria-label="Machine Telemetry">
+                                <p id="mix-info-container"><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Water">Water</span>&nbsp;&nbsp;<span id="data-mix-temp" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
+                                <!-- Group-head temperature, labelled "Puck": only meaningful while a shot
+                                     is pulling, so ui.updateMachineStatus shows it for MachineState.ESPRESSO
+                                     and hides it again for every other state. The data ids stay "group". -->
+                                <div id="puck-info-container" style="display: none;">
+                                    <p><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Puck">Puck</span>&nbsp;&nbsp;<span id="data-group-temp" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
+                                </div>
                                 <p><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Steam">Steam</span>&nbsp;&nbsp;<span id="data-steam-temp" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
                                 <p><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Tank">Tank</span>&nbsp;&nbsp;<span id="data-tank-vol" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">ml</span></p>
                                 <p><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Clock">Clock</span>&nbsp;&nbsp;<span id="data-clock" class="text-[var(--text-primary)] text-[24px] font-semibold font-['NotoSansMono'] leading-6">--:--</span></p>
-                                <div id="scale-info-container" style="display: none;">
-                                    <p><span id = 'weight-text' class="no-select text-[var(--mimoja-blue-v2)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Weight"></span>&nbsp;&nbsp;<span id="data-weight" class="text-[var(--mimoja-blue-v2)] text-[24px] font-semibold font-['NotoSansMono'] leading-6 no-select"> </span></p>
-                                </div>
                                 <!-- Live milk-probe temperature (Bengle): shown only while the probe is present (ui.updateMilkTelemetry), hidden entirely otherwise. -->
                                 <div id="milk-info-container" style="display: none;">
                                     <p><span class="text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Milk">Milk</span>&nbsp;&nbsp;<span id="data-milk-temp" class="text-[var(--text-primary)] text-[24px]  font-['NotoSansMono'] leading-6">°c</span></p>
@@ -250,6 +276,10 @@
                                 <!-- Cup warmer (Bengle): live mat temperature, tap to toggle the warmer on/off. Shown only on a Bengle (app.js initCupWarmerToggle). -->
                                 <div id="cupwarmer-info-container" style="display: none;" role="button" tabindex="0" aria-pressed="false" aria-label="Toggle Cup Warmer">
                                     <p><span id="cupwarmer-text" class="no-select text-[var(--mimoja-blue-v2)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Cups">Cups</span>&nbsp;&nbsp;<span id="data-cupwarmer-temp" class="text-[var(--mimoja-blue-v2)] text-[24px] font-semibold font-['NotoSansMono'] leading-6 no-select">--</span></p>
+                                </div>
+                                <!-- Scale weight sits hard right of the telemetry row (ml-auto), away from the machine readings. -->
+                                <div id="scale-info-container" class="ml-auto" style="display: none;">
+                                    <p><span id = 'weight-text' class="no-select text-[var(--data-card-title-text-color)] text-[24px] font-semibold font-['Inter'] leading-6" data-i18n-key="Weight"></span>&nbsp;&nbsp;<span id="data-weight" class="text-[var(--mimoja-blue-v2)] text-[24px] font-semibold font-['NotoSansMono'] leading-6 no-select"> </span></p>
                                 </div>
                             </div>
                         </div>

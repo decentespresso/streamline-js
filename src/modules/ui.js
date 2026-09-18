@@ -2487,8 +2487,49 @@ function heatingStatusParts(raw) {
         : { label: getTranslation('Heating'), remaining: '' };
 }
 
+// Skip-step affordance in the machine-status line. Replaces the old ">>" text
+// glyph; kept as one constant because the live counter interval re-renders the
+// same line every second and must not fall back to the text arrows. The arrow
+// itself is a CSS mask (.skip-step-glyph in main.css) rather than an <img> so
+// it can be recoloured with a fixed token (var(--mimoja-blue-v2), matching the
+// Figma icon's #385A92 exactly in light mode) instead of the fixed fill baked
+// into the exported SVG. Boxed in the same bordered 72x45 frame as
+// #profile-select-btn / #profile-edit-btn (Figma node 2662:781, "Frame 311",
+// border #C9C9C9) instead of a bare glyph.
+// id + cursor-pointer live on the glyph itself (not wrapped separately at each
+// call site) because a 1s setInterval re-render (below) replaces this markup
+// wholesale — wrapping it externally only at one call site meant the click
+// target vanished a second after every render.
+const SKIP_STEP_GLYPH = '<span id="skip-step-indicator" class="skip-step-icon-box header-icon-btn cursor-pointer"><span class="pe-icon-mask skip-step-glyph" aria-hidden="true"></span></span>';
+
+function bindSkipStepHandler() {
+    const skipIndicator = document.getElementById('skip-step-indicator');
+    if (!skipIndicator) return;
+    skipIndicator.onclick = (e) => {
+        e.stopPropagation(); // Prevent event bubbling
+        logger.info('Skip step indicator clicked');
+        setMachineState('skipStep').catch(error => {
+            logger.error('Failed to skip step:', error);
+        });
+    };
+}
+
+// updateMachineStatus fires at the shot snapshot-stream cadence (~10Hz) during
+// a shot, so the puck-visibility DOM write below is guarded on actual change
+// rather than re-set every call, matching the "don't repeat per-frame work"
+// idiom app.js already applies to machine-state transitions.
+let lastPuckVisible = null;
+
 export function updateMachineStatus(data) {
     const { status, state, substate, stepName, timeValue, isClickable,  isHeating, isHeatingFromTimeToReady, steamTemperature } = data;
+    // Puck (group-head) temperature only means anything while a shot is pulling,
+    // so it joins the telemetry row for espresso and leaves again afterwards.
+    const puckVisible = state === MachineState.ESPRESSO;
+    if (puckVisible !== lastPuckVisible) {
+        lastPuckVisible = puckVisible;
+        const puckInfoEl = document.getElementById('puck-info-container');
+        if (puckInfoEl) puckInfoEl.style.display = puckVisible ? '' : 'none';
+    }
     // Steam boiler is considered ready at/above 130°C. Below that it still needs
     // warming, which is the only time we surface a steam "Heating" message.
     const STEAM_HEATER_READY_C = 130;
@@ -2660,7 +2701,8 @@ export function updateMachineStatus(data) {
                     machineStatusEl.currentPreinfusionOrPouringValue = Math.floor(getShotTotalTime());
 
                     const currentStageText = machineStatusEl.currentPreinfusionOrPouringStageText || stageText;
-                    machineStatusEl.innerHTML = `<span class="text-[var(--status-green-color)]">${currentStageText}</span> <span class="text-[var(--status-clickable-color)]">| ${machineStatusEl.currentPreinfusionOrPouringValue}s >></span>`;
+                    machineStatusEl.innerHTML = `<span class="text-[var(--status-green-color)]">${currentStageText}</span> <span class="text-[var(--status-clickable-color)]">| ${machineStatusEl.currentPreinfusionOrPouringValue}s ${SKIP_STEP_GLYPH}</span>`;
+                    bindSkipStepHandler();
                     logger.info(`DEBUG: Preinfusion/Pouring live counter update: ${machineStatusEl.innerHTML}`); // Keep log
                 }, 1000);
             }
@@ -2669,19 +2711,8 @@ export function updateMachineStatus(data) {
             // make sure the label and value reflect the *current* stage.
             const displayValue = Math.floor(getShotTotalTime());
             machineStatusEl.currentPreinfusionOrPouringValue = displayValue;
-            machineStatusEl.innerHTML = `<span class="text-[var(--status-green-color)]">${stageText}</span> <span class="text-[var(--status-clickable-color)]">| ${displayValue}s <span id="skip-step-indicator" class="cursor-pointer">>></span></span>`;
-            
-            // Add click handler to the skip indicator
-            const skipIndicator = document.getElementById('skip-step-indicator');
-            if (skipIndicator) {
-                skipIndicator.onclick = (e) => {
-                    e.stopPropagation(); // Prevent event bubbling
-                    logger.info('Skip step indicator clicked');
-                    setMachineState('skipStep').catch(error => {
-                        logger.error('Failed to skip step:', error);
-                    });
-                };
-            }
+            machineStatusEl.innerHTML = `<span class="text-[var(--status-green-color)]">${stageText}</span> <span class="text-[var(--status-clickable-color)]">| ${displayValue}s ${SKIP_STEP_GLYPH}</span>`;
+            bindSkipStepHandler();
         } else {
             // Check if this is a flush state and apply special formatting
 
