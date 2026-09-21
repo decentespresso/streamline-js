@@ -639,8 +639,16 @@ function updatePagingButtons() {
     const prevBtn = document.getElementById('editor-page-prev-btn');
     const nextBtn = document.getElementById('editor-page-next-btn');
     if (!container || !prevBtn || !nextBtn) return;
+    // The last card has no scroll-snap-align (see renderStepCards), so with
+    // mandatory snap the container can never actually come to rest at
+    // scrollWidth - clientWidth — it snaps back to the second-to-last
+    // card's start instead. That resting position is (numSteps - 2) card
+    // pitches from scroll-padding-left 0, independent of LABEL_GUTTER since
+    // scroll-padding-left shifts the snap target by the same amount.
+    const numSteps = parseInt(container.dataset.numSteps, 10) || 0;
+    const maxScrollLeft = numSteps >= 2 ? (numSteps - 2) * CARD_PITCH : 0;
     const atStart = container.scrollLeft <= 1;
-    const atEnd = container.scrollLeft >= container.scrollWidth - container.clientWidth - 1;
+    const atEnd = container.scrollLeft >= maxScrollLeft - 1;
     const prevIcon = prevBtn.querySelector('.pe-icon-mask');
     const nextIcon = nextBtn.querySelector('.pe-icon-mask');
     prevBtn.classList.toggle('pointer-events-none', atStart);
@@ -841,6 +849,10 @@ function renderStepCards() {
     // scroll-padding insets the snapport by exactly the gutter's width so
     // snap positions account for the pinned overlay.
     container.style.scrollPaddingLeft = `${LABEL_GUTTER}px`;
+    // Read back by updatePagingButtons to compute the true end-of-scroll
+    // position — mandatory snap (below) means scrollWidth - clientWidth
+    // overstates how far the container can actually rest.
+    container.dataset.numSteps = String(numSteps);
 
     function mkCell(row, col, className) {
         const el = document.createElement('div');
@@ -891,7 +903,14 @@ function renderStepCards() {
         const col = index + 2;
         const expanded = editorState.editingStep === index;
         const isFlow = step.pump !== 'pressure';
-        const cardAttr = (el) => { el.dataset.cardIndex = String(index); el.style.scrollSnapAlign = 'start'; return el; };
+        // The last card has no snap target of its own: with mandatory
+        // snap, a card here would rest flush against the gutter with
+        // nothing after it but blank tail track — showing only that one
+        // card at the end of the row. Leaving it un-snapped means the
+        // furthest resting position is the second-to-last card instead,
+        // which brings the last two cards into view together.
+        const isLastCard = index === numSteps - 1;
+        const cardAttr = (el) => { el.dataset.cardIndex = String(index); if (!isLastCard) el.style.scrollSnapAlign = 'start'; return el; };
         const onExpandClick = (el) => {
             if (!expanded) el.addEventListener('click', () => expandCard(index));
             return el;

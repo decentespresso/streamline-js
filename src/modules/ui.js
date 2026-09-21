@@ -3268,13 +3268,15 @@ export function initResizablePanels(separatorId) {
     let initialX = 0;
     let initialLeftWidth = 0;
 
+    // Color-only drag feedback -- the separator stays the same 1px width as
+    // every other panel border; only its color changes while dragging (a
+    // stray mouseup outside the window used to leave a widened 'w-2' bar
+    // stuck on screen since stopDrag never ran to restore it).
     const thicken = () => {
-        separator.classList.remove('w-px');
-        separator.classList.add('w-2');
+        separator.classList.add('bg-blue-500');
     };
     const restore = () => {
-        separator.classList.remove('w-2');
-        separator.classList.add('w-px');
+        separator.classList.remove('bg-blue-500');
     };
 
     const startDrag = (e) => {
