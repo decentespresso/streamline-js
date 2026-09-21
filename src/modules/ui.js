@@ -2218,8 +2218,10 @@ export function initUI(callbacks) {
                 value = minDisplay;
             }
             currentBrewTempC = fromDisplayTemp(value);
-            tempValueEl.textContent = formatTemp(currentBrewTempC, 0);
+            const target = formatTemp(currentBrewTempC, 0);
+            tempValueEl.textContent = target;
             updateTemperatureValue(currentBrewTempC);
+            syncPresetHighlight(document.getElementById('temp-presets'), t => t === target);
         });
     }
 
@@ -2237,6 +2239,7 @@ export function initUI(callbacks) {
             drinkOutValueEl.textContent = `${value}g`;
             updateDoseValue('out', value);
             updateDrinkRatio();
+            syncDrinkOutPresets();
         });
     }
 
@@ -2325,6 +2328,7 @@ export function initUI(callbacks) {
             pushSteamSetting('duration', setTargetSteamDuration(currentSteamDuration));
             window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
             updateSteamDisplay({ targetSteamDuration: currentSteamDuration });
+            syncSteamPresets();
         });
     }
 
@@ -2344,6 +2348,7 @@ export function initUI(callbacks) {
             setTargetSteamFlow(currentSteamFlow).catch(e => logger.error(e));
             window.app?.saveContextToActiveProfile?.({ targetSteamFlow: currentSteamFlow });
             updateSteamDisplay({ targetSteamFlow: currentSteamFlow });
+            syncSteamPresets();
         });
     }
 
