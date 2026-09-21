@@ -77,7 +77,8 @@ test('only the selected pitcher carries the compact target label', () => {
 });
 
 test('expected calculation rejections stay in Auto while operational failures fall back', () => {
-    assert.equal(shouldKeepAutoSteamMode({ status: 422, code: 'invalid_milk_weight' }), true);
-    assert.equal(shouldKeepAutoSteamMode({ status: 500 }), false);
+    assert.equal(shouldKeepAutoSteamMode({ status: 422, endpoint: 'calculate', code: 'invalid_milk_weight' }), true);
+    assert.equal(shouldKeepAutoSteamMode({ status: 422, endpoint: 'status' }), false);
+    assert.equal(shouldKeepAutoSteamMode({ status: 500, endpoint: 'calculate' }), false);
     assert.equal(shouldKeepAutoSteamMode(new Error('timeout')), false);
 });

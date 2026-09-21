@@ -1,4 +1,4 @@
-import { autoSteamDurationLabel, autoSteamPitcherLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
+import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
 import { openDB, getSetting, setSetting } from './idb.js';
@@ -819,7 +819,7 @@ export function updateSteamDisplay(data) {
     } else if (steamMode === 'time' || steamMode === 'auto') {
         const showingTarget = steamMode === 'auto' && autoSteamTargetLabel;
         durationEl.textContent = steamMode === 'auto'
-            ? autoSteamDurationLabel(currentSteamDuration, autoSteamTargetLabel)
+            ? (compactAutoSteamTargetLabel(autoSteamTargetLabel) || formatSteamDuration(currentSteamDuration))
             : formatSteamDuration(currentSteamDuration);
         durationEl.style.fontSize = showingTarget ? '20px' : '';
         durationEl.style.fontWeight = showingTarget ? '400' : '';

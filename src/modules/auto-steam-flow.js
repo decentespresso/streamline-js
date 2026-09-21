@@ -66,5 +66,5 @@ export function autoSteamPitcherLabel(pitcher, selectedPitcher, targetLabel) {
 }
 
 export function shouldKeepAutoSteamMode(error) {
-    return error?.status === 422;
+    return error?.status === 422 && error?.endpoint === 'calculate';
 }

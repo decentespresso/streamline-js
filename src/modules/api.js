@@ -2475,6 +2475,7 @@ function pluginEndpointError(pluginId, endpoint, status, errorBody) {
         : `Failed to call plugin endpoint ${pluginId}/${endpoint}. Status: ${status}${errorBody ? `, Body: ${errorBody}` : ''}`;
     const error = new Error(message);
     error.status = status;
+    error.endpoint = endpoint;
     if (typeof details?.code === 'string') error.code = details.code;
     return error;
 }

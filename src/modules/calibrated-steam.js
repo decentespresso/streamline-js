@@ -45,7 +45,9 @@ export function createCalibratedSteamController({ getContext, getSamples, calcul
         const samples = getSamples();
         const calibrationKey = typeof selection.calibrationKey === 'string' ? selection.calibrationKey : null;
         const requestedFlow = Number.isFinite(selection.flow) ? selection.flow : null;
-        const expectedFlow = calibrationKey ? selection.expectedFlow : requestedFlow;
+        const expectedFlow = calibrationKey
+            ? (Number.isFinite(selection.expectedFlow) ? selection.expectedFlow : null)
+            : requestedFlow;
         if ((calibrationKey === null) === (requestedFlow === null)) {
             throw new Error('Choose one Auto steam calibration or flow.');
         }

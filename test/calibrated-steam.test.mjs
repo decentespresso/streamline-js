@@ -110,6 +110,7 @@ test('saved calibration key is sent on both reads and stale key results cannot b
     assert.equal(requests.some(request => Object.hasOwn(request, 'flow')), false);
     returnedKey = 'choice-b';
     await assert.rejects(controller.preview('small', { calibrationKey: 'choice-a', expectedFlow: 1.2 }), /invalid calculation/);
+    await assert.rejects(controller.preview('small', { calibrationKey: 'choice-a', expectedFlow: undefined }), /invalid calculation/);
 });
 
 test('changed scale, pitcher, settings, workflow or machine state prevents an old preview applying', async () => {
