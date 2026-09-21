@@ -2,11 +2,27 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAutoSteamSession } from '../src/modules/auto-steam-session.js';
 
+const exactCalibration = (flow = 0.8, key = `${flow.toFixed(3)}@60.000`, label = '140.0 °F') => ({
+    mode: 'saved',
+    adjustable: false,
+    defaultCalibrationKey: key,
+    choices: [{ key, flow, targetTemperatureC: 60, targetLabel: label }],
+});
+
+const exactStatus = ({ flow = 0.8, pitchers = ['small', 'medium', 'large', 'auto'], ready = true, calibrationActive = false } = {}) => ({
+    apiVersion: 5,
+    ready,
+    calibrationActive,
+    availablePitchers: pitchers,
+    settings: {},
+    flowCalibration: exactCalibration(flow),
+});
+
 function harness(saved = null, initialHeater = 150, rememberedHeater = null) {
     let machine = 'idle';
     let workflow = { steamSettings: { duration: 45, flow: 0.6, targetTemperature: initialHeater, stopAtTemperature: 0 } };
     let fail = false;
-    let status = { apiVersion: 4, ready: true, availablePitchers: ['small', 'medium', 'large', 'auto'], settings: { referenceFlow: 0.8 } };
+    let status = exactStatus();
     const writes = [];
     let stored = saved;
     const session = createAutoSteamSession({
@@ -15,9 +31,11 @@ function harness(saved = null, initialHeater = 150, rememberedHeater = null) {
         getStatus: async () => status,
         getHeaterTemperature: async () => rememberedHeater,
         write: async steam => { writes.push(structuredClone(steam)); workflow.steamSettings = { ...workflow.steamSettings, ...steam }; },
-        calculate: async (pitcher, flow = 0.8) => {
+        calculate: async (pitcher, selection) => {
             if (fail) throw new Error('Unstable scale');
-            return { pitcher, milkGrams: 180, durationSeconds: 30, workflowPatch: { steamSettings: { duration: 30, flow } } };
+            const selectedFlow = selection.flow ?? selection.expectedFlow;
+            return { pitcher, milkGrams: 180, durationSeconds: 30, calibrationKey: selection.calibrationKey ?? null,
+                workflowPatch: { steamSettings: { duration: 30, flow: selectedFlow } } };
         },
         persist: value => { stored = structuredClone(value); },
         onChange: () => {},
@@ -36,14 +54,14 @@ test('Auto enters Off at calibration flow, remembers manual settings and restore
     assert.equal(h.stored().active, false);
 });
 
-const multiStatus = () => ({ apiVersion: 4, ready: true, availablePitchers: ['small', 'medium'],
-    settings: { referenceFlow: 0.8, calibrationMode: 'multiple' },
-    flowCalibration: { mode: 'multiple', adjustable: true, minimum: 0.4, maximum: 2.5, defaultFlow: 0.8 } });
+const multiStatus = () => ({ apiVersion: 5, ready: true, availablePitchers: ['small', 'medium'],
+    settings: {},
+    flowCalibration: { mode: 'interpolate', adjustable: true, minimum: 0.4, maximum: 2.5, defaultFlow: 0.8, step: 0.1 } });
 
 test('multiple Auto flow changes write Off at the selected flow and require a new pitcher calculation', async () => {
     const h = harness(); h.status(multiStatus());
     await h.session.enter(); await h.session.select('small');
-    await h.session.adjustFlow(0.1);
+    await h.session.adjustSelection(0.1);
     assert.equal(h.writes.at(-1).flow, 0.9);
     assert.equal(h.writes.at(-1).duration, 0);
     assert.equal(h.session.snapshot().ready, false);
@@ -60,22 +78,44 @@ test('multiple Auto flow changes write Off at the selected flow and require a ne
 
 test('Auto adjustments are bounded, fixed calibrations cannot change, and busy machines refuse writes', async () => {
     const h = harness(); await h.session.enter();
-    await assert.rejects(h.session.adjustFlow(0.1), /multiple-flow/);
+    await assert.rejects(h.session.adjustSelection(0.1), /more than one/);
     h.status(multiStatus());
-    await h.session.adjustFlow(10); assert.equal(h.session.snapshot().flow, 2.5);
-    await h.session.adjustFlow(-10); assert.equal(h.session.snapshot().flow, 0.4);
+    await h.session.adjustSelection(10); assert.equal(h.session.snapshot().flow, 2.5);
+    await h.session.adjustSelection(-10); assert.equal(h.session.snapshot().flow, 0.4);
     await h.machine('steam'); const count = h.writes.length;
-    await assert.rejects(h.session.adjustFlow(0.1), /idle/);
+    await assert.rejects(h.session.adjustSelection(0.1), /idle/);
     assert.equal(h.writes.length, count);
 });
 
-test('selected Auto flow survives reload; changed calibration adopts its new default', async () => {
-    const h = harness(); h.status(multiStatus()); await h.session.enter(); await h.session.adjustFlow(0.2);
+test('selected interpolation flow survives reload and a compatible settings refresh', async () => {
+    const h = harness(); h.status(multiStatus()); await h.session.enter(); await h.session.adjustSelection(0.2);
     const resumed = harness(h.stored()); resumed.status(multiStatus()); await resumed.session.enter();
     assert.equal(resumed.writes.at(-1).flow, 1);
-    const status = multiStatus(); status.settings.referenceFlow = 1.5; status.flowCalibration.defaultFlow = 1.5;
+    const status = multiStatus(); status.settings.temperatureUnit = 'C'; status.flowCalibration.defaultFlow = 1.5;
     resumed.status(status); resumed.session.updateStatus(status); await resumed.session.invalidate({ verify: true });
-    assert.equal(resumed.writes.at(-1).flow, 1.5);
+    assert.equal(resumed.writes.at(-1).flow, 1);
+});
+
+test('saved calibrations cycle, wrap and retain the last opaque key across reloads', async () => {
+    const choices = [
+        { key: 'first', flow: 0.8, targetTemperatureC: 55, targetLabel: '131.0 °F' },
+        { key: 'second', flow: 1.2, targetTemperatureC: 60, targetLabel: '140.0 °F' },
+        { key: 'third', flow: 1.6, targetTemperatureC: 65, targetLabel: '149.0 °F' },
+    ];
+    const status = { apiVersion: 5, ready: true, availablePitchers: ['small'], settings: {},
+        flowCalibration: { mode: 'saved', adjustable: true, defaultCalibrationKey: 'first', choices } };
+    const h = harness(); h.status(status); await h.session.enter();
+    assert.equal(h.session.snapshot().calibrationKey, 'first');
+    assert.equal(h.session.snapshot().targetLabel, '131.0 °F');
+    await h.session.adjustSelection(-1);
+    assert.equal(h.session.snapshot().calibrationKey, 'third');
+    assert.equal(h.writes.at(-1).flow, 1.6);
+    await h.session.adjustSelection(1);
+    assert.equal(h.session.snapshot().calibrationKey, 'first');
+    await h.session.adjustSelection(1);
+    const resumed = harness(h.stored()); resumed.status(status); await resumed.session.enter();
+    assert.equal(resumed.session.snapshot().calibrationKey, 'second');
+    assert.equal(resumed.writes.at(-1).flow, 1.2);
 });
 
 test('each preset tap calculates even when already selected, and a failed calculation remains Off', async () => {
@@ -140,7 +180,7 @@ test('session serializes repeated taps while a setting write is pending', async 
     let release;
     const session = createAutoSteamSession({
         getContext: async () => ({ machine: { state: 'idle' }, workflow: { steamSettings: { duration: 45, flow: 0.6, targetTemperature: 150 } } }),
-        getStatus: async () => ({ apiVersion: 4, ready: true, settings: { referenceFlow: 0.8 } }),
+        getStatus: async () => exactStatus(),
         write: () => new Promise(resolve => { release = resolve; }),
         calculate: async () => assert.fail('not yet entered'), persist: () => {}, onChange: () => {},
     });
@@ -164,7 +204,7 @@ test('settings refresh resets an armed timer and preserves the selected pitcher'
 
 test('unconfigured Auto stays Off and exposes no pitcher presets', async () => {
     const h = harness();
-    h.status({ apiVersion: 4, ready: false, settings: {}, availablePitchers: [] });
+    h.status(exactStatus({ ready: false, pitchers: [] }));
     await h.session.enter();
     assert.equal(h.writes.at(-1).duration, 0);
     assert.equal(h.session.snapshot().configurationReady, false);
@@ -177,7 +217,9 @@ test('unconfigured Auto stays Off and exposes no pitcher presets', async () => {
 
 test('removed saved pitcher falls back to configured default and cannot be calculated', async () => {
     const h = harness({ pitcher: 'auto' });
-    h.status({ apiVersion: 4, ready: true, settings: { defaultPitcher: 'medium', referenceFlow: 0.8 }, availablePitchers: ['medium'] });
+    const status = exactStatus({ pitchers: ['medium'] });
+    status.settings.defaultPitcher = 'medium';
+    h.status(status);
     await h.session.enter();
     assert.equal(h.session.snapshot().pitcher, 'medium');
     assert.deepEqual(h.session.snapshot().availablePitchers, ['medium']);
@@ -222,7 +264,7 @@ test('missing normal heater setting never invents one or arms the timer', async 
 test('guided calibration blocks Auto entry, recalculation, reset and manual restoration', async () => {
     const h = harness();
     await h.session.enter();
-    h.status({ apiVersion: 4, calibrationActive: true, ready: true, availablePitchers: ['small'] });
+    h.status(exactStatus({ calibrationActive: true, pitchers: ['small'] }));
     const before = h.writes.length;
     for (const action of [() => h.session.enter(), () => h.session.select('small'), () => h.session.leave()]) {
         await assert.rejects(action(), /guided calibration/);
@@ -236,7 +278,7 @@ test('repeated navigation while already Off performs no additional reads or writ
     let steam = { duration: 30, flow: 1, targetTemperature: 145, stopAtTemperature: 0 };
     const writes = [];
     const session = createAutoSteamSession({ getContext: async () => { reads++; return { machine: { state: 'idle' }, workflow: { steamSettings: steam } }; },
-        getStatus: async () => ({ apiVersion: 4, ready: true, settings: { referenceFlow: 0.4 }, availablePitchers: ['small'] }),
+        getStatus: async () => exactStatus({ flow: 0.4, pitchers: ['small'] }),
         write: async value => { steam = value; writes.push(value); }, calculate: async () => {}, persist() {}, onChange() {} });
     await session.enter(); const before = reads;
     await Promise.all(Array.from({ length: 12 }, () => session.invalidate()));
@@ -255,7 +297,7 @@ test('revalidation reads live settings but skips a redundant Off write', async (
     const h = harness(); await h.session.enter(); const before = h.writes.length;
     await h.session.invalidate({ verify: true });
     assert.equal(h.writes.length, before);
-    h.status({ apiVersion: 4, ready: true, settings: { referenceFlow: 1.2 }, availablePitchers: ['small'] });
+    h.status(exactStatus({ flow: 1.2, pitchers: ['small'] }));
     await h.session.invalidate({ verify: true });
     assert.equal(h.writes.at(-1).flow, 1.2);
     assert.equal(h.writes.length, before + 1);
@@ -266,7 +308,7 @@ test('navigation during a slow calculation cancels arming without a contention e
     let steam = { duration: 30, flow: 1, targetTemperature: 145, stopAtTemperature: 0 };
     const writes = [];
     const session = createAutoSteamSession({ getContext: async () => ({ machine: { state: 'idle' }, workflow: { steamSettings: steam } }),
-        getStatus: async () => ({ apiVersion: 4, ready: true, settings: { referenceFlow: 0.4 }, availablePitchers: ['small'] }),
+        getStatus: async () => exactStatus({ flow: 0.4, pitchers: ['small'] }),
         write: async value => { steam = value; writes.push(value); },
         calculate: async () => { await new Promise(resolve => { release = resolve; }); return { workflowPatch: { steamSettings: { duration: 20, flow: 0.4 } } }; }, persist() {}, onChange() {} });
     await session.enter(); const selecting = session.select('small');
@@ -281,7 +323,7 @@ test('a failed background reset is reported once and is not retried on each navi
     let failing = false, writes = 0;
     let steam = { duration: 30, flow: 1, targetTemperature: 145, stopAtTemperature: 0 };
     const session = createAutoSteamSession({ getContext: async () => ({ machine: { state: 'idle' }, workflow: { steamSettings: steam } }),
-        getStatus: async () => ({ apiVersion: 4, ready: true, settings: { referenceFlow: 0.4 }, availablePitchers: ['small'] }),
+        getStatus: async () => exactStatus({ flow: 0.4, pitchers: ['small'] }),
         write: async value => { writes++; if (failing) throw new Error('Machine write failed'); steam = value; },
         calculate: async () => ({ workflowPatch: { steamSettings: { duration: 20, flow: 0.4 } } }), persist() {}, onChange() {} });
     await session.enter(); await session.select('small'); failing = true;
@@ -296,7 +338,7 @@ test('a pending Off reset survives rapid navigation and coalesces further reques
     let steam = { duration: 30, flow: 1, targetTemperature: 145, stopAtTemperature: 0 };
     const writes = [];
     const session = createAutoSteamSession({ getContext: async () => ({ machine: { state: 'idle' }, workflow: { steamSettings: steam } }),
-        getStatus: async () => ({ apiVersion: 4, ready: true, settings: { referenceFlow: 0.4 }, availablePitchers: ['small'] }),
+        getStatus: async () => exactStatus({ flow: 0.4, pitchers: ['small'] }),
         write: async value => { writes.push(value); if (delay) await new Promise(resolve => { release = resolve; }); steam = value; },
         calculate: async () => ({ workflowPatch: { steamSettings: { duration: 20, flow: 0.4 } } }), persist() {}, onChange() {} });
     await session.enter(); await session.select('small'); delay = true;
