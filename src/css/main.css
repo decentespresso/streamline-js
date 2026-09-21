@@ -642,6 +642,13 @@ body {
    instead of the editor's fixed-height panes. */
 #profile-list {
   scrollbar-gutter: stable;
+  /* Figma's Scroll Bar (node 2662-1356, x945 w60) sits 53px shy of the panel's
+     own right edge (Rectangle 273, node 2662-1355, x0 w1058) -- 53 * 0.75,
+     the file's canvas-to-shell ratio, is the 40px here. The scrollbar gutter
+     sits at the border edge regardless of padding, so this has to be margin:
+     it shrinks #profile-list's own box, leaving #left-panel's background
+     showing between the thumb and its border-r. */
+  margin-right: 40px;
 }
 @supports not selector(::-webkit-scrollbar) {
   #profile-list {
