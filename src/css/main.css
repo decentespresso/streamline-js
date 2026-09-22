@@ -246,6 +246,10 @@ body {
     --status-green-color: #0CA581; /* Same as light mode */
     --status-red-color: #DA515E;   /* Same as light mode */
     --status-clickable-color: #415996;
+    /* One step lighter than the button, the way the light value is one step
+       darker than its own. The light #e3e4e6 left unset here read as a white
+       flash against a dark main page while the profile loaded. */
+    --fav-button-wait: #353948;
 
     /* Presence Settings (Dark Mode) */
     --presence-card-bg: #17181D;
