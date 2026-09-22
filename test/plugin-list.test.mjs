@@ -245,3 +245,104 @@ test('plugin endpoint errors expose safe JSON messages and status metadata', () 
     assert.equal(error.status, 422);
     assert.equal(error.code, 'invalid_milk_weight');
 });
+
+// ─── Update status: what the card is allowed to claim ───────────────────────
+//
+// The pill used to read "Up to date" for anything loaded with no pendingUpdate.
+// pendingUpdate only holds an update Decaid refused to auto-install because it
+// asks for new permissions, so that was "nothing is being held back" dressed up
+// as "nothing newer exists" — and for a local-folder install, which Decaid never
+// checks at all, it was simply false. (Real case: DYE2 0.1.8 from a folder,
+// claiming up to date while v0.1.11 was published.)
+import { pluginStatus, pluginStatusLabel, isManagedPluginSource, minutesSince,
+    shouldCheckPluginUpdates, PLUGIN_UPDATE_COOLDOWN_MS } from '../src/settings/plugin-view.js';
+
+const NOW = Date.parse('2026-09-22T12:00:00Z');
+const ago = ms => new Date(NOW - ms).toISOString();
+const tracked = (extra = {}) => ({ kind: 'github_release', repo: 'owner/repo', lastChecked: ago(60000), lastError: null, ...extra });
+const one = (plugin) => [{ id: 'p.reaplugin', loaded: true, source: null, pendingUpdate: null, ...plugin }];
+
+test('a checked, current plugin is the only thing called up to date', () => {
+    assert.equal(pluginStatus(one({ source: tracked() }), 'p.reaplugin'), 'enabled');
+    assert.equal(pluginStatusLabel('enabled'), 'Up to date');
+});
+
+test('a local install says it cannot be checked instead of claiming it is current', () => {
+    for (const kind of ['local_folder', 'local_zip']) {
+        assert.equal(pluginStatus(one({ source: { kind, repo: null } }), 'p.reaplugin'), 'untracked', kind);
+    }
+    assert.equal(pluginStatusLabel('untracked'), 'Cannot check for updates');
+});
+
+// A plugin with no source at all came with the app: Decaid's own settings,
+// visualizer, time-to-ready and friends have no repo of their own and move when
+// Decaid does. Calling that "cannot check for updates" reads as a fault when
+// nothing is wrong. The three bundled plugins that DO ship separately
+// (dye2, shot-upload, dcamp) get a real source seeded by Decaid, so they are
+// checkable and never land here.
+test('a plugin that ships with Decaid is not treated as a broken install', () => {
+    assert.equal(pluginStatus(one({ source: null }), 'p.reaplugin'), 'bundled');
+    assert.equal(pluginStatusLabel('bundled'), 'Ships with Decaid');
+});
+
+test('a plugin never checked yet does not claim to be current', () => {
+    assert.equal(pluginStatus(one({ source: tracked({ lastChecked: null }) }), 'p.reaplugin'), 'never-checked');
+    assert.equal(pluginStatus(one({ source: tracked({ lastChecked: 'not a date' }) }), 'p.reaplugin'), 'never-checked');
+});
+
+test('a failed check is reported, not swallowed behind an up-to-date pill', () => {
+    const rateLimited = tracked({ lastError: 'GitHub API 403: rate limit exceeded' });
+    assert.equal(pluginStatus(one({ source: rateLimited }), 'p.reaplugin'), 'check-failed');
+});
+
+test('the earlier states still win over the new ones', () => {
+    assert.equal(pluginStatus(null, 'p.reaplugin'), 'unreachable');
+    assert.equal(pluginStatus([], 'p.reaplugin'), 'not-installed');
+    assert.equal(pluginStatus(one({ loaded: false, source: tracked() }), 'p.reaplugin'), 'disabled');
+    assert.equal(pluginStatus(one({ source: tracked(), pendingUpdate: { version: '2.0.0' } }), 'p.reaplugin'), 'update-pending',
+        'a held-back update outranks how recently we checked');
+});
+
+test('only GitHub-backed sources are checkable', () => {
+    assert.equal(isManagedPluginSource({ kind: 'github_release' }), true);
+    assert.equal(isManagedPluginSource({ kind: 'github_branch' }), true);
+    assert.equal(isManagedPluginSource({ kind: 'local_folder' }), false);
+    assert.equal(isManagedPluginSource(null), false);
+});
+
+test('minutesSince floors, never goes negative, and admits when it does not know', () => {
+    assert.equal(minutesSince(ago(90 * 1000), NOW), 1);
+    assert.equal(minutesSince(new Date(NOW + 60000).toISOString(), NOW), 0, 'a clock skew is not negative minutes');
+    assert.equal(minutesSince(null, NOW), null);
+    assert.equal(minutesSince('whenever', NOW), null);
+});
+
+// ─── When opening the page is allowed to ask GitHub ─────────────────────────
+
+test('opening the page checks when a managed plugin is stale', () => {
+    const plugins = one({ source: tracked({ lastChecked: ago(PLUGIN_UPDATE_COOLDOWN_MS + 1000) }) });
+    assert.equal(shouldCheckPluginUpdates(plugins, { now: NOW, lastRunAt: null }), true);
+});
+
+test('a plugin Decaid checked moments ago is not re-checked', () => {
+    const plugins = one({ source: tracked({ lastChecked: ago(60 * 1000) }) });
+    assert.equal(shouldCheckPluginUpdates(plugins, { now: NOW, lastRunAt: null }), false);
+});
+
+test('a plugin never checked is reason enough to check', () => {
+    const plugins = one({ source: tracked({ lastChecked: null }) });
+    assert.equal(shouldCheckPluginUpdates(plugins, { now: NOW, lastRunAt: null }), true);
+});
+
+test('re-entering the page inside the cooldown does not ask again', () => {
+    const plugins = one({ source: tracked({ lastChecked: null }) });
+    assert.equal(shouldCheckPluginUpdates(plugins, { now: NOW, lastRunAt: NOW - 1000 }), false);
+    assert.equal(shouldCheckPluginUpdates(plugins, { now: NOW, lastRunAt: NOW - PLUGIN_UPDATE_COOLDOWN_MS - 1 }), true);
+});
+
+test('nothing checkable means no request at all', () => {
+    assert.equal(shouldCheckPluginUpdates([], { now: NOW }), false);
+    assert.equal(shouldCheckPluginUpdates(one({ source: { kind: 'local_folder' } }), { now: NOW }), false,
+        'a folder install can never answer, so asking only spends rate limit');
+    assert.equal(shouldCheckPluginUpdates(null, { now: NOW }), false);
+});

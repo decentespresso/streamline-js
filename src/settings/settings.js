@@ -29,7 +29,8 @@ import { readSettingsLocation, writeSettingsLocation } from './settings-location
 import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
 import { adoptFromMachine, diffUserSettings, restorePatches } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
-         pluginIdFromCategory, pluginCategoryFor } from './plugin-view.js';
+         pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
+         minutesSince, shouldCheckPluginUpdates } from './plugin-view.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -6565,7 +6566,7 @@ function setupDye2Extra(cardEl, refreshVersion) {
 // Unknowns stay "—" rather than being guessed at. Returns a refresh() so the
 // caller (and an override's own listeners, e.g. DYE2's master switch) can
 // repaint after an install/update/approve.
-function renderPluginVersionInfo(el, pluginId, info, override) {
+function renderPluginVersionInfo(el, pluginId, info, override, { checking = false } = {}) {
     if (!el) return null;
     const button = (id, label) =>
         `<button id="${id}" class="bg-[#385a92] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold self-start">${label}</button>`;
@@ -6574,24 +6575,47 @@ function renderPluginVersionInfo(el, pluginId, info, override) {
     // on the version line it describes rather than on a row of its own.
     const pill = (text, cls) =>
         `<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full whitespace-nowrap ${cls}">${text}</span>`;
-    let status;
-    if (!info.reachable) {
-        status = pill(getTranslation('Could not check'), 'bg-[var(--profile-button-outline-color)]/30 text-[var(--text-primary)] opacity-70');
-    } else if (!info.installed) {
-        status = pill(getTranslation('Not installed'), 'bg-[var(--profile-button-outline-color)]/30 text-[var(--text-primary)] opacity-70');
-    } else if (!info.loaded) {
-        status = pill(getTranslation('Not loaded'), 'bg-amber-500/15 text-amber-600');
-    } else if (info.pending) {
-        status = pill(getTranslation('Update needs approval'), 'bg-amber-500/15 text-amber-600');
-    } else {
-        status = pill(getTranslation('Up to date'), 'bg-[#385a92]/15 text-[#385a92]');
-    }
+    // One state machine for the whole card: pluginStatus (plugin-view.js, pure,
+    // node-tested) decides, this only picks the colour. `info` is the same
+    // {reachable, installed, loaded, source, pending} shape a plugin-specific
+    // override may supply, so feed it back in as a one-plugin list.
+    const state = info.reachable
+        ? pluginStatus(
+            info.installed ? [{ id: pluginId, loaded: info.loaded, source: info.source, pendingUpdate: info.pending }] : [],
+            pluginId)
+        : 'unreachable';
+    const MUTED = 'bg-[var(--profile-button-outline-color)]/30 text-[var(--text-primary)] opacity-70';
+    const WARN = 'bg-amber-500/15 text-amber-600';
+    const PILL_CLASS = {
+        'unreachable': MUTED, 'not-installed': MUTED, 'untracked': MUTED, 'bundled': MUTED,
+        'disabled': WARN, 'update-pending': WARN, 'check-failed': WARN,
+        'never-checked': MUTED, 'enabled': 'bg-[#385a92]/15 text-[#385a92]',
+    };
+    const status = checking
+        ? pill(`${getTranslation('Checking')}…`, MUTED)
+        : pill(getTranslation(pluginStatusLabel(state)), PILL_CLASS[state] || MUTED);
 
     const row = (label, value) => `
         <div class="flex items-center justify-between gap-[24px] w-full">
             <span data-i18n-key="${label}">${getTranslation(label)}</span>
             <span class="font-bold text-[var(--text-primary)] text-right break-all">${value}</span>
         </div>`;
+
+    // What the pill is actually standing on. A checkable plugin says when it
+    // was last looked at; one that cannot be checked says so once, here, rather
+    // than leaving the user to infer it from "Local folder" two lines down.
+    const checkedText = () => {
+        if (!info.installed) return null;
+        if (!info.source) return getTranslation('Updates with the Decaid app');
+        if (!isManagedPluginSource(info.source)) return getTranslation('Never — installed from a local copy');
+        const mins = minutesSince(info.source.lastChecked);
+        if (mins === null) return getTranslation('Not yet');
+        if (mins < 1) return getTranslation('Just now');
+        if (mins < 60) return `${mins} ${getTranslation('min ago')}`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours} ${getTranslation('h ago')}`;
+        return `${Math.floor(hours / 24)} ${getTranslation('d ago')}`;
+    };
 
     // A tracked source is a repo plus the exact release tag or commit
     // installed; a ZIP or folder install is a snapshot Decaid cannot update.
@@ -6634,6 +6658,7 @@ function renderPluginVersionInfo(el, pluginId, info, override) {
                 </span>
             </div>
             ${row('Source', sourceText)}
+            ${checkedText() ? row('Checked for updates', checkedText()) : ''}
             ${errorBlock}
             ${pendingBlock}
             ${info.reachable && !info.installed && override?.onInstall
@@ -6789,10 +6814,14 @@ function setupPluginCard(cardEl, pluginId, plugins) {
     const vm = pluginViewModel(plugins, pluginId);
 
     const versionEl = cardEl.querySelector('[data-role="plugin-version-info"]');
+    // Set by the page loader when it is about to ask Decaid for a fresh answer
+    // (pluginUpdatesInFlight): the pill says "Checking…" rather than asserting
+    // a state that is about to be replaced a second later.
+    const checking = !!cardEl.closest('[data-plugin-checking="1"]');
     let refreshVersion = () => {};
     fetchPluginVersionInfo(pluginId, override).then(info => {
         if (!cardEl.isConnected) return;
-        const refresh = renderPluginVersionInfo(versionEl, pluginId, info, override);
+        const refresh = renderPluginVersionInfo(versionEl, pluginId, info, override, { checking });
         if (refresh) refreshVersion = refresh;
     }).catch(() => {
         if (cardEl.isConnected) {
@@ -8166,6 +8195,45 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // only the container differs, so a plugin's controls behave identically
     // whether it is reached from its own nav row or (with none installed) from
     // the aggregate page.
+    // Decaid re-checks managed plugins on one 12-hourly timer (UpdateCheckService),
+    // so a card could sit on "Up to date" for half a day after a release. Opening
+    // Extensions asks for a fresh answer instead: the cards paint immediately from
+    // what the bridge already knows, the check runs in the background, and the page
+    // repaints with whatever it found. A non-escalating update is downloaded AND
+    // installed inside that call, so this is also how a plugin actually updates;
+    // one asking for new permissions lands as the pendingUpdate the card already
+    // renders for approval.
+    //
+    // Whether it runs at all is shouldCheckPluginUpdates (plugin-view.js, pure,
+    // node-tested): it costs an unauthenticated api.github.com request per managed
+    // plugin, out of 60/h shared with Decaid's own timer and with skin updates.
+    let lastPluginUpdateCheckAt = null;
+
+    function pluginUpdatesInFlight(container, plugins) {
+        const due = shouldCheckPluginUpdates(plugins, { lastRunAt: lastPluginUpdateCheckAt });
+        container.dataset.pluginChecking = due ? '1' : '';
+        return due;
+    }
+
+    // `repaint` re-runs the loader, which re-reads /plugins and rebuilds the
+    // cards. The cooldown stamp is taken before the call, so that repaint cannot
+    // start another check and loop.
+    async function runPluginUpdateCheck(container, repaint) {
+        lastPluginUpdateCheckAt = Date.now();
+        try {
+            const { checkPluginUpdates } = await import('../modules/api.js');
+            await checkPluginUpdates();
+        } catch (e) {
+            // Offline, GitHub down or rate-limited: Decaid records it on the
+            // source as lastError, which the repainted card then shows.
+            logger.info(`Plugin update check failed: ${e.message || e}`);
+        }
+        // Navigated away while GitHub was answering.
+        if (!container.isConnected) return;
+        container.dataset.pluginChecking = '';
+        repaint();
+    }
+
     window.loadPluginPage = async function(pluginId) {
         const container = document.getElementById('plugin-page-container');
         if (!container || container.dataset.pluginPage !== pluginId) return;
@@ -8181,11 +8249,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             pluginNavCache = plugins;
             const name = plugins.find(p => p?.id === pluginId)?.name
                 || pluginCardOverride(pluginId).fallbackTitle || pluginId;
+            const due = pluginUpdatesInFlight(container, plugins);
             container.innerHTML = renderPluginPageTitle(name) + renderPluginCard(pluginId, plugins, { asPage: true });
             translatePage();
             container.querySelectorAll('[data-plugin-card]').forEach(cardEl => {
                 setupPluginCard(cardEl, cardEl.dataset.pluginCard, plugins);
             });
+            if (due) runPluginUpdateCheck(container, () => window.loadPluginPage(pluginId));
         } catch (err) {
             logger.error(`Failed to load plugin ${pluginId}:`, err);
             container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugin: ${escapeHtml(err.message)}</p>`;
@@ -8215,6 +8285,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             // Manifest text is third-party content -- plugins install from arbitrary
             // GitHub repos -- so every field renderPluginCard shows is escaped
             // before it reaches innerHTML.
+            const due = pluginUpdatesInFlight(container, plugins);
             container.innerHTML = ids.map((id, i) => `
                 ${i > 0 ? '<div class="h-0 relative w-full"><hr class="border-t border-[#c9c9c9] w-full" /></div>' : ''}
                 ${renderPluginCard(id, plugins)}
@@ -8224,6 +8295,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             container.querySelectorAll('[data-plugin-card]').forEach(cardEl => {
                 setupPluginCard(cardEl, cardEl.dataset.pluginCard, plugins);
             });
+            if (due) runPluginUpdateCheck(container, () => window.loadPluginList());
         } catch (err) {
             logger.error('Failed to load plugins:', err);
             container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugins: ${escapeHtml(err.message)}</p>`;

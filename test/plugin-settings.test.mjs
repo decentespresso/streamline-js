@@ -51,8 +51,15 @@ test('loaded with a pendingUpdate is update-pending', () => {
     assert.equal(pluginStatus(plugins, 'dye2.reaplugin'), 'update-pending');
 });
 
-test('loaded with no pending update is enabled', () => {
-    assert.equal(pluginStatus([{ id: 'dye2.reaplugin', loaded: true }], 'dye2.reaplugin'), 'enabled');
+// "No pending update" is not "up to date": pendingUpdate only holds an update
+// Decaid refused to auto-install because it asks for new permissions. A plugin
+// is only current once a check has actually said so — see the update-status
+// tests in plugin-list.test.mjs for the full set.
+test('loaded with no pending update is only enabled once a check confirms it', () => {
+    const checked = { kind: 'github_release', repo: 'decentespresso/dye2', lastChecked: new Date().toISOString() };
+    assert.equal(pluginStatus([{ id: 'dye2.reaplugin', loaded: true, source: checked }], 'dye2.reaplugin'), 'enabled');
+    assert.equal(pluginStatus([{ id: 'dye2.reaplugin', loaded: true }], 'dye2.reaplugin'), 'bundled',
+        'no source at all ships with the app, so it cannot be called current either');
 });
 
 test('pluginStatusLabel names every state the card can render', () => {
@@ -60,6 +67,10 @@ test('pluginStatusLabel names every state the card can render', () => {
     assert.equal(pluginStatusLabel('not-installed'), 'Not installed');
     assert.equal(pluginStatusLabel('disabled'), 'Not loaded');
     assert.equal(pluginStatusLabel('update-pending'), 'Update needs approval');
+    assert.equal(pluginStatusLabel('bundled'), 'Ships with Decaid');
+    assert.equal(pluginStatusLabel('untracked'), 'Cannot check for updates');
+    assert.equal(pluginStatusLabel('check-failed'), 'Update check failed');
+    assert.equal(pluginStatusLabel('never-checked'), 'Not checked yet');
     assert.equal(pluginStatusLabel('enabled'), 'Up to date');
 });
 
@@ -72,7 +83,8 @@ test('pluginViewModel maps an installed plugin\'s fields verbatim', () => {
         description: 'Sends a finished shot to a local print server.',
         version: '1.2.0',
         loaded: true,
-        source: { kind: 'github_release', repo: 'decentespresso/print-the-shot', releaseTag: 'v1.2.0' },
+        source: { kind: 'github_release', repo: 'decentespresso/print-the-shot', releaseTag: 'v1.2.0',
+                  lastChecked: new Date().toISOString(), lastError: null },
         pendingUpdate: null,
         settings: { AutoPrint: { type: 'boolean', default: false } },
     };

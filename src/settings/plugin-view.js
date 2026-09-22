@@ -22,6 +22,15 @@ export function findPlugin(plugins, pluginId) {
     return Array.isArray(plugins) ? (plugins.find(p => p?.id === pluginId) || null) : null;
 }
 
+// Only these two kinds are checkable: updateAllPlugins skips everything else
+// (plugin_source_service.dart, `!source.kind.isManaged` -> continue), so a
+// local ZIP or folder install is a snapshot that can never report an update.
+const MANAGED_SOURCE_KINDS = ['github_release', 'github_branch'];
+
+export function isManagedPluginSource(source) {
+    return MANAGED_SOURCE_KINDS.includes(source?.kind);
+}
+
 // The install/enable/update state machine a generic settings card renders
 // differently for:
 //  - 'unreachable'     GET /plugins failed outright; nothing else is known
@@ -29,7 +38,23 @@ export function findPlugin(plugins, pluginId) {
 //  - 'disabled'        installed but not currently loaded
 //  - 'update-pending'  loaded, and Decaid is holding an update back for
 //                       permissions the installed copy does not have
-//  - 'enabled'         loaded and current
+//  - 'bundled'         loaded, no source at all: it came with Decaid and moves
+//                       when Decaid does (Decaid seeds real sources for the
+//                       three bundled plugins that do ship separately --
+//                       dye2, shot-upload, dcamp -- so those land elsewhere)
+//  - 'untracked'       loaded, but installed from a local ZIP/folder: a
+//                       snapshot nothing can check
+//  - 'check-failed'    loaded and checkable, but the last check errored
+//  - 'never-checked'   loaded and checkable, but no check has ever run
+//  - 'enabled'         loaded, checkable, and a check has actually confirmed it
+//
+// The last four used to be one 'enabled' -> "Up to date". That was a claim the
+// data never supported: `pendingUpdate` only holds an update Decaid refused to
+// auto-install because it wants NEW PERMISSIONS, so "no pending update" means
+// "nothing is being held back", not "nothing newer exists". A folder install is
+// never even looked at, and a rate-limited check (GitHub allows 60/h
+// unauthenticated for the whole tablet) records an error while the pill still
+// read "Up to date". Say what is known instead.
 //
 // `plugins === null` is the getPlugins() failure sentinel (distinct from `[]`,
 // which means the bridge is fine and genuinely has no plugins) -- collapsing
@@ -40,7 +65,39 @@ export function pluginStatus(plugins, pluginId) {
     if (!plugin) return 'not-installed';
     if (!plugin.loaded) return 'disabled';
     if (plugin.pendingUpdate) return 'update-pending';
+    if (!plugin.source) return 'bundled';
+    if (!isManagedPluginSource(plugin.source)) return 'untracked';
+    if (plugin.source.lastError) return 'check-failed';
+    if (!Number.isFinite(Date.parse(plugin.source.lastChecked || ''))) return 'never-checked';
     return 'enabled';
+}
+
+/** Whole minutes since `iso`, or null when it is absent or unparseable. */
+export function minutesSince(iso, now = Date.now()) {
+    const at = Date.parse(iso || '');
+    if (!Number.isFinite(at)) return null;
+    return Math.max(0, Math.floor((now - at) / 60000));
+}
+
+// Decaid re-checks every managed plugin on one 12-hourly timer, so a release
+// can be up to half a day old before a card would notice it. Opening the
+// Extensions page asks for a fresh answer instead -- but the check costs an
+// unauthenticated api.github.com request per managed plugin, against a 60/h
+// budget shared with Decaid's own timer and skin updates, and re-entering a
+// settings page is something a user does freely. So: only when something is
+// actually checkable, and not if every checkable plugin was already checked
+// inside the cooldown (or we asked this recently ourselves).
+export const PLUGIN_UPDATE_COOLDOWN_MS = 15 * 60 * 1000;
+
+export function shouldCheckPluginUpdates(plugins, { now = Date.now(), lastRunAt = null } = {}) {
+    if (!Array.isArray(plugins)) return false;
+    if (Number.isFinite(lastRunAt) && now - lastRunAt < PLUGIN_UPDATE_COOLDOWN_MS) return false;
+    const managed = plugins.filter(plugin => isManagedPluginSource(plugin?.source));
+    if (managed.length === 0) return false;
+    return managed.some(plugin => {
+        const checkedAt = Date.parse(plugin.source.lastChecked || '');
+        return !Number.isFinite(checkedAt) || now - checkedAt >= PLUGIN_UPDATE_COOLDOWN_MS;
+    });
 }
 
 // Everything a generic plugin settings card needs to decide what to draw,
@@ -75,6 +132,10 @@ export function pluginStatusLabel(status) {
         case 'not-installed': return 'Not installed';
         case 'disabled': return 'Not loaded';
         case 'update-pending': return 'Update needs approval';
+        case 'bundled': return 'Ships with Decaid';
+        case 'untracked': return 'Cannot check for updates';
+        case 'check-failed': return 'Update check failed';
+        case 'never-checked': return 'Not checked yet';
         case 'enabled': return 'Up to date';
         default: return 'Unknown';
     }
