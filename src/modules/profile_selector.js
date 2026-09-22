@@ -401,11 +401,46 @@ async function hideOrDeleteProfile(key, profileRecord) {
     if (profileRecord.isDraft) document.dispatchEvent(new CustomEvent('profiles-updated'));
 }
 
+// Short, human-readable summary of what a Reset to `other` would actually
+// change versus `current` -- shown next to each row's date so picking a
+// version isn't a blind guess from timestamps alone. Execution fields only
+// (steps, shot parameters) -- the same fields REA hashes into the profile
+// id -- so a title-only rename never shows up here, matching the
+// PRESENTATION_FIELDS split profile_editor.js's saveProfile uses.
+const DIFF_FIELD_LABELS = [
+    ['target_weight', 'target weight'],
+    ['target_volume', 'target volume'],
+    ['beverage_type', 'beverage type'],
+    ['tank_temperature', 'tank temperature'],
+    ['target_volume_count_start', 'pre-infusion end'],
+];
+function summarizeProfileDiff(current, other) {
+    if (!current || !other) return '';
+    const parts = [];
+    const stepsA = current.steps || [];
+    const stepsB = other.steps || [];
+    if (stepsA.length !== stepsB.length) {
+        parts.push(`${stepsB.length} step${stepsB.length === 1 ? '' : 's'}`);
+    } else {
+        let changed = 0;
+        for (let i = 0; i < stepsA.length; i++) {
+            if (JSON.stringify(stepsA[i]) !== JSON.stringify(stepsB[i])) changed++;
+        }
+        if (changed) parts.push(`${changed} step${changed === 1 ? '' : 's'} changed`);
+    }
+    for (const [field, label] of DIFF_FIELD_LABELS) {
+        if ((current[field] ?? null) !== (other[field] ?? null)) parts.push(label);
+    }
+    return parts.length ? parts.join(', ') : 'No changes';
+}
+
 // Version picker for the Reset flow. Returns the chosen ProfileRecord, or
 // null on cancel. Picking a row selects it; Confirm applies it -- a row used
 // to restore on the single tap that selected it, which put an unconfirmed,
-// destructive profile swap one stray tap away.
-function promptVersionRestore(versions) {
+// destructive profile swap one stray tap away. `currentProfile` is what a
+// row's date-and-summary line is diffed against -- the profile Reset would
+// actually replace.
+function promptVersionRestore(versions, currentProfile) {
     return new Promise((resolve) => {
         const ROW_BASE     = 'text-left px-[16px] py-[14px] rounded-[10px] border-2 bg-[var(--box-color)] cursor-pointer';
         const ROW_IDLE     = `${ROW_BASE} border-[var(--border-color)] hover:border-[var(--mimoja-blue)]`;
@@ -435,6 +470,7 @@ function promptVersionRestore(versions) {
         const rowBtns = versions.map((v, i) => {
             const when  = new Date(v.createdAt);
             const label = isNaN(when.getTime()) ? '' : when.toLocaleString();
+            const summary = summarizeProfileDiff(currentProfile, v.profile);
 
             const btn = document.createElement('button');
             btn.type = 'button';
@@ -449,7 +485,7 @@ function promptVersionRestore(versions) {
             const stamp = document.createElement('div');
             stamp.className = 'text-[16px] text-[var(--text-primary)]';
             stamp.style.opacity = '0.6';
-            stamp.textContent = label;
+            stamp.textContent = summary ? `${label} · ${summary}` : label;
 
             btn.appendChild(title);
             btn.appendChild(stamp);
@@ -1848,15 +1884,22 @@ export async function initializeProfileSelector() {
                 showToast('Could not load version history', 3000, 'error');
                 return;
             }
+            // /lineage returns the whole chain -- parents AND children -- so
+            // without this Reset could offer a *later* fork as something to
+            // "revert" to. Strictly older only: it's a revert, never a jump
+            // forward.
+            const currentCreatedAt = new Date(profileRecord.createdAt);
             const versions = (lineage || [])
-                .filter(r => r.id !== selectedProfileKey && r.profile)
+                .filter(r => r.id !== selectedProfileKey && r.profile && new Date(r.createdAt) < currentCreatedAt)
                 .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
             if (!versions.length) {
                 showToast('No previous versions to reset to.', 2500, 'info');
                 return;
             }
 
-            const chosen = versions.length === 1 ? versions[0] : await promptVersionRestore(versions);
+            // Always shown, even with a single entry -- one consistent picker
+            // rather than two different popups depending on chain length.
+            const chosen = await promptVersionRestore(versions, profileRecord.profile);
             if (!chosen) return;
             pendingResetTarget = chosen;
 
