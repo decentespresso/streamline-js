@@ -12,6 +12,8 @@ import {
     loadProfileOverrides,
     saveProfileOverride,
     clearProfileOverride,
+    removeProfileOverrideKeys,
+    ensureProfileOverridesLoaded,
     getProfileOverride,
     applyOverridesToRecords,
 } from '../src/modules/profile-overrides.js';
@@ -93,6 +95,66 @@ test('a record with no metadata at all still gets its overrides', async () => {
     const records = { 'profile:abc': {} };
     applyOverridesToRecords(records);
     assert.deepEqual(records['profile:abc'].metadata, { targetYield: 36 });
+});
+
+// Regression: a write replaces the whole KV entry for that profile, so a page
+// that edits a profile without the main page's boot behind it (the profile
+// editor's flow calibration, for one) would have merged onto an empty map and
+// erased every number the profile already had.
+test('a write before the namespace is loaded keeps the values already in KV', async () => {
+    const kv = fakeKv({ 'profile%3Aabc': { targetSteamDuration: 10, targetSteamFlow: 0.8 } });
+    // deliberately NO loadProfileOverrides() first
+    const merged = await saveProfileOverride('profile:abc', { weightFlowMultiplier: 1.4 });
+    assert.deepEqual(merged, { targetSteamDuration: 10, targetSteamFlow: 0.8, weightFlowMultiplier: 1.4 });
+    assert.deepEqual(kv.store['profile%3Aabc'], merged);
+});
+
+test('the namespace is pulled in once, not on every write', async () => {
+    const kv = fakeKv();
+    await ensureProfileOverridesLoaded();
+    await ensureProfileOverridesLoaded();
+    await saveProfileOverride('profile:abc', { targetYield: 36 });
+    assert.equal(kv.calls.filter(c => c[0] === 'getAll').length, 1);
+});
+
+test('per-profile flow calibration is stored alongside the tile values', async () => {
+    const kv = fakeKv();
+    await loadProfileOverrides();
+    const saved = await saveProfileOverride('profile:abc', {
+        targetDoseWeight: 18, weightFlowMultiplier: 1.4, volumeFlowMultiplier: 0.5,
+    });
+    assert.deepEqual(saved, { targetDoseWeight: 18, weightFlowMultiplier: 1.4, volumeFlowMultiplier: 0.5 });
+    assert.deepEqual(kv.store['profile%3Aabc'], saved);
+});
+
+// Turning the editor's flow-calibration switch back off has to *remove* the
+// keys: saveProfileOverride merges, so writing them as undefined would leave
+// the old numbers in place and the profile would keep overriding the global.
+test('clearing one group of keys leaves the rest of the override alone', async () => {
+    const kv = fakeKv();
+    await loadProfileOverrides();
+    await saveProfileOverride('profile:abc', {
+        targetDoseWeight: 18, weightFlowMultiplier: 1.4, volumeFlowMultiplier: 0.5,
+    });
+    const left = await removeProfileOverrideKeys('profile:abc', ['weightFlowMultiplier', 'volumeFlowMultiplier']);
+    assert.deepEqual(left, { targetDoseWeight: 18 });
+    assert.deepEqual(kv.store['profile%3Aabc'], { targetDoseWeight: 18 });
+});
+
+test('removing the last key deletes the KV entry instead of storing an empty object', async () => {
+    const kv = fakeKv();
+    await loadProfileOverrides();
+    await saveProfileOverride('profile:abc', { weightFlowMultiplier: 1.4 });
+    await removeProfileOverrideKeys('profile:abc', ['weightFlowMultiplier', 'volumeFlowMultiplier']);
+    assert.equal(getProfileOverride('profile:abc'), null);
+    assert.deepEqual(kv.store, {});
+});
+
+test('removing keys from a profile that has no override is a no-op', async () => {
+    const kv = fakeKv();
+    await loadProfileOverrides();
+    assert.equal(await removeProfileOverrideKeys('profile:zzz', ['weightFlowMultiplier']), null);
+    assert.deepEqual(kv.calls.filter(c => c[0] !== 'getAll'), []);
 });
 
 test('reset removes the override from KV and memory', async () => {

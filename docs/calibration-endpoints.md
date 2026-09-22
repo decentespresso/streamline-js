@@ -110,6 +110,17 @@ The Quick Adjustments page that used to be called "Flow Multiplier" is now
 Decaid's `settings_service.dart`, a different knob that was wearing the same
 name.
 
+Those two app-side multipliers can now be set **per profile**
+(`src/modules/flow-calibration.js`). Decaid has no per-profile field for them —
+`ShotSequencer` snapshots the app-wide values when a shot starts
+(`de1_state_manager.dart _startShotSequencer`) — so the skin pushes a profile's
+numbers into the global setting when that profile becomes active and restores a
+stored *baseline* when a profile without them is picked. The baseline is
+re-captured whenever the live value stops matching what this module last wrote,
+which is how an edit on the Flow Estimation page itself is honoured. Numbers and
+baseline both live in KV (`streamlineProfileOverrides`, `streamlineFlowCalibration`);
+nothing goes in the profile JSON, which is content-addressed.
+
 Caveat for whoever does wire the machine-side one: that POST answers 202 for
 **any** JSON object and ignores keys it does not recognise
 (`de1handler.dart:481-489`). A misspelled key is a silent no-op with a

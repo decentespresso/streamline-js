@@ -20,9 +20,13 @@ export const OVERRIDES_NAMESPACE = 'streamlineProfileOverrides';
 
 // The tile values a user can override. Anything else in a record's metadata
 // (source, filename, ...) is Decaid's and is never written here.
-export const OVERRIDE_KEYS = ['targetDoseWeight', 'targetYield', 'grinderSetting', 'brewTemperature', 'targetSteamDuration', 'targetSteamFlow'];
+// The flow multipliers are not tile values: they are app-wide Decaid settings
+// (flow-calibration.js pushes them on a profile switch), stored here only
+// because "the numbers this profile wants" is exactly what this namespace is.
+export const OVERRIDE_KEYS = ['targetDoseWeight', 'targetYield', 'grinderSetting', 'brewTemperature', 'targetSteamDuration', 'targetSteamFlow', 'weightFlowMultiplier', 'volumeFlowMultiplier'];
 
 let overrides = {};      // profileId -> { targetDoseWeight, targetYield, ... }
+let loaded = false;      // has the namespace been pulled in at least once?
 let kv = null;           // injected in tests; otherwise api.js, imported lazily
 
 // api.js pulls in the DOM-touching modules — keep this file importable on its own.
@@ -32,6 +36,10 @@ async function kvClient() {
 
 export function setKvClient(client) {
     kv = client;
+    // A different store is a different set of overrides: forget what the old
+    // one had, and let the next read/write pull the new one in.
+    overrides = {};
+    loaded = false;
     return () => { kv = null; };
 }
 
@@ -67,6 +75,7 @@ export async function loadProfileOverrides() {
             try { id = decodeURIComponent(key); } catch { /* keep the raw key */ }
             overrides[id] = pick(value);
         }
+        loaded = true;
     } catch (e) {
         logger.info(`Profile overrides unavailable: ${e.message}`);
         overrides = {};
@@ -74,8 +83,21 @@ export async function loadProfileOverrides() {
     return overrides;
 }
 
+/**
+ * Pull the namespace in once, if nothing has yet. A write merges onto whatever
+ * is in memory and then replaces the whole KV entry, so writing before the
+ * first load would silently drop every value this profile already had —
+ * reachable from any page that edits a profile without going through the main
+ * page's boot (the profile editor, for one).
+ */
+export async function ensureProfileOverridesLoaded() {
+    if (!loaded) await loadProfileOverrides();
+    return overrides;
+}
+
 /** Merge `fields` into the override for `profileId` and push it up. Returns the merged set. */
 export async function saveProfileOverride(profileId, fields) {
+    await ensureProfileOverridesLoaded();
     const merged = { ...(overrides[profileId] || {}), ...pick(fields) };
     overrides[profileId] = merged;
     try {
@@ -84,6 +106,32 @@ export async function saveProfileOverride(profileId, fields) {
     } catch (e) {
         // Keep the in-memory value: the tile stays right for this session even
         // if Decaid was briefly unreachable.
+        logger.warn(`Failed to save overrides for ${profileId}:`, e);
+    }
+    return merged;
+}
+
+/**
+ * Drop `keys` from `profileId`'s override, leaving the rest in place. Needed
+ * because saveProfileOverride merges: there is otherwise no way to say "this
+ * profile has no flow calibration of its own" once one has been saved.
+ */
+export async function removeProfileOverrideKeys(profileId, keys) {
+    await ensureProfileOverridesLoaded();
+    const existing = overrides[profileId];
+    if (!existing) return null;
+    const merged = { ...existing };
+    for (const key of keys) delete merged[key];
+    if (Object.keys(merged).length === Object.keys(existing).length) return existing;
+    if (Object.keys(merged).length === 0) {
+        await clearProfileOverride(profileId);
+        return {};
+    }
+    overrides[profileId] = merged;
+    try {
+        const { setKVValue } = await kvClient();
+        await setKVValue(OVERRIDES_NAMESPACE, profileId, merged);
+    } catch (e) {
         logger.warn(`Failed to save overrides for ${profileId}:`, e);
     }
     return merged;

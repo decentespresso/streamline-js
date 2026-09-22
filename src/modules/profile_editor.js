@@ -4,7 +4,11 @@ import { openModal, shouldUseNumpad, resetNumpadModal } from './numpad-modal.js'
 import { openNotesModal } from './notes-modal.js';
 import { getTranslation } from './i18n.js';
 import { callPluginEndpoint, getPluginSettings } from './api.js';
-import { validateProfileStructure } from './profileManager.js';
+import { validateProfileStructure, isActiveProfile } from './profileManager.js';
+import { getProfileOverride, saveProfileOverride, removeProfileOverrideKeys,
+    ensureProfileOverridesLoaded } from './profile-overrides.js';
+import { applyFlowCalibrationForProfile, getFlowCalibrationBaseline, pickFlowCalibration,
+    FLOW_CAL_KEYS, FLOW_CAL_DEFAULTS } from './flow-calibration.js';
 import { loadECharts } from './echarts-loader.js';
 import { renderChart } from './echarts-renderer.js';
 import { parseTclProfile, isLikelyTclProfile } from './tcl-profile.js';
@@ -1042,6 +1046,126 @@ function renderStepCards() {
     addCell.appendChild(addBtn);
 }
 
+// ─── Flow calibration (per profile) ─────────────────────────────────────────
+// Decaid's flow multipliers are app-wide: ShotSequencer reads the global
+// setting when a shot starts, so there is no per-profile field to write. These
+// numbers therefore live in the profile's KV override (the same namespace as
+// the dose/yield tiles) and flow-calibration.js pushes them to the machine
+// whenever this profile is the active one, restoring the user's baseline for a
+// profile that has none.
+//
+// They are deliberately NOT part of the profile JSON: /profiles is
+// content-addressed, so baking a multiplier into the profile would mint a new
+// profile on every tweak. That also means they cannot ride along on Save —
+// a calibration-only edit changes no profile bytes and the save would dedup
+// back onto the original. They are written the moment they change instead,
+// exactly like the main page's tiles.
+function renderFlowCalibrationFields(col) {
+    const profileId = editorState.sourceProfileId;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex flex-col gap-[12px]';
+    col.appendChild(wrapper);
+
+    // Until the machine answers, `baseline` is only Decaid's default — seeding
+    // the profile from it would save 1 / 0.3 as "the same as global" for a user
+    // whose global is something else. Everything that reads it waits for `ready`.
+    let baseline = { ...FLOW_CAL_DEFAULTS };
+    let values = pickFlowCalibration(profileId ? getProfileOverride(profileId) : null);
+    let enabled = FLOW_CAL_KEYS.some(key => key in values);
+
+    async function persist() {
+        if (!profileId) return;
+        try {
+            if (enabled) await saveProfileOverride(profileId, values);
+            else await removeProfileOverrideKeys(profileId, FLOW_CAL_KEYS);
+            // Only the machine's *current* profile owns the live setting.
+            if (isActiveProfile(profileId)) await applyFlowCalibrationForProfile(profileId);
+        } catch (error) {
+            console.error('Failed to save flow calibration override:', error);
+            showToast(getTranslation('Upload failed!'), 3000, 'error');
+        }
+    }
+
+    function paint() {
+        wrapper.innerHTML = '';
+
+        const label = document.createElement('div');
+        label.className = 'text-[24px] font-semibold text-[var(--text-primary)] break-words';
+        label.textContent = getTranslation('Flow calibration');
+        wrapper.appendChild(label);
+
+        const toggleRow = document.createElement('label');
+        toggleRow.className = 'flex items-center gap-[12px] text-[20px] text-[var(--text-primary)]'
+            + (profileId ? ' cursor-pointer' : ' opacity-40');
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.className = 'w-[26px] h-[26px] accent-[var(--mimoja-blue)]';
+        toggle.checked = enabled;
+        toggle.disabled = !profileId;
+        toggle.addEventListener('change', async () => {
+            enabled = toggle.checked;
+            // Turning it on starts from the baseline, so the profile keeps
+            // behaving exactly as it did until a number is actually moved.
+            if (enabled) {
+                await ready;
+                values = { ...baseline, ...values };
+            }
+            paint();
+            persist();
+        });
+        const toggleText = document.createElement('span');
+        toggleText.textContent = getTranslation('Use this profile\u2019s own flow calibration');
+        toggleRow.appendChild(toggle);
+        toggleRow.appendChild(toggleText);
+        wrapper.appendChild(toggleRow);
+
+        if (enabled) {
+            const spinnerFor = (key, text, step, unit, max) => {
+                const row = document.createElement('div');
+                row.className = 'flex flex-col gap-[8px]';
+                const sub = document.createElement('div');
+                sub.className = 'text-[20px] text-[var(--text-primary)] opacity-80';
+                sub.textContent = getTranslation(text);
+                row.appendChild(sub);
+                row.appendChild(createSpinner(
+                    values[key] ?? baseline[key], step, unit,
+                    (val) => { values[key] = val; persist(); },
+                    { min: 0, max }
+                ));
+                wrapper.appendChild(row);
+            };
+            spinnerFor('weightFlowMultiplier', 'Weight flow multiplier', 0.1, '', 5);
+            spinnerFor('volumeFlowMultiplier', 'Volume flow multiplier (s)', 0.05, 's', 5);
+        }
+
+        const hint = document.createElement('p');
+        hint.className = 'text-[18px] text-[var(--text-primary)] opacity-60 leading-[1.3]';
+        hint.textContent = profileId
+            ? (enabled
+                ? getTranslation('Applied while this profile is loaded. Other profiles go back to the global value.')
+                : `${getTranslation('Using the global value')}: ${roundTo(baseline.weightFlowMultiplier, 0.1)} / ${roundTo(baseline.volumeFlowMultiplier, 0.05)} s`)
+            : getTranslation('Save this profile first to give it its own flow calibration');
+        wrapper.appendChild(hint);
+    }
+
+    paint();
+
+    // Both reads are off-machine, and the editor can be the first page of the
+    // session — the saved override may not be in memory yet when this first
+    // paints. Repaint with the real values once they land, unless the tab has
+    // been rebuilt under us in the meantime.
+    const ready = Promise.all([getFlowCalibrationBaseline(), ensureProfileOverridesLoaded()]).then(([resolved]) => {
+        baseline = resolved;
+        if (!wrapper.isConnected) return;
+        if (!enabled) {
+            values = pickFlowCalibration(profileId ? getProfileOverride(profileId) : null);
+            enabled = FLOW_CAL_KEYS.some(key => key in values);
+        }
+        paint();
+    });
+}
+
 function renderSettingsTab() {
     const container = document.getElementById('editor-settings-container');
     if (!container) return;
@@ -1174,6 +1298,9 @@ function renderSettingsTab() {
     addFieldTo(middleCol, getTranslation('After preinfusion stop the shot at'), createSpinner(
         profile.target_volume || 0, 1, 'ml', (val) => { editorState.profile.target_volume = val; }, { min: 0, max: 500 }
     ));
+
+    // ── Middle column: Flow calibration ──
+    renderFlowCalibrationFields(middleCol);
 
     // ── Middle column: Load Profile From (new profile only) ──
 
@@ -2218,6 +2345,19 @@ async function saveProfile() {
         if (oldId && oldId !== saved.id && !src?.isDefault && !titleChanged) {
             delete availableProfiles[oldId];
             await remapFavorite(oldId, saved.id);
+        }
+
+        // A fork/rehash mints a new id, and the overrides (dose/yield/grind/
+        // brew-temp/steam/flow calibration) are keyed by the old one. Carry
+        // them, or the edited profile silently loses numbers the user set —
+        // including the flow calibration they may have just typed on this tab.
+        if (oldId && oldId !== saved.id) {
+            await ensureProfileOverridesLoaded();
+            const carried = getProfileOverride(oldId);
+            if (carried) {
+                const merged = await saveProfileOverride(saved.id, carried);
+                saved.metadata = { ...(saved.metadata || {}), ...merged };
+            }
         }
 
         // Rebind editor to the saved record so repeat saves update in place.

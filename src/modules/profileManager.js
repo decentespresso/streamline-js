@@ -7,6 +7,7 @@ import { loadPage } from './router.js'; // Singular and correctly formatted impo
 import { getTranslation, fitTextToBox } from './i18n.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { loadProfileOverrides, saveProfileOverride, clearProfileOverride, applyOverridesToRecords } from './profile-overrides.js';
+import { applyFlowCalibrationForProfile } from './flow-calibration.js';
 
 /**
  * Rename a profile by ID
@@ -459,6 +460,12 @@ async function saveAssignments({ markUserInitialized = true } = {}) {
 
 export function setActiveProfile(profileId) {
     activeProfileId = profileId;
+    // Flow calibration is an app-wide Decaid setting, so "this profile's
+    // multipliers" only exist while the profile is active: push them here, and
+    // fall back to the user's own baseline for a profile that has none. Not
+    // awaited — a switch must not wait on a settings round-trip, and the call
+    // swallows its own failures.
+    applyFlowCalibrationForProfile(profileId);
 }
 
 // Bind activeProfileId to the profile the machine has loaded, by title.
@@ -475,6 +482,7 @@ export function syncActiveProfileFromTitle(title) {
     const key = resolveProfileKeyByTitle(availableProfiles, title, translateProfileTitle);
     if (key) {
         activeProfileId = key;
+        applyFlowCalibrationForProfile(key);
         logger.info(`Active profile bound to ${key} ("${title}")`);
     } else {
         activeProfileId = null;
@@ -490,6 +498,14 @@ export function getActiveProfileRecord() {
 
 export function getActiveProfileId() {
     return availableProfiles[activeProfileId] ? activeProfileId : null;
+}
+
+// getActiveProfileId() answers null for an id the cache has not caught up with
+// (a page reached before loadAvailableProfiles, a profile just saved under a
+// new id). For "is this the profile the machine is running?" that is the wrong
+// answer, so compare the id itself.
+export function isActiveProfile(profileId) {
+    return !!profileId && activeProfileId === profileId;
 }
 
 // Serialize override read-modify-write so concurrent edits and resets can't
@@ -528,7 +544,8 @@ function dropProfileOverrides(profileId) {
         const record = availableProfiles[profileId];
         if (!record) return null;
         const meta = record.metadata || {};
-        const { targetDoseWeight, targetYield, grinderSetting, brewTemperature, targetSteamDuration, targetSteamFlow, ...rest } = meta;
+        const { targetDoseWeight, targetYield, grinderSetting, brewTemperature, targetSteamDuration, targetSteamFlow,
+            weightFlowMultiplier, volumeFlowMultiplier, ...rest } = meta;
         record.metadata = rest;
         if (OVERRIDE_METADATA_KEYS.some(key => key in meta)) {
             try {
@@ -645,6 +662,11 @@ export async function resetActiveProfileToDefaults() {
     // If the user switched profiles while we were queued, the machine/UI now
     // reflect a different profile — don't stomp it with these defaults.
     if (activeProfileId !== profileId) return true;
+
+    // The dropped overrides included any per-profile flow calibration, so put
+    // the user's baseline multipliers back on the machine. After the guard:
+    // the profile that is loaded now owns the live setting, not this one.
+    applyFlowCalibrationForProfile(profileId);
 
     // Re-send the profile using its own defaults (no metadata overrides).
     // WorkflowContext requires numeric targetDoseWeight/targetYield (schema:

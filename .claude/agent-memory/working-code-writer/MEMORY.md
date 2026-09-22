@@ -1,1 +1,2 @@
 - [Rea Prime API — workflow endpoint shape](project_rea_prime_api.md) — workflow PUT uses `context` (not `doseData`) for dose/yield/grinder fields; field names changed too
+- [Local preview servers](reference_local_preview_servers.md) — :8044 serves the main checkout, never a worktree; CDP fallback when chrome-devtools MCP is busy
