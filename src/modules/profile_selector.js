@@ -3,7 +3,7 @@ import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
 import { initResizablePanels, showToast, initFullscreenHandler, updateProfileName, setupPressAndHold } from './ui.js';
-import { sendProfile, getWorkflow, updateWorkflow, callPluginEndpoint, getPluginSettings, verifyVisualizerCredentials, deleteProfile, updateProfileVisibility } from './api.js';
+import { sendProfile, getWorkflow, updateWorkflow, callPluginEndpoint, getPluginSettings, verifyVisualizerCredentials, deleteProfile, updateProfileVisibility, getProfileLineage } from './api.js';
 import { initChart, plotProfile } from './chart.js';
 import { translatePage, getTranslation } from './i18n.js';
 import { loadPage } from './router.js';
@@ -401,6 +401,86 @@ async function hideOrDeleteProfile(key, profileRecord) {
     if (profileRecord.isDraft) document.dispatchEvent(new CustomEvent('profiles-updated'));
 }
 
+// Version picker for the Reset flow. Returns the chosen ProfileRecord, or
+// null on cancel. Picking a row selects it; Confirm applies it -- a row used
+// to restore on the single tap that selected it, which put an unconfirmed,
+// destructive profile swap one stray tap away.
+function promptVersionRestore(versions) {
+    return new Promise((resolve) => {
+        const ROW_BASE     = 'text-left px-[16px] py-[14px] rounded-[10px] border-2 bg-[var(--box-color)] cursor-pointer';
+        const ROW_IDLE     = `${ROW_BASE} border-[var(--border-color)] hover:border-[var(--mimoja-blue)]`;
+        const ROW_SELECTED = `${ROW_BASE} border-[var(--mimoja-blue)]`;
+
+        const dlg = document.createElement('dialog');
+        dlg.className = 'pe-history-dialog rounded-[16px] bg-[var(--box-color)] p-0 border border-[var(--border-color)] max-w-[560px] w-[90vw] shadow-2xl';
+        dlg.style.marginTop = '8vh';
+        dlg.style.marginBottom = 'auto';
+
+        dlg.innerHTML = `
+            <div class="flex flex-col gap-[16px] p-[24px]">
+                <h3 class="text-[24px] font-bold text-[var(--text-primary)]">${getTranslation('Version')}</h3>
+                <div data-rows class="flex flex-col gap-[10px] max-h-[46vh] overflow-y-auto"></div>
+                <div class="flex flex-wrap justify-end gap-[12px] mt-[8px]">
+                    <button type="button" data-act="cancel" class="px-[18px] py-[10px] rounded-[10px] bg-[var(--button-grey)] text-[var(--text-primary)] text-[20px] font-semibold cursor-pointer">${getTranslation('Cancel')}</button>
+                    <button type="button" data-act="ok" class="hidden px-[18px] py-[10px] rounded-[10px] bg-[var(--mimoja-blue)] text-white text-[20px] font-semibold cursor-pointer">${getTranslation('Confirm')}</button>
+                </div>
+            </div>`;
+
+        const rowsHost  = dlg.querySelector('[data-rows]');
+        const confirmBtn = dlg.querySelector('[data-act="ok"]');
+        let selected = null;
+
+        // Rows are built as DOM, not interpolated markup: the title is
+        // user-supplied text and this dialog is rendered with innerHTML.
+        const rowBtns = versions.map((v, i) => {
+            const when  = new Date(v.createdAt);
+            const label = isNaN(when.getTime()) ? '' : when.toLocaleString();
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = ROW_IDLE;
+            btn.dataset.idx = String(i);
+            btn.setAttribute('aria-pressed', 'false');
+
+            const title = document.createElement('div');
+            title.className = 'text-[20px] font-semibold text-[var(--text-primary)]';
+            title.textContent = v.profile?.title || 'Untitled';
+
+            const stamp = document.createElement('div');
+            stamp.className = 'text-[16px] text-[var(--text-primary)]';
+            stamp.style.opacity = '0.6';
+            stamp.textContent = label;
+
+            btn.appendChild(title);
+            btn.appendChild(stamp);
+            btn.addEventListener('click', () => {
+                selected = v;
+                rowBtns.forEach((b) => {
+                    const on = b === btn;
+                    b.className = on ? ROW_SELECTED : ROW_IDLE;
+                    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+                confirmBtn.classList.remove('hidden');
+            });
+
+            rowsHost.appendChild(btn);
+            return btn;
+        });
+
+        function done(result) {
+            try { dlg.close(); } catch (_) {}
+            dlg.remove();
+            resolve(result);
+        }
+
+        dlg.querySelector('[data-act="cancel"]').addEventListener('click', () => done(null));
+        confirmBtn.addEventListener('click', () => done(selected));
+        dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });
+
+        document.body.appendChild(dlg);
+        dlg.showModal();
+    });
+}
 
 // Copied from profileManager.js to keep that module's interface clean
 // async function verifyProfileChange(sentProfileTitle, retries = 5, delay = 300) {
@@ -1734,6 +1814,13 @@ export async function initializeProfileSelector() {
     wireEditTrigger('edit-profile-name-btn');
 
     // Wire reset button
+    // Reset used to jump exactly one hop up profileRecord.parentId, no matter
+    // how many saves separated the current record from the one that hop
+    // landed on. Older saves are never actually deleted (see saveProfile's
+    // hide+replace overwrite) -- they sit hidden in the lineage, restorable --
+    // so ask which one first instead of guessing.
+    let pendingResetTarget = null;
+
     const resetBtnRaw = document.getElementById('reset_btn');
     const resetBtn = resetBtnRaw ? (() => {
         const clone = resetBtnRaw.cloneNode(true);
@@ -1741,7 +1828,7 @@ export async function initializeProfileSelector() {
         return clone;
     })() : null;
     if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
+        resetBtn.addEventListener('click', async () => {
             if (!selectedProfileKey) {
                 showToast('Select a profile first', 3000, 'error');
                 return;
@@ -1754,9 +1841,28 @@ export async function initializeProfileSelector() {
                 return;
             }
 
+            let lineage;
+            try {
+                lineage = await getProfileLineage(selectedProfileKey);
+            } catch (e) {
+                showToast('Could not load version history', 3000, 'error');
+                return;
+            }
+            const versions = (lineage || [])
+                .filter(r => r.id !== selectedProfileKey && r.profile)
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            if (!versions.length) {
+                showToast('No previous versions to reset to.', 2500, 'info');
+                return;
+            }
+
+            const chosen = versions.length === 1 ? versions[0] : await promptVersionRestore(versions);
+            if (!chosen) return;
+            pendingResetTarget = chosen;
+
             const title = translateProfileTitle(profileRecord.profile?.title) || 'this profile';
             const msgEl = document.getElementById('reset-profile-msg');
-            if (msgEl) msgEl.textContent = `"${title}" is a saved copy. Resetting will delete it and restore the original. This cannot be undone.`;
+            if (msgEl) msgEl.textContent = `"${title}" is a saved copy. Resetting will delete it and restore the selected version. This cannot be undone.`;
 
             const modal = document.getElementById('reset-profile-modal');
             if (modal) modal.showModal();
@@ -1771,6 +1877,7 @@ export async function initializeProfileSelector() {
     })() : null;
     if (resetCancelBtn) {
         resetCancelBtn.addEventListener('click', () => {
+            pendingResetTarget = null;
             document.getElementById('reset-profile-modal')?.close();
         });
     }
@@ -1784,23 +1891,28 @@ export async function initializeProfileSelector() {
     if (resetConfirmBtn) {
         resetConfirmBtn.addEventListener('click', async () => {
             document.getElementById('reset-profile-modal')?.close();
-            if (!selectedProfileKey) return;
-
-            const profileRecord = availableProfiles[selectedProfileKey];
-            const parentId = profileRecord?.parentId || null;
-            if (!parentId) return;
+            const target = pendingResetTarget;
+            pendingResetTarget = null;
+            if (!selectedProfileKey || !target) return;
 
             try {
                 await deleteProfile(selectedProfileKey);
                 delete availableProfiles[selectedProfileKey];
-                selectedProfileKey = availableProfiles[parentId] ? parentId : null;
+                // The chosen version may be an older, hidden save (saveProfile
+                // hides the predecessor on every overwrite) -- surface it again.
+                if (target.visibility !== 'visible') {
+                    await updateProfileVisibility(target.id, 'visible');
+                    target.visibility = 'visible';
+                }
+                availableProfiles[target.id] = target;
+                selectedProfileKey = availableProfiles[target.id] ? target.id : null;
                 renderProfiles();
                 // updateSelectedProfileView expects the rendered DOM element, not the record
                 const nextItem = selectedProfileKey
                     ? document.querySelector(`#profile-list [data-profile-key="${CSS.escape(selectedProfileKey)}"]`)
                     : null;
                 updateSelectedProfileView(nextItem);
-                showToast('Profile reset to original.', 2500, 'success');
+                showToast('Profile reset.', 2500, 'success');
             } catch (e) {
                 console.error('[ResetProfile] delete failed:', e);
                 showToast(`Failed to reset profile: ${e.message}`, 4000, 'error');
