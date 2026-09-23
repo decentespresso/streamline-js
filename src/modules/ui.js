@@ -2489,9 +2489,10 @@ function heatingStatusParts(raw) {
 
 export function updateMachineStatus(data) {
     const { status, state, substate, stepName, timeValue, isClickable,  isHeating, isHeatingFromTimeToReady, steamTemperature } = data;
-    // Steam boiler is considered ready at/above 130°C. Below that it still needs
+    // Steam boiler is considered ready at/above 135°C, matching the enabled
+    // range floor in rest_v1.yml SteamSettings. Below that it still needs
     // warming, which is the only time we surface a steam "Heating" message.
-    const STEAM_HEATER_READY_C = 130;
+    const STEAM_HEATER_READY_C = 135;
     const steamHeaterCold = typeof steamTemperature === 'number' && steamTemperature < STEAM_HEATER_READY_C;
     // logger.debug(`Updating machine status to: ${status}, substate: ${substate}, stepName: ${stepName}, time: ${timeValue}, clickable: ${isClickable}`);
     const machineStatusEl = document.getElementById('machine-status');
