@@ -401,3 +401,218 @@ function lift(module, patterns) {
         assert.equal(store.dye_editRecipeIdx, '0');
     });
 }
+
+// ── Favourite-cell long-press → DYE2 auto-fav-edit deep link (dyeStrip.js) ──
+// Applying a favourite only ever pushes its captured grind (etc.) onto the
+// workflow -- it never updates the favourite back (KV_CONTRACT.md's
+// single-writer rule), so a grind dialed in afterward is lost on the next
+// apply unless the user re-saves it onto the favourite itself. Long-press
+// deep-links to DYE2's own per-field editor for that exact favourite instead
+// of the generic list, via the same 'dye_editAutoFavId' key auto-favs.ts sets
+// before its own edit-pencil navigation.
+{
+    const body = lift('dyeStrip.js', [
+        /function editFavourite\(fav\) \{[\s\S]*?\r?\n\}/,
+    ]);
+
+    const build = () => {
+        const store = {};
+        const opened = [];
+        const fn = new Function('sessionStorage', 'openPluginOverlay', `${body}\nreturn editFavourite;`);
+        const editFavourite = fn(
+            { setItem: (k, v) => { store[k] = v; } },
+            (page) => opened.push(page),
+        );
+        return { editFavourite, store, opened };
+    };
+
+    test('deep-links straight to the favourite by its own id', () => {
+        const { editFavourite, store, opened } = build();
+        editFavourite({ id: 'fav-123' });
+        assert.equal(store.dye_editAutoFavId, 'fav-123');
+        assert.deepEqual(opened, ['auto-fav-edit']);
+    });
+
+    test('a favourite with no id falls back to the plain list, not a blank "new favourite" form', () => {
+        const { editFavourite, store, opened } = build();
+        editFavourite({});
+        assert.equal(store.dye_editAutoFavId, undefined);
+        assert.deepEqual(opened, ['auto-favs']);
+    });
+}
+
+// ── Recipe auto-save: which fields one dashboard edit can save (dyeStrip.js) ─
+// Applying a recipe only ever pushes it onto the workflow -- this is the other
+// direction, folding a dashboard edit back into the active recipe. The only
+// safety property that matters here is that it never claims to represent an
+// edit the recipe schema has no field for (KV_CONTRACT.md's dashboardVariables
+// shape): milk auto-stop and calibrated auto-steam are dashboard-only concepts
+// with nothing to write into, so those must produce no patch at all rather than
+// a guessed one.
+{
+    const recipeAutoSaveFields = new Function(
+        `${readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8')
+            .match(/export function recipeAutoSaveFields\(dataToSend, workflow\) \{[\s\S]*?\r?\n\}/)[0]
+            .replace('export ', '')}\nreturn recipeAutoSaveFields;`
+    )();
+
+    test('grind edit -- the workflow response wins over the sent payload', () => {
+        const patch = recipeAutoSaveFields(
+            { context: { grinderSetting: '21.00' } },
+            { context: { grinderSetting: '21.50' } }, // e.g. server-side rounding
+        );
+        assert.deepEqual(patch, { grind: 21.5 });
+    });
+
+    test('dose and yield map to dose/drink', () => {
+        const patch = recipeAutoSaveFields(
+            { context: { targetDoseWeight: 18, targetYield: 36 } },
+            { context: { targetDoseWeight: 18, targetYield: 36 } },
+        );
+        assert.deepEqual(patch, { dose: 18, drink: 36 });
+    });
+
+    test('a full profile PUT (brew temp tile) reads the first step\'s temperature', () => {
+        const patch = recipeAutoSaveFields(
+            { profile: { steps: [{ temperature: 93 }, { temperature: 93 }] } },
+            { profile: { steps: [{ temperature: 93 }] } },
+        );
+        assert.deepEqual(patch, { brewC: 93 });
+    });
+
+    test('a steam duration edit sets steamMode time, not flow', () => {
+        const patch = recipeAutoSaveFields(
+            { steamSettings: { duration: 25 } },
+            { steamSettings: { duration: 25, flow: 1.2 } },
+        );
+        assert.deepEqual(patch, { steamMode: 'time', steamTimeS: 25 });
+    });
+
+    test('a steam flow edit sets steamMode flow, not time', () => {
+        const patch = recipeAutoSaveFields(
+            { steamSettings: { flow: 1.4 } },
+            { steamSettings: { duration: 25, flow: 1.4 } },
+        );
+        assert.deepEqual(patch, { steamMode: 'flow', steamFlowMls: 1.4 });
+    });
+
+    test('a milk auto-stop edit has no recipe field -- produces no steam patch at all', () => {
+        const patch = recipeAutoSaveFields(
+            { steamSettings: { stopAtTemperature: 65 } },
+            { steamSettings: { stopAtTemperature: 65 } },
+        );
+        assert.deepEqual(patch, {});
+    });
+
+    test('hot water volume vs temperature pick the matching mode', () => {
+        assert.deepEqual(
+            recipeAutoSaveFields({ hotWaterData: { volume: 120 } }, { hotWaterData: { volume: 120 } }),
+            { hotWaterMode: 'vol', hotWaterMl: 120 },
+        );
+        assert.deepEqual(
+            recipeAutoSaveFields({ hotWaterData: { targetTemperature: 85 } }, { hotWaterData: { targetTemperature: 85 } }),
+            { hotWaterMode: 'temp', hotWaterTempC: 85 },
+        );
+    });
+
+    test('flush maps to flushS', () => {
+        const patch = recipeAutoSaveFields({ rinseData: { duration: 8 } }, { rinseData: { duration: 8 } });
+        assert.deepEqual(patch, { flushS: 8 });
+    });
+
+    test('an edit with nothing this schema covers produces an empty patch', () => {
+        assert.deepEqual(recipeAutoSaveFields({ context: { extras: { note: 'x' } } }, {}), {});
+    });
+}
+
+// ── Favourite auto-save: which fields one dashboard edit can save (dyeStrip.js)
+// A favourite's snapshot has no brew-temp/steam/hot-water/flush field at all
+// (KV_CONTRACT.md's autoFavourites[] schema, and auto-fav-edit.ts's own field
+// list has no editor for any of them) -- narrower than a recipe on purpose.
+{
+    const favouriteAutoSaveFields = new Function(
+        `${readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8')
+            .match(/export function favouriteAutoSaveFields\(dataToSend, workflow\) \{[\s\S]*?\r?\n\}/)[0]
+            .replace('export ', '')}\nreturn favouriteAutoSaveFields;`
+    )();
+
+    test('dose, yield and grind map onto the snapshot', () => {
+        const patch = favouriteAutoSaveFields(
+            { context: { targetDoseWeight: 18, targetYield: 36, grinderSetting: '22.00' } },
+            { context: { targetDoseWeight: 18, targetYield: 36, grinderSetting: '22.00' } },
+        );
+        assert.deepEqual(patch, { dose: 18, drink: 36, grindSetting: 22 });
+    });
+
+    test('a brew-temp edit has no snapshot field -- produces no patch at all', () => {
+        const patch = favouriteAutoSaveFields(
+            { profile: { steps: [{ temperature: 93 }] } },
+            { profile: { steps: [{ temperature: 93 }] } },
+        );
+        assert.deepEqual(patch, {});
+    });
+
+    test('a steam edit has no snapshot field -- produces no patch at all', () => {
+        const patch = favouriteAutoSaveFields({ steamSettings: { duration: 25 } }, { steamSettings: { duration: 25 } });
+        assert.deepEqual(patch, {});
+    });
+}
+
+// ── Auto-save write: only ever touches one item in one array (dyeStrip.js) ──
+{
+    const body = lift('dyeStrip.js', [
+        /async function saveItemFields\(kind, id, fields\) \{[\s\S]*?\r?\n\}/,
+    ]);
+
+    const build = (initial) => {
+        let stored = null;
+        const fn = new Function(
+            'getDye2KvArray', 'setDye2KvArray', 'AUTOSAVE_TARGETS', 'logger',
+            `${body}\nreturn saveItemFields;`
+        );
+        const saveItemFields = fn(
+            async () => initial,
+            async (key, items) => { stored = { key, items }; },
+            {
+                recipe: { key: 'recipes', field: 'dashboardVariables' },
+                favourite: { key: 'autoFavourites', field: 'snapshot' },
+            },
+            { info() {}, error() {} },
+        );
+        return { saveItemFields, getStored: () => stored };
+    };
+
+    test('patches only the matching recipe, leaving every other recipe byte-identical', async () => {
+        const other = { id: '2', name: 'Other', dashboardVariables: { dose: 20 } };
+        const target = { id: '1', name: 'Mine', dashboardVariables: { dose: 18, grind: 20 } };
+        const { saveItemFields, getStored } = build([target, other]);
+
+        await saveItemFields('recipe', '1', { grind: 21.5 });
+
+        const { key, items } = getStored();
+        assert.equal(key, 'recipes');
+        assert.deepEqual(items[1], other); // untouched, not even a new object
+        assert.deepEqual(items[0].dashboardVariables, { dose: 18, grind: 21.5 });
+        assert.equal(items[0].name, 'Mine'); // fields outside dashboardVariables preserved
+    });
+
+    test('patches only the matching favourite\'s snapshot, leaving every other favourite byte-identical', async () => {
+        const other = { id: 'fav-2', title: 'Other', snapshot: { dose: 20 } };
+        const target = { id: 'fav-1', title: 'Mine', snapshot: { dose: 18, grindSetting: 20 } };
+        const { saveItemFields, getStored } = build([target, other]);
+
+        await saveItemFields('favourite', 'fav-1', { grindSetting: 21.5 });
+
+        const { key, items } = getStored();
+        assert.equal(key, 'autoFavourites');
+        assert.deepEqual(items[1], other);
+        assert.deepEqual(items[0].snapshot, { dose: 18, grindSetting: 21.5 });
+        assert.equal(items[0].title, 'Mine');
+    });
+
+    test('an id no longer in the array (deleted/renumbered) writes nothing', async () => {
+        const { saveItemFields, getStored } = build([{ id: '2', dashboardVariables: {} }]);
+        await saveItemFields('recipe', '1', { grind: 21 });
+        assert.equal(getStored(), null);
+    });
+}

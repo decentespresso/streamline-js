@@ -4,9 +4,11 @@
 //   P = Profile favourites  (the existing profile <nav>, untouched — DEFAULT)
 //   F = DYE2 auto-favourites (bean + recipe snapshots)
 //   R = DYE2 recipes
-// F and R are driven by data DYE2 writes to the generic KV store; Streamline is a
-// read-only consumer (see dye2-plugin/KV_CONTRACT.md). When the DYE2 keys are
-// empty/missing the header behaves exactly as today: default P, F/R render empty.
+// F and R are driven by data DYE2 writes to the generic KV store; Streamline is
+// mostly a read-only consumer (see dye2-plugin/KV_CONTRACT.md) — the one
+// exception is the recipe auto-save below, which patches single fields back.
+// When the DYE2 keys are empty/missing the header behaves exactly as today:
+// default P, F/R render empty.
 //
 // Apply semantics mirror dye2-plugin/src/pages/dashboard.ts (applyAutoFavourite /
 // applyRecipe): PUT the item's ready-made `workflow` ({context, profile?}); for
@@ -15,7 +17,7 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate } from './api.js';
+import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox } from './i18n.js';
@@ -126,7 +128,7 @@ export function renderStrip(mode) {
                 activeItemId = fav.id;
                 renderStrip('F');
                 applyFavourite(fav).catch(e => logger.error('applyFavourite failed', e));
-            });
+            }, () => editFavourite(fav));
             strip.appendChild(cell);
         });
         // Trailing "VIEW ALL AUTO FAV" cell (always present, opens the DYE2 page).
@@ -181,7 +183,12 @@ export async function applyFavourite(fav) {
     } else {
         applyFavLegacy(live, fav); // snapshot + copyMask
     }
-    await updateWorkflow(live);
+    await withAutoSaveSuppressed(() => updateWorkflow(live));
+    // Makes this favourite active for auto-save (see below) — set after the PUT
+    // lands so a failed apply never arms auto-save on a stale item. profileId
+    // anchors the profile-drift guard: fav.workflow?.profile covers items saved
+    // by this version, snapshot.profileId the legacy shape.
+    activeItem = { kind: 'favourite', id: fav.id, profileId: fav.workflow?.profile?.id ?? fav.snapshot?.profileId ?? null };
     await refreshAfterApply();
 }
 
@@ -195,7 +202,12 @@ export async function applyRecipe(recipe) {
     }
     // Steam / hot-water / flush are NOT in the stored workflow — live-merge them.
     mergeRecipeLiveSettings(live, recipe.dashboardVariables || {});
-    await updateWorkflow(live);
+    await withAutoSaveSuppressed(() => updateWorkflow(live));
+    // This PUT is what makes the recipe active for auto-save (see below) — set
+    // it after the PUT lands so a failed apply never arms auto-save on a stale
+    // recipe. profileId anchors the profile-drift guard: recipe.workflow?.profile
+    // covers items saved by this version, recipe.profileId the legacy shape.
+    activeItem = { kind: 'recipe', id: recipe.id, profileId: recipe.profileId ?? recipe.workflow?.profile?.id ?? null };
     await refreshAfterApply();
 }
 
@@ -384,6 +396,21 @@ function editRecipe(recipe) {
     const idx = Math.max(0, (parseInt(recipe.id, 10) || 1) - 1);
     try { sessionStorage.setItem('dye_editRecipeIdx', String(idx)); } catch (e) { /* private mode */ }
     openPluginOverlay('recipe-edit');
+}
+
+// Same idea for a favourite: jump to DYE2's own auto-fav-edit screen, which has
+// a per-field pencil (including "Grind Setting") so a grind you dialed in on
+// the dashboard after applying this favourite can be saved back onto it --
+// applying a favourite only ever pushes its captured grind onto the workflow,
+// it never updates the favourite (see KV_CONTRACT.md's single-writer rule and
+// applyFavLegacy above). Favourites are keyed by their own id, not a fixed
+// slot, hence 'dye_editAutoFavId' (a string) rather than recipe's numeric idx.
+// No id ⇒ fall back to the plain favourites list rather than opening a blank
+// "new favourite" form.
+function editFavourite(fav) {
+    if (fav.id == null) { openPluginOverlay('auto-favs'); return; }
+    try { sessionStorage.setItem('dye_editAutoFavId', String(fav.id)); } catch (e) { /* private mode */ }
+    openPluginOverlay('auto-fav-edit');
 }
 
 // ─── Plugin install / version state ───────────────────────────────────────────
@@ -773,6 +800,7 @@ export async function enableDye2Ui() {
 // Restore the stock header: hide the toggle + DYE button + strip and move the
 // profile nav back to its original position (byte-identical to stock Streamline).
 export function disableDye2Ui() {
+    clearActiveItem();
     const profileNav = document.getElementById('profile-fav-nav');
     const toggle = document.getElementById('dye-strip-toggle');
     const dyeBtn = document.getElementById('dye-open-btn');
@@ -837,11 +865,164 @@ export async function clearDyeWorkflowContext({ includeGrinderSetting = false } 
     }
 }
 
+// ─── Recipe / favourite auto-save (dial in on the fly from the dashboard) ───
+//
+// Applying a recipe or favourite only ever pushes its stored values onto the
+// workflow -- tuning the dashboard afterward changed nothing about the item
+// until the user went into DYE2's own editor (see editRecipe/editFavourite
+// above). This closes that loop for whichever one is currently active: a
+// dashboard edit is folded back into that item's own KV entry shortly after
+// the user stops adjusting.
+//
+// Deliberately narrow, to keep the risk this creates (see the DYE2 KV bridge
+// note in api.js -- no field-level API, no version/ETag) as small as
+// possible:
+//  - Never a blanket resync. Each updateWorkflow call's own payload says
+//    which single field it touched (see recipeAutoSaveFields /
+//    favouriteAutoSaveFields); only that field is patched. An edit with no
+//    faithful field on the target -- milk auto-stop steam, calibrated
+//    auto-steam (no recipe equivalent); anything beyond dose/drink/grind on a
+//    favourite, whose snapshot has no brew-temp/steam/hot-water/flush field
+//    at all -- yields no patch and touches nothing.
+//  - Re-GETs the array immediately before every write rather than reusing
+//    recipeCache/favCache, so the window for racing a concurrent DYE2 edit is
+//    as small as this endpoint allows.
+//  - Suppressed for the PUT that applies a recipe/favourite itself (see
+//    withAutoSaveSuppressed) -- otherwise every apply would immediately
+//    "save" the same values straight back.
+//  - Drops out the moment the workflow's profile no longer matches the one
+//    the item carried (the user moved on to a different profile some other
+//    way), rather than silently mis-saving onto a stale item.
+const AUTOSAVE_DEBOUNCE_MS = 1500;
+
+// kind → which KV array it lives in, which sub-object on the item holds the
+// dashboard-derived values, and how to turn one updateWorkflow call into a
+// patch of those values.
+const AUTOSAVE_TARGETS = {
+    recipe: { key: RECIPES_KEY, field: 'dashboardVariables', patch: recipeAutoSaveFields },
+    favourite: { key: AF_KEY, field: 'snapshot', patch: favouriteAutoSaveFields },
+};
+
+let activeItem = null; // { kind: 'recipe'|'favourite', id, profileId } from the apply that made it active
+let autoSaveSuppressed = false;
+let autoSaveTimer = null;
+let autoSavePending = {}; // accumulated patch, flushed on the timer
+
+async function withAutoSaveSuppressed(fn) {
+    autoSaveSuppressed = true;
+    try { return await fn(); } finally { autoSaveSuppressed = false; }
+}
+
+function clearActiveItem() {
+    activeItem = null;
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+    autoSavePending = {};
+}
+
+// One updateWorkflow call → the dashboardVariables fields it can faithfully
+// represent on a recipe, straight from that call's own payload (never the
+// whole workflow) so a write this schema has no field for touches nothing.
+export function recipeAutoSaveFields(dataToSend, workflow) {
+    const patch = {};
+    const ctx = dataToSend.context || {};
+    if (ctx.targetDoseWeight != null) patch.dose = workflow?.context?.targetDoseWeight ?? ctx.targetDoseWeight;
+    if (ctx.targetYield != null) patch.drink = workflow?.context?.targetYield ?? ctx.targetYield;
+    if (ctx.grinderSetting != null) {
+        const g = parseFloat(workflow?.context?.grinderSetting ?? ctx.grinderSetting);
+        if (Number.isFinite(g)) patch.grind = g;
+    }
+    const temp = dataToSend.profile?.steps?.[0]?.temperature;
+    if (temp != null) {
+        const t = parseFloat(workflow?.profile?.steps?.[0]?.temperature ?? temp);
+        if (Number.isFinite(t)) patch.brewC = t;
+    }
+    const steam = dataToSend.steamSettings || {};
+    if (steam.duration != null) {
+        patch.steamMode = 'time';
+        patch.steamTimeS = workflow?.steamSettings?.duration ?? steam.duration;
+    } else if (steam.flow != null) {
+        patch.steamMode = 'flow';
+        patch.steamFlowMls = workflow?.steamSettings?.flow ?? steam.flow;
+    } // stopAtTemperature (milk) / auto-steam fields: no recipe equivalent -- skip.
+    const hw = dataToSend.hotWaterData || {};
+    if (hw.volume != null) {
+        patch.hotWaterMode = 'vol';
+        patch.hotWaterMl = workflow?.hotWaterData?.volume ?? hw.volume;
+    } else if (hw.targetTemperature != null) {
+        patch.hotWaterMode = 'temp';
+        patch.hotWaterTempC = workflow?.hotWaterData?.targetTemperature ?? hw.targetTemperature;
+    }
+    const rinse = dataToSend.rinseData || {};
+    if (rinse.duration != null) patch.flushS = workflow?.rinseData?.duration ?? rinse.duration;
+    return patch;
+}
+
+// A favourite's snapshot only ever carries dose/drink/grindSetting as
+// dashboard-derived values (confirmed against KV_CONTRACT.md's
+// autoFavourites[] schema and auto-fav-edit.ts's own field list -- there is
+// no brew-temp/steam/hot-water/flush editor for a favourite at all), so
+// unlike a recipe, any edit outside those three produces no patch.
+export function favouriteAutoSaveFields(dataToSend, workflow) {
+    const patch = {};
+    const ctx = dataToSend.context || {};
+    if (ctx.targetDoseWeight != null) patch.dose = workflow?.context?.targetDoseWeight ?? ctx.targetDoseWeight;
+    if (ctx.targetYield != null) patch.drink = workflow?.context?.targetYield ?? ctx.targetYield;
+    if (ctx.grinderSetting != null) {
+        const g = parseFloat(workflow?.context?.grinderSetting ?? ctx.grinderSetting);
+        if (Number.isFinite(g)) patch.grindSetting = g;
+    }
+    return patch;
+}
+
+function handleWorkflowUpdatedForAutoSave(workflow, dataToSend) {
+    if (autoSaveSuppressed || !activeItem || !isDye2Enabled()) return;
+    const profileId = workflow?.profile?.id;
+    if (activeItem.profileId && profileId && profileId !== activeItem.profileId) {
+        clearActiveItem();
+        return;
+    }
+    const target = AUTOSAVE_TARGETS[activeItem.kind];
+    const patch = target.patch(dataToSend, workflow);
+    if (Object.keys(patch).length === 0) return;
+    Object.assign(autoSavePending, patch);
+
+    clearTimeout(autoSaveTimer);
+    const { kind, id } = activeItem;
+    autoSaveTimer = setTimeout(() => {
+        const fields = autoSavePending;
+        autoSavePending = {};
+        saveItemFields(kind, id, fields).catch(e => logger.error(`dyeStrip: ${kind} auto-save failed`, e));
+    }, AUTOSAVE_DEBOUNCE_MS);
+}
+
+// Read-modify-write the whole array -- DYE2's own pattern, there is no
+// field-level endpoint (see the api.js DYE2 KV bridge note) -- touching only
+// the one item and only the given fields.
+async function saveItemFields(kind, id, fields) {
+    const target = AUTOSAVE_TARGETS[kind];
+    const list = await getDye2KvArray(target.key);
+    const idx = list.findIndex(r => r && String(r.id) === String(id));
+    if (idx === -1) return; // deleted or renumbered since — nothing to save onto
+    const next = list.slice();
+    next[idx] = { ...next[idx], [target.field]: { ...(next[idx][target.field] || {}), ...fields } };
+    await setDye2KvArray(target.key, next);
+    if (kind === 'recipe') recipeCache = next; else favCache = next; // keep the strip's own cache in step
+    logger.info(`dyeStrip: auto-saved to ${kind} ${id}: ${Object.keys(fields).join(', ')}`);
+}
+
+let workflowListenerRegistered = false;
+
 export async function initDyeStrip() {
     // Bridge for the Extensions-settings toggle to flip the header live (the header
     // stays in the DOM behind the settings overlay); if it isn't present the flag
     // still applies on the next dashboard load.
     window.applyDye2Enabled = (on) => { on ? enableDye2Ui() : disableDye2Ui(); };
+
+    if (!workflowListenerRegistered) {
+        workflowListenerRegistered = true;
+        onWorkflowUpdated(handleWorkflowUpdatedForAutoSave);
+    }
 
     if (isDye2Enabled()) {
         await enableDye2Ui();

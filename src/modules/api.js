@@ -1166,10 +1166,16 @@ export async function deleteKVValue(namespace, key) {
     if (!response.ok) throw new Error(`KV deleteValue failed: ${response.status}`);
 }
 
-// ─── DYE2 KV bridge (read-only) ──────────────────────────────────────────────
+// ─── DYE2 KV bridge ──────────────────────────────────────────────────────────
 // DYE2 (a separate flutter_js plugin) persists auto-favourites and recipes as a
-// single JSON array per key under this namespace. Streamline is a read-only
-// consumer — never write these keys (see dye2-plugin/KV_CONTRACT.md).
+// single JSON array per key under this namespace. Streamline is normally a
+// read-only consumer of it (see dye2-plugin/KV_CONTRACT.md) — the one sanctioned
+// exception is dyeStrip.js's recipe/favourite auto-save, which patches a single
+// item's dashboardVariables/snapshot fields onto a freshly re-read array. There
+// is no field-level API (DYE2's own pages mutate the same way — read the whole
+// array, edit one item client-side, POST the whole array back), and no
+// version/ETag on this endpoint, so a write here races any concurrent DYE2
+// write the same way DYE2's own pages would race each other.
 export const DYE2_KV_NAMESPACE = 'dye2.reaplugin';
 
 // Read one DYE2 collection key as an array. A never-written key makes the bridge
@@ -1184,6 +1190,13 @@ export async function getDye2KvArray(key) {
         logger.info(`getDye2KvArray(${key}) → [] (${e.message})`);
         return [];
     }
+}
+
+// Write a whole DYE2 collection array back — see the module note above: this
+// is only ever called with an array freshly read moments earlier and patched
+// in place, never a stale cached copy.
+export async function setDye2KvArray(key, items) {
+    await setKVValue(DYE2_KV_NAMESPACE, key, items);
 }
 
 // ─── Profile API ─────────────────────────────────────────────────────────────
@@ -1419,7 +1432,23 @@ export async function updateWorkflow(data) {
         logger.error('updateWorkflow payload was', JSON.stringify(dataToSend));
         throw new Error(`Failed to update workflow: ${response.status} ${body}`);
     }
-    return response.json();
+    const result = await response.json();
+    for (const listener of workflowUpdateListeners) {
+        try { listener(result, dataToSend); } catch (e) { logger.error('workflow update listener failed', e); }
+    }
+    return result;
+}
+
+// Fires after every successful PUT /workflow with the merged workflow and the
+// exact partial payload that was sent — dyeStrip.js's recipe auto-save uses
+// the payload to tell which single field a dashboard edit touched, so it
+// patches only that field rather than resyncing everything. Returns an
+// unsubscribe function; listener errors are caught so one bad subscriber
+// can't break a tile write.
+const workflowUpdateListeners = new Set();
+export function onWorkflowUpdated(listener) {
+    workflowUpdateListeners.add(listener);
+    return () => workflowUpdateListeners.delete(listener);
 }
 
 export async function setMachineState(newState) {
