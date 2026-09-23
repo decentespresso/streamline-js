@@ -19,6 +19,7 @@ import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, getPlugins, 
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox } from './i18n.js';
+import { setupPressAndHold } from './ui.js';
 
 const AF_KEY = 'autoFavourites';
 const RECIPES_KEY = 'recipes';
@@ -98,12 +99,17 @@ function recipeLabel(recipe) {
 
 // ─── Rendering ─────────────────────────────────────────────────────────────────
 
-function makeCell(label, extraClass, onClick) {
+function makeCell(label, extraClass, onClick, onLongPress) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = CELL_BASE + extraClass;
     btn.textContent = label;
-    if (onClick) btn.addEventListener('click', onClick);
+    if (onLongPress) {
+        btn.title = 'Long-press to edit in DYE2';
+        setupPressAndHold(btn, onClick || (() => {}), onLongPress);
+    } else if (onClick) {
+        btn.addEventListener('click', onClick);
+    }
     return btn;
 }
 
@@ -146,7 +152,7 @@ export function renderStrip(mode) {
                 activeItemId = recipe.id;
                 renderStrip('R');
                 applyRecipe(recipe).catch(e => logger.error('applyRecipe failed', e));
-            });
+            }, () => editRecipe(recipe));
             strip.appendChild(cell);
         });
     }
@@ -362,6 +368,22 @@ function closePluginOverlay(refresh) {
         loadDyeStripData().then(() => { if (currentMode !== 'P') renderStrip(currentMode); }).catch(() => {});
         refreshAfterApply();
     }
+}
+
+// Jump straight to DYE2's own recipe-edit screen for one recipe, instead of the
+// dashboard root (open DYE2 → Recipes tab → find it). DYE2's own dashboard.ts
+// does the equivalent by setting this same sessionStorage key before navigating
+// (see recipe-edit.ts's `dye_editRecipeIdx` read); recipe ids are the fixed
+// slots '1'..'5', which is what makes id-1 the reliable index here rather than
+// the filtered/sorted position of the cell in visibleRecipes(). Same-origin
+// only: in the cross-origin dev fallback (see isSameOrigin above) the iframe
+// path is skipped entirely and this sessionStorage key lives on a different
+// origin than the recipe-edit page, so it lands on recipe 1 there -- a dev-only
+// gap, since prod always serves the skin and DYE2 from the same origin.
+function editRecipe(recipe) {
+    const idx = Math.max(0, (parseInt(recipe.id, 10) || 1) - 1);
+    try { sessionStorage.setItem('dye_editRecipeIdx', String(idx)); } catch (e) { /* private mode */ }
+    openPluginOverlay('recipe-edit');
 }
 
 // ─── Plugin install / version state ───────────────────────────────────────────

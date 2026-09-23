@@ -1139,10 +1139,16 @@ export async function getKVValue(namespace, key) {
 }
 
 export async function setKVValue(namespace, key, value) {
+    // keepalive: settingsSync's mirror fires this right after a localStorage
+    // write and never awaits it before the page can navigate (e.g. switching
+    // skins). Without keepalive that in-flight POST is cancelled on unload,
+    // the durable copy stays stale, and the next hydrate() overwrites the
+    // fresh local value back to the old one ("KV wins on conflict").
     const response = await fetch(`${API_BASE_URL}/store/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(value),
+        keepalive: true,
     });
     if (!response.ok) {
         const errorBody = await response.text();
@@ -1152,8 +1158,10 @@ export async function setKVValue(namespace, key, value) {
 }
 
 export async function deleteKVValue(namespace, key) {
+    // keepalive: see setKVValue -- same drop-on-unload race for a removeItem.
     const response = await fetch(`${API_BASE_URL}/store/${encodeURIComponent(namespace)}/${encodeURIComponent(key)}`, {
         method: 'DELETE',
+        keepalive: true,
     });
     if (!response.ok) throw new Error(`KV deleteValue failed: ${response.status}`);
 }

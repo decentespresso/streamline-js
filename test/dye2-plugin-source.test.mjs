@@ -359,3 +359,45 @@ function lift(module, patterns) {
         assert.equal(await clearDyeWorkflowContext(), false);
     });
 }
+
+// ── Recipe-cell long-press → DYE2 recipe-edit deep link (dyeStrip.js) ───────
+// Long-pressing a recipe cell should land the user directly on that recipe in
+// DYE2, not DYE2's dashboard root -- recipe-edit.ts reads the same
+// 'dye_editRecipeIdx' sessionStorage key dashboard.ts writes before its own
+// "Recipes" settings entry, and recipe ids are the fixed slots '1'..'5', so
+// id-1 is the reliable index (not the cell's filtered/sorted position).
+{
+    const body = lift('dyeStrip.js', [
+        /function editRecipe\(recipe\) \{[\s\S]*?\r?\n\}/,
+    ]);
+
+    const build = () => {
+        const store = {};
+        const opened = [];
+        const fn = new Function('sessionStorage', 'openPluginOverlay', `${body}\nreturn editRecipe;`);
+        const editRecipe = fn(
+            { setItem: (k, v) => { store[k] = v; } },
+            (page) => opened.push(page),
+        );
+        return { editRecipe, store, opened };
+    };
+
+    test('recipe id is the slot index plus one -- id "1" maps to index 0', () => {
+        const { editRecipe, store, opened } = build();
+        editRecipe({ id: '1' });
+        assert.equal(store.dye_editRecipeIdx, '0');
+        assert.deepEqual(opened, ['recipe-edit']);
+    });
+
+    test('recipe id "5" maps to index 4', () => {
+        const { editRecipe, store } = build();
+        editRecipe({ id: '5' });
+        assert.equal(store.dye_editRecipeIdx, '4');
+    });
+
+    test('a missing or non-numeric id falls back to index 0, never negative', () => {
+        const { editRecipe, store } = build();
+        editRecipe({});
+        assert.equal(store.dye_editRecipeIdx, '0');
+    });
+}
