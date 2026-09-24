@@ -541,9 +541,15 @@ body {
    dark-mode.css, and the token carries its own dark-mode value, so no
    per-theme override is needed here. */
 #editor-steps-container,
-#script-steps-col,
-#editor-settings-notes-col {
+#script-steps-col {
   scrollbar-gutter: stable;
+}
+/* Description's own gutter is NOT reserved (unlike the two panes above):
+   its content length varies a lot from profile to profile, and a
+   permanently-reserved 45px would show as dead space on every short
+   description instead of only appearing once there's something to scroll. */
+#editor-settings-notes-col {
+  scrollbar-gutter: auto;
 }
 /* scrollbar-color is Chromium 121+'s standardized styling API, but setting it
    alongside ::-webkit-scrollbar switches Chromium to its standard renderer for
@@ -566,18 +572,21 @@ body {
    "min-height:1200px" check). The canvas transform is the only scaling. */
 #editor-steps-container::-webkit-scrollbar,
 #script-steps-col::-webkit-scrollbar,
-#editor-settings-notes-col::-webkit-scrollbar {
+#editor-settings-notes-col::-webkit-scrollbar,
+#editor-settings-form-card::-webkit-scrollbar {
   /* Node 2662-818's Scroll Bar is 60px wide on the canvas. */
   width: 45px;
 }
 #editor-steps-container::-webkit-scrollbar-track,
 #script-steps-col::-webkit-scrollbar-track,
-#editor-settings-notes-col::-webkit-scrollbar-track {
+#editor-settings-notes-col::-webkit-scrollbar-track,
+#editor-settings-form-card::-webkit-scrollbar-track {
   background: transparent;
 }
 #editor-steps-container::-webkit-scrollbar-thumb,
 #script-steps-col::-webkit-scrollbar-thumb,
-#editor-settings-notes-col::-webkit-scrollbar-thumb {
+#editor-settings-notes-col::-webkit-scrollbar-thumb,
+#editor-settings-form-card::-webkit-scrollbar-thumb {
   background-color: var(--secondary-button-bg);
   border-radius: 9999px;
   /* Inset the thumb so it reads as a floating pill, not a full-width bar. */
@@ -588,9 +597,11 @@ body {
    browser's usual proportional length — explicit height on
    ::-webkit-scrollbar-thumb overrides native sizing entirely. SETTINGS'
    Description column (node 2662:1644) draws the identical pill, so it gets the
-   same fixed height. The SETTINGS form card is deliberately absent here: the
-   design gives it no scrollbar, so guttering it would inset its rows by a
-   bar's width for nothing. */
+   same fixed height. The SETTINGS form card gets the same bare-pill colors
+   and shape above, but keeps its thumb proportional (no fixed height): its
+   content length swings a lot more from profile to profile than a fixed
+   caption ever does, and it deliberately has no scrollbar-gutter reservation
+   either, so it doesn't inset its rows by a bar's width when nothing scrolls. */
 #script-steps-col::-webkit-scrollbar-thumb,
 #editor-settings-notes-col::-webkit-scrollbar-thumb {
   height: 119.25px;

@@ -1330,9 +1330,9 @@ function renderFlowCalibrationFields(col) {
     const profileId = editorState.sourceProfileId;
 
     const wrapper = document.createElement('div');
-    // pl-[15px] matches the indent every other section row uses (see
-    // settingsSectionRow / the Beverage Type section above).
-    wrapper.className = 'flex flex-col gap-[12px] pl-[15px]';
+    // pl-[15px] indent and gap-[15px] stack spacing match every other section
+    // row's convention in this panel (see settingsSectionRow / Beverage Type).
+    wrapper.className = 'flex flex-col gap-[15px] pl-[15px]';
     col.appendChild(wrapper);
 
     // Until the machine answers, `baseline` is only Decaid's default — seeding
@@ -1366,7 +1366,9 @@ function renderFlowCalibrationFields(col) {
         wrapper.appendChild(label);
 
         const toggleRow = document.createElement('label');
-        toggleRow.className = 'flex items-center gap-[12px] text-[20px] text-[var(--text-primary)]'
+        // gap-[15px]: the label-to-control gap every other row in this panel uses
+        // (settingsSectionRow, the Beverage Type section), not a one-off 12px.
+        toggleRow.className = 'flex items-center gap-[15px] text-[20px] text-[var(--text-primary)]'
             + (profileId ? ' cursor-pointer' : ' opacity-40');
         const toggle = document.createElement('input');
         toggle.type = 'checkbox';
