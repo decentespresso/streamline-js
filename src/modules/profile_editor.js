@@ -1402,22 +1402,22 @@ function renderFlowCalibrationFields(col) {
         headerRow.appendChild(toggleRow);
 
         if (enabled) {
-            const spinnerFor = (key, text, step, unit, max) => {
-                const row = document.createElement('div');
-                row.className = 'flex flex-col gap-[8px]';
-                const sub = document.createElement('div');
-                sub.className = 'text-[20px] text-[var(--text-primary)] opacity-80';
-                sub.textContent = getTranslation(text);
-                row.appendChild(sub);
-                row.appendChild(createSpinner(
+            // Same bordered-box convention every other spinner pair in this card
+            // uses (settingsFieldBox/settingsSectionRow) -- this used to be a
+            // plain stacked row with its own one-off label style instead.
+            const boxRow = document.createElement('div');
+            boxRow.className = 'flex items-stretch';
+            const spinnerBox = (key, text, step, unit, max, last) => {
+                const spinner = createSpinner(
                     values[key] ?? baseline[key], step, unit,
                     (val) => { values[key] = val; persist(); },
                     { min: 0, max }
-                ));
-                wrapper.appendChild(row);
+                );
+                boxRow.appendChild(settingsFieldBox(getTranslation(text), spinner, { last }));
             };
-            spinnerFor('weightFlowMultiplier', 'Weight flow multiplier', 0.1, '', 5);
-            spinnerFor('volumeFlowMultiplier', 'Volume flow multiplier (s)', 0.05, 's', 5);
+            spinnerBox('weightFlowMultiplier', 'Weight flow multiplier', 0.1, '', 5, false);
+            spinnerBox('volumeFlowMultiplier', 'Volume flow multiplier (s)', 0.05, 's', 5, true);
+            wrapper.appendChild(boxRow);
         }
 
         const hint = document.createElement('p');
