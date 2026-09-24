@@ -1556,8 +1556,29 @@ function createStepCycler(steps, current, onChange) {
 // doesn't overflow. initScrollThumb wires the (idempotent) scroll listener
 // once per container; updateScrollThumb does the actual size/position math
 // and must be re-run after any render that could change scrollHeight. ──
+// Height of the Description card's "解说" heading + divider above the
+// scrollable notes column, measured live (rather than a hardcoded constant,
+// or summing the header/divider's own offsetHeight -- that undercounted by
+// the divider's margin-top, which offsetHeight does not include) so it stays
+// correct through i18n/font changes. This is what the form card's pill gets
+// pushed down by, below. Relies on the notes card being position:relative
+// (see profile_editor.html) so offsetTop resolves against it directly.
+function getDescriptionHeaderOffset() {
+    const notesWrap = document.getElementById('editor-settings-notes-col')?.parentElement;
+    return notesWrap ? notesWrap.offsetTop : 0;
+}
+
 const SCROLL_THUMB_HEIGHT = 119.25;
-function updateScrollThumb(containerId, thumbId) {
+// topOffset: the settings form card has no header above its scrollable area,
+// but its neighbor (Description) does -- "解说" + the divider -- so at rest
+// the two pills read as not level with each other. Requested explicitly:
+// match the LEFT (form card) pill down to the RIGHT one's start, rather than
+// the other way around, even though that's not what the Figma reference
+// shows (its Description pill starts below its own header, not level with
+// the header-less form card). topOffset shifts this pill's whole track down
+// by that same header+divider height and shortens its travel range to match,
+// so it still reaches exactly the bottom edge on a full scroll.
+function updateScrollThumb(containerId, thumbId, topOffset = 0) {
     const container = document.getElementById(containerId);
     const thumb = document.getElementById(thumbId);
     if (!container || !thumb) return;
@@ -1567,19 +1588,19 @@ function updateScrollThumb(containerId, thumbId) {
         return;
     }
     thumb.classList.remove('hidden');
-    const pillHeight = Math.min(SCROLL_THUMB_HEIGHT, container.clientHeight);
-    const travel = container.clientHeight - pillHeight;
-    const top = travel > 0 ? (container.scrollTop / maxScroll) * travel : 0;
+    const pillHeight = Math.min(SCROLL_THUMB_HEIGHT, container.clientHeight - topOffset);
+    const travel = container.clientHeight - topOffset - pillHeight;
+    const top = topOffset + (travel > 0 ? (container.scrollTop / maxScroll) * travel : 0);
     thumb.style.height = `${pillHeight}px`;
     thumb.style.top = `${top}px`;
 }
-function initScrollThumb(containerId, thumbId) {
+function initScrollThumb(containerId, thumbId, topOffset = 0) {
     const container = document.getElementById(containerId);
     // dataset flag, not a module-level Set: cloneNode-and-replace elsewhere in
     // this file would otherwise carry a stale flag on a since-detached node.
     if (!container || container.dataset.scrollThumbInit) return;
     container.dataset.scrollThumbInit = '1';
-    container.addEventListener('scroll', () => updateScrollThumb(containerId, thumbId));
+    container.addEventListener('scroll', () => updateScrollThumb(containerId, thumbId, topOffset));
 }
 
 function renderSettingsTab() {
@@ -1590,7 +1611,7 @@ function renderSettingsTab() {
     notesCol.innerHTML = '';
     // Attach once: these containers are never recreated (only their innerHTML
     // is cleared above), just re-rendered every time this function runs.
-    initScrollThumb('editor-settings-form-card', 'editor-settings-form-card-thumb');
+    initScrollThumb('editor-settings-form-card', 'editor-settings-form-card-thumb', getDescriptionHeaderOffset());
     initScrollThumb('editor-settings-notes-col', 'editor-settings-notes-col-thumb');
 
     const profile = editorState.profile;
@@ -1929,7 +1950,7 @@ function renderSettingsTab() {
     // ever been shown), so each thumb's visibility/size/position needs a
     // fresh read of the now-final scrollHeight rather than whatever it was
     // left at from a previous render.
-    updateScrollThumb('editor-settings-form-card', 'editor-settings-form-card-thumb');
+    updateScrollThumb('editor-settings-form-card', 'editor-settings-form-card-thumb', getDescriptionHeaderOffset());
     updateScrollThumb('editor-settings-notes-col', 'editor-settings-notes-col-thumb');
 }
 
