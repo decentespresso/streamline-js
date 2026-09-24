@@ -3296,6 +3296,10 @@ export function initResizablePanels(separatorId) {
 
         document.addEventListener('touchmove', drag, { passive: false });
         document.addEventListener('touchend', stopDrag);
+        // A touch interrupted by the system (e.g. a webview reinterpreting it as a
+        // scroll) fires touchcancel instead of touchend -- without this, stopDrag
+        // never runs and the separator is stuck highlighted (bg-blue-500) forever.
+        document.addEventListener('touchcancel', stopDrag);
     };
 
     const drag = (e) => {
@@ -3335,6 +3339,7 @@ export function initResizablePanels(separatorId) {
 
         document.removeEventListener('touchmove', drag);
         document.removeEventListener('touchend', stopDrag);
+        document.removeEventListener('touchcancel', stopDrag);
     };
 
     separator.addEventListener('mousedown', startDrag);

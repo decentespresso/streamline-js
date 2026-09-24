@@ -1330,7 +1330,9 @@ function renderFlowCalibrationFields(col) {
     const profileId = editorState.sourceProfileId;
 
     const wrapper = document.createElement('div');
-    wrapper.className = 'flex flex-col gap-[12px]';
+    // pl-[15px] matches the indent every other section row uses (see
+    // settingsSectionRow / the Beverage Type section above).
+    wrapper.className = 'flex flex-col gap-[12px] pl-[15px]';
     col.appendChild(wrapper);
 
     // Until the machine answers, `baseline` is only Decaid's default — seeding
@@ -1357,7 +1359,9 @@ function renderFlowCalibrationFields(col) {
         wrapper.innerHTML = '';
 
         const label = document.createElement('div');
-        label.className = 'text-[24px] font-semibold text-[var(--text-primary)] break-words';
+        // Same label color every other section title uses (see settingsSectionRow);
+        // this one was left on --text-primary instead of --button-primary-bg.
+        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] break-words';
         label.textContent = getTranslation('Flow calibration');
         wrapper.appendChild(label);
 
