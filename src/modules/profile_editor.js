@@ -1358,16 +1358,25 @@ function renderFlowCalibrationFields(col) {
     function paint() {
         wrapper.innerHTML = '';
 
+        // Header row: label beside its control, same as every other section
+        // (settingsSectionRow's fixed-width side label + row.gap-[15px]) --
+        // previously the label sat on its own line above the checkbox instead
+        // of level with it. Spinners/hint below don't fit that single-row
+        // shape, so only the toggle rides beside the label; they stay stacked
+        // underneath.
+        const headerRow = document.createElement('div');
+        headerRow.className = 'flex items-center gap-[15px]';
+        wrapper.appendChild(headerRow);
+
         const label = document.createElement('div');
-        // Same label color every other section title uses (see settingsSectionRow);
-        // this one was left on --text-primary instead of --button-primary-bg.
-        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] break-words';
+        // Same label color/width every other section title uses (see
+        // settingsSectionRow); this one was left on --text-primary instead of
+        // --button-primary-bg and without the shared w-[127.5px].
+        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 break-words';
         label.textContent = getTranslation('Flow calibration');
-        wrapper.appendChild(label);
+        headerRow.appendChild(label);
 
         const toggleRow = document.createElement('label');
-        // gap-[15px]: the label-to-control gap every other row in this panel uses
-        // (settingsSectionRow, the Beverage Type section), not a one-off 12px.
         toggleRow.className = 'flex items-center gap-[15px] text-[20px] text-[var(--text-primary)]'
             + (profileId ? ' cursor-pointer' : ' opacity-40');
         const toggle = document.createElement('input');
@@ -1390,7 +1399,7 @@ function renderFlowCalibrationFields(col) {
         toggleText.textContent = getTranslation('Use this profile\u2019s own flow calibration');
         toggleRow.appendChild(toggle);
         toggleRow.appendChild(toggleText);
-        wrapper.appendChild(toggleRow);
+        headerRow.appendChild(toggleRow);
 
         if (enabled) {
             const spinnerFor = (key, text, step, unit, max) => {
@@ -1829,7 +1838,10 @@ function renderSettingsTab() {
     // icon and divider above #editor-settings-notes-col.
 
     const notesPreview = document.createElement('div');
-    notesPreview.className = 'text-[24px] text-[var(--text-primary)] cursor-pointer select-none whitespace-pre-wrap leading-[1.5] h-full';
+    // No h-full: that forced this block to fill the whole card even for a
+    // one-line description, pushing Author out of view below the fold on
+    // anything short. Sized to its own text, Author now sits right after it.
+    notesPreview.className = 'text-[24px] text-[var(--text-primary)] cursor-pointer select-none whitespace-pre-wrap leading-[1.5]';
     function updateNotesPreview() {
         const text = editorState.profile.notes || '';
         if (text) {
