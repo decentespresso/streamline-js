@@ -528,28 +528,18 @@ body {
   background: rgba(0, 0, 0, 0.55);
 }
 
-/* Profile editor scrollbars. The CARDS row scrolls sideways and the SCRIPT
-   tab's Steps Overview scrolls down, but on a touch device Chromium uses
-   overlay scrollbars that fade out — so there was nothing on screen saying the
-   panel scrolls at all. Declaring ::-webkit-scrollbar switches that pane back
-   to a classic space-taking scrollbar, so the thumb stays put.
-
-   Both panes draw the redesign's bare thumb on the page ground with no trough,
-   matching the pill the Figma shows on the CARDS and SCRIPT screens (node
-   2662-803's Scroll Bar is --secondary-button-bg, #b6c3d7, exactly). These id
-   selectors outrank the app-wide [data-theme="dark"] scrollbar rules in
-   dark-mode.css, and the token carries its own dark-mode value, so no
-   per-theme override is needed here. */
-#editor-steps-container,
-#script-steps-col {
+/* Profile editor scrollbars. The CARDS row scrolls sideways -- on a touch
+   device Chromium uses overlay scrollbars that fade out, so there was
+   nothing on screen saying the panel scrolls at all. Declaring
+   ::-webkit-scrollbar switches that pane back to a classic space-taking
+   scrollbar, so the thumb stays put, drawing the redesign's bare thumb on
+   the page ground with no trough (Figma node 2662-803's Scroll Bar is
+   --secondary-button-bg, #b6c3d7, exactly). This id selector outranks the
+   app-wide [data-theme="dark"] scrollbar rules in dark-mode.css, and the
+   token carries its own dark-mode value, so no per-theme override is
+   needed here. */
+#editor-steps-container {
   scrollbar-gutter: stable;
-}
-/* Description's own gutter is NOT reserved (unlike the two panes above):
-   its content length varies a lot from profile to profile, and a
-   permanently-reserved 45px would show as dead space on every short
-   description instead of only appearing once there's something to scroll. */
-#editor-settings-notes-col {
-  scrollbar-gutter: auto;
 }
 /* scrollbar-color is Chromium 121+'s standardized styling API, but setting it
    alongside ::-webkit-scrollbar switches Chromium to its standard renderer for
@@ -557,9 +547,7 @@ body {
    of the width/border-radius set below. Firefox has no ::-webkit-scrollbar
    support at all, so gate scrollbar-color to browsers that lack it. */
 @supports not selector(::-webkit-scrollbar) {
-  #editor-steps-container,
-  #script-steps-col,
-  #editor-settings-notes-col {
+  #editor-steps-container {
     scrollbar-color: var(--secondary-button-bg) transparent;
   }
 }
@@ -570,46 +558,40 @@ body {
    — a real-viewport breakpoint would double-apply, and would key off the
    unscaled window size besides (a plain 1920x1080 desktop fails a naive
    "min-height:1200px" check). The canvas transform is the only scaling. */
-#editor-steps-container::-webkit-scrollbar,
-#script-steps-col::-webkit-scrollbar,
-#editor-settings-notes-col::-webkit-scrollbar {
+#editor-steps-container::-webkit-scrollbar {
   /* Node 2662-818's Scroll Bar is 60px wide on the canvas. */
   width: 45px;
 }
-#editor-steps-container::-webkit-scrollbar-track,
-#script-steps-col::-webkit-scrollbar-track,
-#editor-settings-notes-col::-webkit-scrollbar-track {
+#editor-steps-container::-webkit-scrollbar-track {
   background: transparent;
 }
-#editor-steps-container::-webkit-scrollbar-thumb,
-#script-steps-col::-webkit-scrollbar-thumb,
-#editor-settings-notes-col::-webkit-scrollbar-thumb {
+#editor-steps-container::-webkit-scrollbar-thumb {
   background-color: var(--secondary-button-bg);
   border-radius: 9999px;
   /* Inset the thumb so it reads as a floating pill, not a full-width bar. */
   border: 3px solid transparent;
   background-clip: content-box;
 }
-/* SCRIPT's thumb is a fixed pill in the Figma (159px on the canvas), not the
-   browser's usual proportional length — explicit height on
-   ::-webkit-scrollbar-thumb overrides native sizing entirely. SETTINGS'
-   Description column (node 2662:1644) draws the identical pill, so it gets
-   the same fixed height. */
-#script-steps-col::-webkit-scrollbar-thumb,
-#editor-settings-notes-col::-webkit-scrollbar-thumb {
-  height: 119.25px;
-}
-/* The SETTINGS form card (node 2662-816) draws the same short pill, but its
-   content overflows too little for proportional native sizing to ever read
-   as short (confirmed: explicit ::-webkit-scrollbar-thumb height, unlike
-   above, does NOT override Chromium's proportional thumb length -- verified
-   by live-injecting !important height/color and forcing reflow/scroll, only
-   the color ever took). Native scrollbar hidden here; settings-scrollbar.js
-   draws #editor-settings-form-card-thumb instead, sized/positioned in JS. */
-#editor-settings-form-card {
+/* SCRIPT's Steps Overview (node 2662-803), SETTINGS' Description column
+   (node 2662:1644), and the SETTINGS form card (node 2662-816) all draw the
+   same short fixed pill in the Figma -- not the browser's usual proportional
+   thumb length. ::-webkit-scrollbar-thumb's height property claims to
+   override that, but does not actually do so in this Chromium (confirmed by
+   live-injecting !important height/color and forcing reflow/scroll on each
+   of these three: only the color ever took, the thumb stayed proportional
+   to how much the pane happens to overflow -- fine when that's a lot, reads
+   as "too long" when it's a little). All three hide their native scrollbar
+   and draw a decorative pill by hand instead (updateScrollThumb /
+   initScrollThumb in profile_editor.js) -- see #editor-settings-form-card-thumb,
+   #editor-settings-notes-col-thumb, #script-steps-col-thumb. */
+#editor-settings-form-card,
+#editor-settings-notes-col,
+#script-steps-col {
   scrollbar-width: none;
 }
-#editor-settings-form-card::-webkit-scrollbar {
+#editor-settings-form-card::-webkit-scrollbar,
+#editor-settings-notes-col::-webkit-scrollbar,
+#script-steps-col::-webkit-scrollbar {
   display: none;
 }
 /* CARDS scrolls sideways, so its bar is the thinner one (24px on the canvas,

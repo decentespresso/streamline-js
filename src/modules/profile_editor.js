@@ -1546,29 +1546,40 @@ function createStepCycler(steps, current, onChange) {
     return wrapper;
 }
 
-// ── Settings form card's custom scrollbar (see main.css's #editor-settings-form-card
-// comment) — native ::-webkit-scrollbar-thumb height does not override Chromium's
-// proportional thumb length, and this card overflows too little for proportional
-// sizing to ever look like the Figma's short pill, so the native scrollbar is
-// hidden and this draws #editor-settings-form-card-thumb by hand instead: same
-// fixed 119.25px pill the rest of the editor's scrollable panes use, hidden
-// entirely when the card doesn't overflow. ──
-const FORM_CARD_THUMB_HEIGHT = 119.25;
-function updateFormCardScrollThumb() {
-    const formCard = document.getElementById('editor-settings-form-card');
-    const thumb = document.getElementById('editor-settings-form-card-thumb');
-    if (!formCard || !thumb) return;
-    const maxScroll = formCard.scrollHeight - formCard.clientHeight;
+// ── Custom scrollbars (see main.css's #editor-settings-form-card comment) —
+// native ::-webkit-scrollbar-thumb height does not override Chromium's
+// proportional thumb length in this browser, and none of these three panes
+// (settings form card, description, script steps) reliably overflow enough
+// for proportional sizing to ever look like the Figma's short pill. Each
+// hides its native scrollbar and gets a hand-drawn pill instead: same fixed
+// 119.25px height the design uses throughout, hidden entirely when its pane
+// doesn't overflow. initScrollThumb wires the (idempotent) scroll listener
+// once per container; updateScrollThumb does the actual size/position math
+// and must be re-run after any render that could change scrollHeight. ──
+const SCROLL_THUMB_HEIGHT = 119.25;
+function updateScrollThumb(containerId, thumbId) {
+    const container = document.getElementById(containerId);
+    const thumb = document.getElementById(thumbId);
+    if (!container || !thumb) return;
+    const maxScroll = container.scrollHeight - container.clientHeight;
     if (maxScroll <= 0) {
         thumb.classList.add('hidden');
         return;
     }
     thumb.classList.remove('hidden');
-    const pillHeight = Math.min(FORM_CARD_THUMB_HEIGHT, formCard.clientHeight);
-    const travel = formCard.clientHeight - pillHeight;
-    const top = travel > 0 ? (formCard.scrollTop / maxScroll) * travel : 0;
+    const pillHeight = Math.min(SCROLL_THUMB_HEIGHT, container.clientHeight);
+    const travel = container.clientHeight - pillHeight;
+    const top = travel > 0 ? (container.scrollTop / maxScroll) * travel : 0;
     thumb.style.height = `${pillHeight}px`;
     thumb.style.top = `${top}px`;
+}
+function initScrollThumb(containerId, thumbId) {
+    const container = document.getElementById(containerId);
+    // dataset flag, not a module-level Set: cloneNode-and-replace elsewhere in
+    // this file would otherwise carry a stale flag on a since-detached node.
+    if (!container || container.dataset.scrollThumbInit) return;
+    container.dataset.scrollThumbInit = '1';
+    container.addEventListener('scroll', () => updateScrollThumb(containerId, thumbId));
 }
 
 function renderSettingsTab() {
@@ -1577,12 +1588,10 @@ function renderSettingsTab() {
     if (!formCard || !notesCol) return;
     formCard.innerHTML = '';
     notesCol.innerHTML = '';
-    // Attach once: formCard itself is never recreated (only its innerHTML is
-    // cleared above), just re-rendered every time this function runs.
-    if (!formCard.dataset.scrollThumbInit) {
-        formCard.dataset.scrollThumbInit = '1';
-        formCard.addEventListener('scroll', updateFormCardScrollThumb);
-    }
+    // Attach once: these containers are never recreated (only their innerHTML
+    // is cleared above), just re-rendered every time this function runs.
+    initScrollThumb('editor-settings-form-card', 'editor-settings-form-card-thumb');
+    initScrollThumb('editor-settings-notes-col', 'editor-settings-notes-col-thumb');
 
     const profile = editorState.profile;
 
@@ -1917,10 +1926,11 @@ function renderSettingsTab() {
     notesCol.appendChild(authorSection);
 
     // Content height just changed (possibly for the first time this tab has
-    // ever been shown), so the thumb's visibility/size/position needs a
+    // ever been shown), so each thumb's visibility/size/position needs a
     // fresh read of the now-final scrollHeight rather than whatever it was
     // left at from a previous render.
-    updateFormCardScrollThumb();
+    updateScrollThumb('editor-settings-form-card', 'editor-settings-form-card-thumb');
+    updateScrollThumb('editor-settings-notes-col', 'editor-settings-notes-col-thumb');
 }
 
 // ─── Script Tab ─────────────────────────────────────────────────────────────
@@ -2354,6 +2364,9 @@ function renderScriptTab() {
     const profile = editorState.profile;
     if (!container || !profile) return;
     container.innerHTML = '';
+    // Attach once: the container is never recreated (only its innerHTML is
+    // cleared above), just re-rendered every time this function runs.
+    initScrollThumb('script-steps-col', 'script-steps-col-thumb');
 
     const steps = profile.steps || [];
 
@@ -2391,6 +2404,11 @@ function renderScriptTab() {
     });
 
     renderScriptGraph();
+    // Content height just changed (possibly for the first time this tab has
+    // ever been shown), so the thumb's visibility/size/position needs a
+    // fresh read of the now-final scrollHeight rather than whatever it was
+    // left at from a previous render.
+    updateScrollThumb('script-steps-col', 'script-steps-col-thumb');
 }
 
 // ─── Tab Management ─────────────────────────────────────────────────────────
