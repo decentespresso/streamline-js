@@ -1171,13 +1171,19 @@ function renderProfiles() {
             if (selectedEl) {
                 updateSelectedProfileView(selectedEl);
                 // The list is taller than the pane and sorted alphabetically, so the
-                // pre-selected item is usually out of view on open. 'center' puts it
-                // at eye level in the pane rather than snapped to whichever edge it
-                // scrolled in from. justAutoSelected only fires once per page-open
-                // (selectedProfileKey is reset in initializeProfileSelector and set
-                // by hand on every later click), so this never yanks the list out
-                // from under someone who has since scrolled or picked a row.
-                selectedEl.scrollIntoView({ block: 'center' });
+                // pre-selected item is usually out of view on open. Center it at eye
+                // level rather than snapped to whichever edge it scrolled in from.
+                // justAutoSelected only fires once per page-open (selectedProfileKey
+                // is reset in initializeProfileSelector and set by hand on every
+                // later click), so this never yanks the list out from under someone
+                // who has since scrolled or picked a row.
+                //
+                // Scrolled by hand on #profile-list itself rather than via
+                // scrollIntoView: that walks every scrollable ancestor, including
+                // the app-wide #scaling-container (overflow:hidden but still a JS
+                // scroll target), which shifts the whole scaled page and clips the
+                // fixed-height subpage header off-screen.
+                container.scrollTop = selectedEl.offsetTop - container.clientHeight / 2 + selectedEl.clientHeight / 2;
             }
         }
 
