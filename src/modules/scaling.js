@@ -182,6 +182,12 @@ export function initScaling() {
             offsetX = (screenWidth - designWidth * sx) / 2;
             offsetY = (screenHeight - canvasHeight * sy) / 2;
             viewport.style.overflow = 'hidden';
+            // Not meant to be scrollable here -- positioning is done entirely via the
+            // transform above. A stray scrollTop (left over from the zoomed/pannable
+            // branch, or from a focused element's scrollIntoView) shifts the whole
+            // scaled page and clips fixed-height headers off-screen.
+            viewport.scrollTop = 0;
+            viewport.scrollLeft = 0;
         }
 
         content.style.transformOrigin = 'top left';
