@@ -144,12 +144,21 @@
 button.has-context-menu,
 .has-context-menu[role="button"] {
     box-shadow: inset 0 -2px 0 0 transparent;
-    transition: box-shadow 120ms ease-out;
+    transition: box-shadow 120ms ease-out, transform 120ms ease-out;
 }
 button.has-context-menu.long-press-active,
 .has-context-menu.long-press-active {
-    box-shadow: 0 0 0 3px var(--mimoja-blue, #3b82f6) inset;
-    transition: box-shadow 600ms ease-out;
+    /* Outer halo, not inset: the active favourite button's own background
+       (--mimoja-blue-v2) is the same hex as --mimoja-blue in light mode, so an
+       inset ring in that color was invisible on exactly that button -- no
+       feedback during the hold, so people let go before it fires. Drawing
+       outside the border box instead (white ring, blue ring beyond it) reads
+       against any button background, active or not; the scale adds a
+       non-color cue on top. Buttons have overflow-hidden for text truncation,
+       but that only clips content, not the element's own box-shadow/outline. */
+    box-shadow: 0 0 0 2px #fff, 0 0 0 5px var(--mimoja-blue, #3b82f6);
+    transform: scale(0.97);
+    transition: box-shadow 600ms ease-out, transform 600ms ease-out;
 }
 
 @media (prefers-reduced-motion: reduce) {
