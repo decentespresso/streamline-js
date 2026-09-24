@@ -1417,7 +1417,17 @@ function renderFlowCalibrationFields(col) {
             };
             spinnerBox('weightFlowMultiplier', 'Weight flow multiplier', 0.1, '', 5, false);
             spinnerBox('volumeFlowMultiplier', 'Volume flow multiplier (s)', 0.05, 's', 5, true);
-            wrapper.appendChild(boxRow);
+            // Indent boxRow past a spacer the same w-[127.5px]+gap-[15px] width as
+            // headerRow's label, so it starts at the same x as Stop At's own box
+            // row (settingsSectionRow indents its boxes past its label the same
+            // way) instead of flush left under the "Flow calibration" label.
+            const boxRowLine = document.createElement('div');
+            boxRowLine.className = 'flex items-start gap-[15px]';
+            const spacer = document.createElement('div');
+            spacer.className = 'w-[127.5px] shrink-0';
+            boxRowLine.appendChild(spacer);
+            boxRowLine.appendChild(boxRow);
+            wrapper.appendChild(boxRowLine);
         }
 
         const hint = document.createElement('p');
