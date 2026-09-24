@@ -1861,22 +1861,25 @@ function renderSettingsTab() {
     });
     notesCol.appendChild(notesPreview);
 
-    // ── Author (below Description) — notesCol already scrolls on its own, so
-    // this reads below the description text rather than needing its own card.
-    // Metadata field like title/notes: never part of the content hash
-    // (currentExecChanged's comment above), so no updateSaveAsNewButtonState.
+    // ── Author (bottom of Description card) — mt-auto pins it to the bottom
+    // of notesCol (now a flex column) regardless of how short the description
+    // is, instead of just trailing whatever whitespace was left after it.
+    // "Author: xxx" sits on one row like the label + control convention used
+    // elsewhere in this panel, not stacked. Metadata field like title/notes:
+    // never part of the content hash (currentExecChanged's comment above), so
+    // no updateSaveAsNewButtonState.
     const authorSection = document.createElement('div');
-    authorSection.className = 'flex flex-col gap-[12px] mt-[36px] pt-[36px] border-t-[1.5px] border-[var(--border-graph-grid)]';
+    authorSection.className = 'flex items-center gap-[15px] mt-auto pt-[36px] border-t-[1.5px] border-[var(--border-graph-grid)] shrink-0';
 
     const authorLabel = document.createElement('div');
-    authorLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)]';
+    authorLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] shrink-0';
     authorLabel.textContent = getTranslation('Author');
     authorSection.appendChild(authorLabel);
 
     const authorInput = document.createElement('input');
     authorInput.type = 'text';
     authorInput.value = editorState.profile.author || '';
-    authorInput.className = 'text-[24px] text-[var(--text-primary)] bg-[var(--box-color)] border-2 border-[var(--border-color)] rounded-[12px] px-[16px] py-[12px] outline-none focus:border-[var(--mimoja-blue)] w-full';
+    authorInput.className = 'text-[24px] text-[var(--text-primary)] bg-[var(--box-color)] border-2 border-[var(--border-color)] rounded-[12px] px-[16px] py-[12px] outline-none focus:border-[var(--mimoja-blue)] flex-1 min-w-0';
     authorInput.addEventListener('change', () => { editorState.profile.author = authorInput.value; });
     authorSection.appendChild(authorInput);
 
