@@ -572,21 +572,18 @@ body {
    "min-height:1200px" check). The canvas transform is the only scaling. */
 #editor-steps-container::-webkit-scrollbar,
 #script-steps-col::-webkit-scrollbar,
-#editor-settings-notes-col::-webkit-scrollbar,
-#editor-settings-form-card::-webkit-scrollbar {
+#editor-settings-notes-col::-webkit-scrollbar {
   /* Node 2662-818's Scroll Bar is 60px wide on the canvas. */
   width: 45px;
 }
 #editor-steps-container::-webkit-scrollbar-track,
 #script-steps-col::-webkit-scrollbar-track,
-#editor-settings-notes-col::-webkit-scrollbar-track,
-#editor-settings-form-card::-webkit-scrollbar-track {
+#editor-settings-notes-col::-webkit-scrollbar-track {
   background: transparent;
 }
 #editor-steps-container::-webkit-scrollbar-thumb,
 #script-steps-col::-webkit-scrollbar-thumb,
-#editor-settings-notes-col::-webkit-scrollbar-thumb,
-#editor-settings-form-card::-webkit-scrollbar-thumb {
+#editor-settings-notes-col::-webkit-scrollbar-thumb {
   background-color: var(--secondary-button-bg);
   border-radius: 9999px;
   /* Inset the thumb so it reads as a floating pill, not a full-width bar. */
@@ -596,15 +593,24 @@ body {
 /* SCRIPT's thumb is a fixed pill in the Figma (159px on the canvas), not the
    browser's usual proportional length — explicit height on
    ::-webkit-scrollbar-thumb overrides native sizing entirely. SETTINGS'
-   Description column (node 2662:1644) draws the identical pill, so it gets the
-   same fixed height. The SETTINGS form card gets the same bare-pill colors
-   and shape above, but keeps its thumb proportional (no fixed height): its
-   content length swings a lot more from profile to profile than a fixed
-   caption ever does, and it deliberately has no scrollbar-gutter reservation
-   either, so it doesn't inset its rows by a bar's width when nothing scrolls. */
+   Description column (node 2662:1644) draws the identical pill, so it gets
+   the same fixed height. */
 #script-steps-col::-webkit-scrollbar-thumb,
 #editor-settings-notes-col::-webkit-scrollbar-thumb {
   height: 119.25px;
+}
+/* The SETTINGS form card (node 2662-816) draws the same short pill, but its
+   content overflows too little for proportional native sizing to ever read
+   as short (confirmed: explicit ::-webkit-scrollbar-thumb height, unlike
+   above, does NOT override Chromium's proportional thumb length -- verified
+   by live-injecting !important height/color and forcing reflow/scroll, only
+   the color ever took). Native scrollbar hidden here; settings-scrollbar.js
+   draws #editor-settings-form-card-thumb instead, sized/positioned in JS. */
+#editor-settings-form-card {
+  scrollbar-width: none;
+}
+#editor-settings-form-card::-webkit-scrollbar {
+  display: none;
 }
 /* CARDS scrolls sideways, so its bar is the thinner one (24px on the canvas,
    ::-webkit-scrollbar height) with its own fixed 242px pill

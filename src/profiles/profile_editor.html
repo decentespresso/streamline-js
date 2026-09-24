@@ -43,8 +43,19 @@
         <!-- Tab 1: Settings (Figma node 2662-1507; 2560px canvas at 0.75) -->
         <div id="editor-tab-panel-1" class="editor-tab-panel h-full hidden overflow-hidden pb-[31.5px]">
             <div class="flex h-full gap-[15px] ml-[37.5px] mr-[37.5px]">
-                <div id="editor-settings-form-card" class="w-[1070.25px] shrink-0 bg-[var(--profile-button-background-color)] rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] overflow-y-auto overflow-x-hidden">
-                    <!-- Settings fields rendered by JS -->
+                <!-- Custom scrollbar (settings-scrollbar.js): native ::-webkit-scrollbar-thumb
+                     height doesn't override Chromium's proportional thumb length, and this
+                     card's content rarely overflows by much, so a native thumb reads as an
+                     almost-full-height bar. #editor-settings-form-card-thumb is a JS-driven
+                     decorative pill (position/height set on scroll) matching the fixed pill
+                     every other pane in this file draws; the wrap+relative+overflow-hidden
+                     keeps it clipped to the card's rounded corners without scrolling away
+                     with the content itself. -->
+                <div id="editor-settings-form-card-wrap" class="w-[1070.25px] shrink-0 relative rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] overflow-hidden">
+                    <div id="editor-settings-form-card" class="w-full h-full bg-[var(--profile-button-background-color)] overflow-y-auto overflow-x-hidden">
+                        <!-- Settings fields rendered by JS -->
+                    </div>
+                    <div id="editor-settings-form-card-thumb" class="absolute right-[3px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] pointer-events-none hidden" aria-hidden="true"></div>
                 </div>
                 <div class="flex-1 min-w-0 bg-[var(--profile-button-background-color)] rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] flex flex-col overflow-hidden">
                     <div class="flex items-center justify-between px-[49.5px] pt-[37.5px] shrink-0">

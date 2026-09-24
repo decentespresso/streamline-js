@@ -1546,12 +1546,43 @@ function createStepCycler(steps, current, onChange) {
     return wrapper;
 }
 
+// ── Settings form card's custom scrollbar (see main.css's #editor-settings-form-card
+// comment) — native ::-webkit-scrollbar-thumb height does not override Chromium's
+// proportional thumb length, and this card overflows too little for proportional
+// sizing to ever look like the Figma's short pill, so the native scrollbar is
+// hidden and this draws #editor-settings-form-card-thumb by hand instead: same
+// fixed 119.25px pill the rest of the editor's scrollable panes use, hidden
+// entirely when the card doesn't overflow. ──
+const FORM_CARD_THUMB_HEIGHT = 119.25;
+function updateFormCardScrollThumb() {
+    const formCard = document.getElementById('editor-settings-form-card');
+    const thumb = document.getElementById('editor-settings-form-card-thumb');
+    if (!formCard || !thumb) return;
+    const maxScroll = formCard.scrollHeight - formCard.clientHeight;
+    if (maxScroll <= 0) {
+        thumb.classList.add('hidden');
+        return;
+    }
+    thumb.classList.remove('hidden');
+    const pillHeight = Math.min(FORM_CARD_THUMB_HEIGHT, formCard.clientHeight);
+    const travel = formCard.clientHeight - pillHeight;
+    const top = travel > 0 ? (formCard.scrollTop / maxScroll) * travel : 0;
+    thumb.style.height = `${pillHeight}px`;
+    thumb.style.top = `${top}px`;
+}
+
 function renderSettingsTab() {
     const formCard = document.getElementById('editor-settings-form-card');
     const notesCol = document.getElementById('editor-settings-notes-col');
     if (!formCard || !notesCol) return;
     formCard.innerHTML = '';
     notesCol.innerHTML = '';
+    // Attach once: formCard itself is never recreated (only its innerHTML is
+    // cleared above), just re-rendered every time this function runs.
+    if (!formCard.dataset.scrollThumbInit) {
+        formCard.dataset.scrollThumbInit = '1';
+        formCard.addEventListener('scroll', updateFormCardScrollThumb);
+    }
 
     const profile = editorState.profile;
 
@@ -1884,6 +1915,12 @@ function renderSettingsTab() {
     authorSection.appendChild(authorInput);
 
     notesCol.appendChild(authorSection);
+
+    // Content height just changed (possibly for the first time this tab has
+    // ever been shown), so the thumb's visibility/size/position needs a
+    // fresh read of the now-final scrollHeight rather than whatever it was
+    // left at from a previous render.
+    updateFormCardScrollThumb();
 }
 
 // ─── Script Tab ─────────────────────────────────────────────────────────────
