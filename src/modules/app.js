@@ -166,6 +166,7 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                         } else if (type === 'grind') {
                             window.app.ui.updateGrindValue(newVal);
                         }
+                        ui.syncPresetsAfterManualEntry(type);
                     }
                 }
             };

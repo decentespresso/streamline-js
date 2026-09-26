@@ -1259,6 +1259,19 @@ function syncDrinkOutPresets() {
     syncPresetHighlight(document.getElementById('drink-out-presets'), t => t === `${dose}:${drink}`);
 }
 
+// Numpad entry (app.js initMobileValueInputs) bypasses the inline editors that
+// resync presets themselves, so it calls this after writing the value.
+export function syncPresetsAfterManualEntry(type) {
+    if (type === 'temperature') {
+        const shown = document.getElementById('temp-value')?.textContent.trim();
+        syncPresetHighlight(document.getElementById('temp-presets'), t => t === shown);
+    } else if (type === 'dose-in' || type === 'drink-out') {
+        syncDrinkOutPresets();
+    } else if (type === 'steam-duration' || type === 'steam-flow') {
+        syncSteamPresets();
+    }
+}
+
 function highlightSteamFlowPreset(index) {
     const container = document.getElementById('steam-flow-presets');
     if (!container) return;
