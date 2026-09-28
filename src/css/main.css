@@ -353,7 +353,9 @@ body {
     transform: translateX(0);
 }
 
-.no-select {
+.no-select,
+.settings-nav-btn,
+.settings-subnav-btn {
   -webkit-user-select: none;
   -ms-user-select: none;
   user-select: none;
