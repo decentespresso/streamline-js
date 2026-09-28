@@ -347,10 +347,14 @@ body {
    so dragging across the settings nav can leave several rows looking
    selected at once. Only apply the hover tint on inputs that support a real
    hover (mouse/trackpad); the JS-driven active-row class is what marks the
-   open category everywhere else. */
+   open category everywhere else.
+   :not(.bg-[#2c4a7a]) excludes the row the tap just selected: the same tap
+   that sets the active bg-[#2c4a7a]/text-white classes also satisfies :hover
+   on touch, and this rule's higher specificity (class+pseudo vs. one class)
+   would otherwise strip the highlight right back off the row being selected. */
 @media (hover: none) {
-    .settings-nav-btn:hover,
-    .settings-subnav-btn:hover {
+    .settings-nav-btn:hover:not(.bg-\[\#2c4a7a\]),
+    .settings-subnav-btn:hover:not(.bg-\[\#2c4a7a\]) {
         background-color: transparent;
         color: inherit;
     }
