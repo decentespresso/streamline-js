@@ -220,11 +220,18 @@ const DEFAULT_STEP = {
     limiter: null,
 };
 
-// Factory for new steps inserted from the "+" button. Returns a deep copy of
-// DEFAULT_STEP. Kept as a function so future variants (e.g. seeded from the
-// previous step) can branch here.
-function makeNewStep() {
-    return JSON.parse(JSON.stringify(DEFAULT_STEP));
+// Factory for new steps inserted from the "+" button. Seeds from `neighbor`
+// (the step it's being inserted next to) when given, so continuing a profile
+// -- e.g. a "hold" step right after "preinfusion" -- starts from those same
+// pump/temperature/exit settings instead of the generic default; falls back
+// to DEFAULT_STEP when there is no neighbor (first step in an empty
+// profile). The name always resets to DEFAULT_STEP's: two steps sharing a
+// label in the list is more confusing than starting blank on just that one
+// field.
+function makeNewStep(neighbor) {
+    const seed = JSON.parse(JSON.stringify(neighbor || DEFAULT_STEP));
+    seed.name = DEFAULT_STEP.name;
+    return seed;
 }
 
 // profile.target_volume_count_start is a 1-based step index (0 = None), so it
@@ -255,7 +262,7 @@ function confirmDeleteStep(index) {
 
 function insertStepAfter(index) {
     const p = editorState.profile;
-    p.steps.splice(index + 1, 0, makeNewStep());
+    p.steps.splice(index + 1, 0, makeNewStep(p.steps[index]));
     const start = p.target_volume_count_start || 0;
     if (start > index + 1) p.target_volume_count_start = start + 1;
 }

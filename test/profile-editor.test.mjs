@@ -242,3 +242,58 @@ test('with nothing to inherit a new limiter takes the DE1 band, not the 0 on scr
     assert.equal(fields['bar-field'].value, 0);
     assert.equal(newLimiterRange('flow'), 0.6);
 });
+
+// ── New-step insertion seeds from the neighbor it's inserted next to ────────
+{
+    const defaultStepMatch = source.match(/const DEFAULT_STEP = \{[\s\S]*?\r?\n\};/);
+    const makeNewStepMatch = source.match(/function makeNewStep\(neighbor\) \{[\s\S]*?\r?\n\}/);
+    const insertStepAfterMatch = source.match(/function insertStepAfter\(index\) \{[\s\S]*?\r?\n\}/);
+    assert.ok(defaultStepMatch, 'DEFAULT_STEP not found in profile_editor.js');
+    assert.ok(makeNewStepMatch, 'makeNewStep not found in profile_editor.js');
+    assert.ok(insertStepAfterMatch, 'insertStepAfter not found in profile_editor.js');
+
+    const build = (steps, target_volume_count_start = 0) => {
+        const editorState = { profile: { steps, target_volume_count_start } };
+        const insertStepAfter = new Function(
+            'editorState',
+            `const PUMP_SEED_FLOW = 6.0;\n${defaultStepMatch[0]}\n${makeNewStepMatch[0]}\n${insertStepAfterMatch[0]}\nreturn insertStepAfter;`
+        )(editorState);
+        return { insertStepAfter, editorState };
+    };
+
+    test("inserting after a step seeds the new one from that step's values, not the generic default", () => {
+        const { insertStepAfter, editorState } = build([
+            { name: 'Preinfusion', pump: 'pressure', transition: 'smooth', pressure: 3, temperature: 88, sensor: 'water', seconds: 10, weight: 0, volume: 0, exit: null, limiter: { value: 2, range: 1 } },
+        ]);
+        insertStepAfter(0);
+        const inserted = editorState.profile.steps[1];
+        assert.equal(inserted.pump, 'pressure');
+        assert.equal(inserted.pressure, 3);
+        assert.equal(inserted.temperature, 88);
+        assert.equal(inserted.sensor, 'water');
+        assert.deepEqual(inserted.limiter, { value: 2, range: 1 });
+    });
+
+    test("the inserted step's own name resets, so two steps don't share a label", () => {
+        const { insertStepAfter, editorState } = build([{ name: 'Preinfusion' }]);
+        insertStepAfter(0);
+        assert.equal(editorState.profile.steps[1].name, 'New Step');
+    });
+
+    test('inserting a first step into an empty profile falls back to the generic default', () => {
+        const { insertStepAfter, editorState } = build([]);
+        insertStepAfter(-1); // the "Insert a step" button passes numSteps - 1, which is -1 when empty
+        assert.equal(editorState.profile.steps.length, 1);
+        assert.equal(editorState.profile.steps[0].pump, 'flow');
+        assert.equal(editorState.profile.steps[0].temperature, 93);
+    });
+
+    test('mutating the inserted step does not mutate the step it was copied from', () => {
+        const { insertStepAfter, editorState } = build([
+            { name: 'Preinfusion', pump: 'flow', flow: 2 },
+        ]);
+        insertStepAfter(0);
+        editorState.profile.steps[1].flow = 99;
+        assert.equal(editorState.profile.steps[0].flow, 2);
+    });
+}
