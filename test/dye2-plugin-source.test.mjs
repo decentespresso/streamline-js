@@ -616,3 +616,74 @@ function lift(module, patterns) {
         assert.equal(getStored(), null);
     });
 }
+
+// ── Profile-drift guard (dyeStrip.js) ───────────────────────────────────────
+// Decaid's workflow.profile carries no `id` (#90), so the guard's original
+// id comparison never fires. profileFingerprint is the backup signal, and it
+// must ignore step temperature specifically -- that is the one profile field
+// a recipe's own brew-temp auto-save rewrites in place.
+{
+    const profileA = { title: 'Profile A', target_weight: 36, steps: [{ pump: 'flow', flow: 2, temperature: 93 }] };
+    const profileB = { title: 'Profile B', target_weight: 18, steps: [{ pump: 'pressure', pressure: 9, temperature: 93 }] };
+
+    const profileFingerprint = new Function(
+        `${lift('dyeStrip.js', [/export function profileFingerprint\(profile\) \{[\s\S]*?\r?\n\}/])}
+        return profileFingerprint;`
+    )();
+
+    test('profileFingerprint(profile): unaffected by a temperature-only change, changed by a different profile', () => {
+        assert.equal(profileFingerprint(null), null);
+        const original = profileFingerprint(profileA);
+        const tempTweaked = profileFingerprint({ ...profileA, steps: [{ ...profileA.steps[0], temperature: 96 }] });
+        assert.equal(tempTweaked, original);
+        assert.notEqual(profileFingerprint(profileB), original);
+    });
+
+    const body = lift('dyeStrip.js', [
+        /let activeItem = null;[\s\S]*?autoSavePending = \{\};\n\}/,
+        /export function profileFingerprint\(profile\) \{[\s\S]*?\r?\n\}/,
+        /function handleWorkflowUpdatedForAutoSave\(workflow, dataToSend\) \{[\s\S]*?\r?\n\}/,
+    ]);
+
+    const build = ({ patch = () => ({ dose: 1 }) } = {}) => {
+        const saveCalls = [];
+        const fn = new Function(
+            'AUTOSAVE_TARGETS', 'AUTOSAVE_DEBOUNCE_MS', 'isDye2Enabled', 'setTimeout', 'clearTimeout', 'saveItemFields', 'logger',
+            `${body}\nreturn { handleWorkflowUpdatedForAutoSave, setActiveItem: v => { activeItem = v; }, getActiveItem: () => activeItem };`
+        );
+        const handler = fn(
+            { recipe: { patch } },
+            0,
+            () => true,
+            (task) => { task(); return 0; }, // run the debounced flush inline
+            () => {},
+            async (kind, id, fields) => { saveCalls.push({ kind, id, fields }); },
+            { error() {}, info() {} },
+        );
+        return { ...handler, saveCalls };
+    };
+
+    test('a PUT for a different profile clears the active item and never reaches the patch', () => {
+        const { handleWorkflowUpdatedForAutoSave, setActiveItem, getActiveItem, saveCalls } = build({
+            patch: () => { throw new Error('must not run once drift is detected'); },
+        });
+        setActiveItem({ kind: 'recipe', id: '1', profileId: null, profileFingerprint: profileFingerprint(profileA) });
+
+        handleWorkflowUpdatedForAutoSave({ profile: profileB }, { profile: profileB });
+
+        assert.equal(getActiveItem(), null);
+        assert.deepEqual(saveCalls, []);
+    });
+
+    test('a brew-temperature-only PUT (same profile, new temperature) keeps the item active and auto-saves', () => {
+        const { handleWorkflowUpdatedForAutoSave, setActiveItem, getActiveItem, saveCalls } = build();
+        setActiveItem({ kind: 'recipe', id: '1', profileId: null, profileFingerprint: profileFingerprint(profileA) });
+        const retempered = { ...profileA, steps: [{ ...profileA.steps[0], temperature: 96 }] };
+
+        handleWorkflowUpdatedForAutoSave({ profile: retempered }, { profile: retempered });
+
+        assert.notEqual(getActiveItem(), null);
+        assert.equal(saveCalls.length, 1);
+        assert.deepEqual(saveCalls[0], { kind: 'recipe', id: '1', fields: { dose: 1 } });
+    });
+}

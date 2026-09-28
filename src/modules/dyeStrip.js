@@ -187,8 +187,14 @@ export async function applyFavourite(fav) {
     // Makes this favourite active for auto-save (see below) — set after the PUT
     // lands so a failed apply never arms auto-save on a stale item. profileId
     // anchors the profile-drift guard: fav.workflow?.profile covers items saved
-    // by this version, snapshot.profileId the legacy shape.
-    activeItem = { kind: 'favourite', id: fav.id, profileId: fav.workflow?.profile?.id ?? fav.snapshot?.profileId ?? null };
+    // by this version, snapshot.profileId the legacy shape. profileFingerprint
+    // backs it up for Decaid, whose workflow.profile carries no id at all.
+    activeItem = {
+        kind: 'favourite',
+        id: fav.id,
+        profileId: fav.workflow?.profile?.id ?? fav.snapshot?.profileId ?? null,
+        profileFingerprint: profileFingerprint(live.profile),
+    };
     await refreshAfterApply();
 }
 
@@ -207,7 +213,14 @@ export async function applyRecipe(recipe) {
     // it after the PUT lands so a failed apply never arms auto-save on a stale
     // recipe. profileId anchors the profile-drift guard: recipe.workflow?.profile
     // covers items saved by this version, recipe.profileId the legacy shape.
-    activeItem = { kind: 'recipe', id: recipe.id, profileId: recipe.profileId ?? recipe.workflow?.profile?.id ?? null };
+    // profileFingerprint backs it up for Decaid, whose workflow.profile carries
+    // no id at all.
+    activeItem = {
+        kind: 'recipe',
+        id: recipe.id,
+        profileId: recipe.profileId ?? recipe.workflow?.profile?.id ?? null,
+        profileFingerprint: profileFingerprint(live.profile),
+    };
     await refreshAfterApply();
 }
 
@@ -975,10 +988,36 @@ export function favouriteAutoSaveFields(dataToSend, workflow) {
     return patch;
 }
 
+// Decaid's workflow.profile carries no `id` (confirmed on 0.8.6+2801: a PUT's
+// profile.id is dropped, and the next GET has none either), so the id check
+// below never actually fires and the profile-drift guard silently never
+// fired either -- see decentespresso/streamline-js#90. This fingerprints the
+// fields a real profile switch changes and a recipe's own brew-temp auto-save
+// does not: `updateTemperatureValue()` PUTs the same profile back with only
+// `steps[*].temperature` edited, so temperature is stripped before hashing --
+// otherwise every brew-temp tweak would look like switching to a new profile
+// and immediately clear the item auto-save is running for.
+export function profileFingerprint(profile) {
+    if (!profile) return null;
+    const steps = Array.isArray(profile.steps)
+        ? profile.steps.map(({ temperature, ...rest }) => rest)
+        : profile.steps;
+    return JSON.stringify({
+        title: profile.title,
+        target_weight: profile.target_weight,
+        target_volume: profile.target_volume,
+        tank_temperature: profile.tank_temperature,
+        steps,
+    });
+}
+
 function handleWorkflowUpdatedForAutoSave(workflow, dataToSend) {
     if (autoSaveSuppressed || !activeItem || !isDye2Enabled()) return;
     const profileId = workflow?.profile?.id;
-    if (activeItem.profileId && profileId && profileId !== activeItem.profileId) {
+    const fingerprint = profileFingerprint(workflow?.profile);
+    const idDrifted = activeItem.profileId && profileId && profileId !== activeItem.profileId;
+    const fingerprintDrifted = activeItem.profileFingerprint && fingerprint && fingerprint !== activeItem.profileFingerprint;
+    if (idDrifted || fingerprintDrifted) {
         clearActiveItem();
         return;
     }
