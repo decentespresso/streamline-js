@@ -343,6 +343,19 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Touch devices fake a persistent :hover on whatever row a drag last crossed,
+   so dragging across the settings nav can leave several rows looking
+   selected at once. Only apply the hover tint on inputs that support a real
+   hover (mouse/trackpad); the JS-driven active-row class is what marks the
+   open category everywhere else. */
+@media (hover: none) {
+    .settings-nav-btn:hover,
+    .settings-subnav-btn:hover {
+        background-color: transparent;
+        color: inherit;
+    }
+}
+
 @keyframes button-flash {
     0% { background-color: var(--plus-minus-flash-on-color2); }
     14% { background-color: var(--plus-minus-flash-on-color); } /* Approximately 40ms into a 280ms animation */
