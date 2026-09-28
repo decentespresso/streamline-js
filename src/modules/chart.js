@@ -1491,6 +1491,14 @@ function handleChartLanguageChange() {
     if (expandedOpen) renderExpandedCharts();
 }
 
+// echarts-renderer.js reads the chartLineWidth setting fresh on every render,
+// so an idle chart (no live updates in flight to pick it up naturally) needs
+// one forced repaint to show a change made in Settings right away.
+function handleChartLineWidthChange() {
+    if (latestMainRender) renderMain(latestMainRender.traces, latestMainRender.layout, latestMainRender.mode);
+    if (expandedOpen) renderExpandedCharts();
+}
+
 function handleChartVisibilityChange() {
     if (document.visibilityState === 'visible') flushDeferredChart();
 }
@@ -1506,6 +1514,7 @@ function ensureChartLifecycle() {
         if (!window.ResizeObserver) window.addEventListener('resize', handleChartWindowResize);
         window.addEventListener('storage', handleChartStorage);
         document.addEventListener('streamline:languagechange', handleChartLanguageChange);
+        document.addEventListener('streamline:chartlinewidthchange', handleChartLineWidthChange);
         document.addEventListener('streamline:mainpagevisible', handleMainPageVisible);
         document.addEventListener('visibilitychange', handleChartVisibilityChange);
         chartLifecycleBound = true;

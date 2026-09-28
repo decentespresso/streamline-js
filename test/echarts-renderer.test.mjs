@@ -100,6 +100,45 @@ test('renderer preserves Plotly geometry, line styling, markers, labels, and cap
     assert.equal(labelRemoved, true);
 });
 
+test('the Chart Line Width setting scales both series and step-marker line widths', () => {
+    const calls = [];
+    const chart = {
+        setOption: (option, settings) => calls.push({ option, settings }),
+        getOption: () => undefined,
+        resize() {},
+        on() {},
+        dispose() {}
+    };
+    const element = {
+        clientWidth: 800,
+        clientHeight: 400,
+        style: {},
+        ownerDocument: { createElement: () => null },
+        append() {},
+        replaceChildren() {}
+    };
+    const traces = [
+        { name: 'Pressure', x: [0, 1], y: [0, 8], line: { color: '#17c29a', width: 3 } }
+    ];
+    const layout = {
+        margin: { l: 50, r: 50, t: 20, b: 40 },
+        xaxis: { range: [0, 1] },
+        yaxis: { range: [0, 10] },
+        shapes: [{ xref: 'x', x0: 0.5, line: { color: '#7f8bbb', width: 2, dash: 'longdash' } }]
+    };
+
+    globalThis.window = { devicePixelRatio: 1 }; // no localStorage -- defaults to 1.0, unchanged
+    renderChart({ init: () => chart }, element, traces, layout);
+    assert.equal(calls[0].option.series[0].lineStyle.width, 3);
+    assert.equal(calls[0].option.series[1].markLine.data[0].lineStyle.width, 2);
+
+    const store = { chartLineWidth: '1.5' };
+    globalThis.window = { devicePixelRatio: 1, localStorage: { getItem: k => store[k] } };
+    renderChart({ init: () => chart }, element, traces, layout);
+    assert.equal(calls[1].option.series[0].lineStyle.width, 4.5);
+    assert.equal(calls[1].option.series[1].markLine.data[0].lineStyle.width, 3);
+});
+
 test('expanded renderer uses two grids with synchronized time axes and mirrored markers', () => {
     let option;
     const chart = {

@@ -33,6 +33,7 @@ export const SYNCED_KEYS = [
     'theme',
     'uiZoom',
     'maxStretch',
+    'chartLineWidth',
     'streamlineHelpHidden',
     'streamlineHelpLaunches',
     'screensaverEnabled',

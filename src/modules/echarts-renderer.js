@@ -37,6 +37,14 @@ function sizeOf(element) {
     };
 }
 
+// User-adjustable multiplier on every drawn line's width (data series and the
+// dashed step-boundary markers alike) -- set from Settings → Display Size,
+// read fresh per render like the other cosmetic knobs in this file rather
+// than cached, since a render is cheap and infrequent enough not to need it.
+function lineWidthScale() {
+    return parseFloat(window.localStorage?.getItem('chartLineWidth') || '1.0');
+}
+
 function dashType(dash) {
     if (dash === 'dot') return 'dotted';
     if (dash === 'dash' || dash === 'longdash') return 'dashed';
@@ -102,7 +110,7 @@ function markerData(layout, axisIndex) {
             xAxis: shape.x0,
             lineStyle: {
                 color: shape.line?.color,
-                width: shape.line?.width || 1,
+                width: (shape.line?.width || 1) * lineWidthScale(),
                 type: dashType(shape.line?.dash)
             }
         }))
@@ -141,7 +149,7 @@ function seriesOptions(traces, layout) {
             clip: true,
             lineStyle: {
                 color: trace.line?.color,
-                width: trace.line?.width || 2,
+                width: (trace.line?.width || 2) * lineWidthScale(),
                 type: dashType(trace.line?.dash)
             },
             itemStyle: { color: trace.line?.color },

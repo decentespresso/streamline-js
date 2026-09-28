@@ -2555,10 +2555,24 @@ function getUiZoomLabel() {
     return Object.entries(UI_ZOOM_MAP).find(([, v]) => v === stored)?.[0] ?? 'Medium';
 }
 
+// Multiplier on every chart's drawn line width (echarts-renderer.js) — the
+// live dashboard chart, the profile selector's preview, and the profile
+// editor's step preview all read this, since they share that one renderer.
+const CHART_LINE_WIDTH_MAP = { 'Thin': '0.6', 'Normal': '1.0', 'Thick': '1.5', 'Extra Thick': '2.0' };
+
+function getChartLineWidthLabel() {
+    const stored = localStorage.getItem('chartLineWidth') || '1.0';
+    return Object.entries(CHART_LINE_WIDTH_MAP).find(([, v]) => v === stored)?.[0] ?? 'Normal';
+}
+
 export function renderFontSizeSettings() {
     const current = getUiZoomLabel();
     const options = Object.keys(UI_ZOOM_MAP).map(label =>
         `<option${label === current ? ' selected' : ''}>${label}</option>`
+    ).join('');
+    const currentLineWidth = getChartLineWidthLabel();
+    const lineWidthOptions = Object.keys(CHART_LINE_WIDTH_MAP).map(label =>
+        `<option${label === currentLineWidth ? ' selected' : ''}>${label}</option>`
     ).join('');
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
@@ -2581,20 +2595,53 @@ export function renderFontSizeSettings() {
                     </p>
                 </div>
             </div>
+
+            <!-- Divider -->
+            <div class="h-0 relative w-full">
+                <hr class="border-t border-[#c9c9c9] w-full" />
+            </div>
+
+            <div class="content-stretch flex flex-col items-start relative w-full">
+                <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
+                    <div class="content-stretch flex items-center justify-between relative w-full">
+                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[#385a92] text-[30px]">
+                            <p class="leading-[1.2]" data-i18n-key="Chart Line Width">Chart Line Width</p>
+                        </div>
+                        <select id="chart-line-width-select" class="bg-[#385a92] border-2 border-[#385a92] border-solid h-[62.88px] rounded-[2617.374px] w-[220px] text-white text-[24px] p-2">
+                            ${lineWidthOptions}
+                        </select>
+                    </div>
+                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the line thickness on the shot chart and profile previews.">
+                        Adjust the line thickness on the shot chart and profile previews.
+                    </p>
+                </div>
+            </div>
         </div>
     `;
 }
 
 function initFontSizeSettings() {
     const select = document.getElementById('text-size-select');
-    if (!select) return;
-    select.addEventListener('change', (e) => {
-        const multiplier = UI_ZOOM_MAP[e.target.value] ?? '1.0';
-        localStorage.setItem('uiZoom', multiplier);
-        // scaling.js only re-reads uiZoom inside its resize handler — kick it
-        // so the new size applies immediately instead of after the next reload.
-        window.dispatchEvent(new Event('resize'));
-    });
+    if (select) {
+        select.addEventListener('change', (e) => {
+            const multiplier = UI_ZOOM_MAP[e.target.value] ?? '1.0';
+            localStorage.setItem('uiZoom', multiplier);
+            // scaling.js only re-reads uiZoom inside its resize handler — kick it
+            // so the new size applies immediately instead of after the next reload.
+            window.dispatchEvent(new Event('resize'));
+        });
+    }
+
+    const lineWidthSelect = document.getElementById('chart-line-width-select');
+    if (lineWidthSelect) {
+        lineWidthSelect.addEventListener('change', (e) => {
+            const multiplier = CHART_LINE_WIDTH_MAP[e.target.value] ?? '1.0';
+            localStorage.setItem('chartLineWidth', multiplier);
+            // echarts-renderer.js reads this fresh on every render — force one now
+            // so it applies immediately rather than on the next chart update.
+            document.dispatchEvent(new CustomEvent('streamline:chartlinewidthchange'));
+        });
+    }
 }
 
 export function renderTempUnitSettings() {
