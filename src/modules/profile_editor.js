@@ -1314,7 +1314,15 @@ function renderSettingsTab() {
                 _sessionImportedIds.push(sourceRecord.id);
             }
         }
-        editorState.profile = deepCopy(newProfile);
+        // Normalize on the way in, same as every other entry point (the plain
+        // open-existing-profile path below, and saveDraftEdit's baseline) --
+        // without it, an imported profile carrying legacy off-pump pressure/flow
+        // keys reads as "changed" the instant it lands (saveProfile's comparison
+        // normalizes the source before diffing, so the raw copy never matches),
+        // which forks a save attempt the server then dedups back onto the very
+        // record just imported: "This change matches an existing profile" on a
+        // completely untouched import.
+        editorState.profile = normalizeLegacySteps(deepCopy(newProfile));
         editorState.sourceProfileRecord = sourceRecord || null;
         editorState.sourceProfileId = sourceRecord?.id || null;
         _baselineProfileJson = JSON.stringify(editorState.profile);
@@ -1322,6 +1330,14 @@ function renderSettingsTab() {
         if (titleDisplay) titleDisplay.textContent = editorState.profile.title || 'Untitled Profile';
         renderStepCards();
         renderSettingsTab();
+        // iPadOS: the native file-picker sheet (Upload Local File) or the
+        // on-screen keyboard (Import from Share Code) can leave scaling.js's
+        // transform sized for the momentarily shrunk viewport if the browser's
+        // own resize/visualViewport event doesn't fire reliably once it's
+        // dismissed -- nudge the same recovery path orientationchange and
+        // fullscreenchange already rely on, so Save/Cancel don't end up
+        // transformed off-screen after a fresh import.
+        setTimeout(() => window.dispatchEvent(new Event('resize')), 200);
     }
 
     if (isNewProfile) {
