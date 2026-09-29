@@ -275,7 +275,11 @@ function roundTo(value, step) {
 // ─── Spinner Factory ────────────────────────────────────────────────────────
 
 function createSpinner(initialValue, step, unit, onChange, opts = {}) {
-    const { min, max, disabled } = opts;
+    // displaySize: Figma's settings-row values aren't all the same size --
+    // Preheat Water Tank is 32px (scaled 24px, the default) but Flow Range,
+    // Pressure Range, Weight and Volume are 34px (scaled 25.5px) -- so callers
+    // matching the latter pass displaySize: 25.5 explicitly.
+    const { min, max, disabled, displaySize = 24 } = opts;
     let value = typeof initialValue === 'number' ? initialValue : parseFloat(initialValue) || 0;
     let debounceTimer = null;
 
@@ -289,7 +293,10 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
     minusBtn.setAttribute('aria-label', 'Decrease');
 
     const display = document.createElement('span');
-    display.className = 'font-bold text-[24px] text-center w-[150px] text-[var(--text-primary)]';
+    // Tailwind's scanner needs literal class strings (a template-interpolated
+    // arbitrary value like text-[${displaySize}px] won't be picked up), so the
+    // two sizes this editor actually uses are spelled out and selected here.
+    display.className = `font-bold ${displaySize === 25.5 ? 'text-[25.5px]' : 'text-[24px]'} text-center w-[150px] text-[var(--text-primary)]`;
 
     const plusBtn = document.createElement('button');
     plusBtn.type = 'button';
@@ -985,12 +992,12 @@ function renderStepCards() {
             hCell.appendChild(chevRight);
         } else {
             const label = document.createElement('span');
-            label.className = 'text-[24px] font-bold text-center leading-tight';
+            label.className = 'text-[24px] text-center leading-tight';
             const numSpan = document.createElement('span');
-            numSpan.className = 'text-[var(--text-primary)]';
+            numSpan.className = 'font-semibold text-[var(--text-primary)]';
             numSpan.textContent = `${index + 1}. `;
             const nameSpan = document.createElement('span');
-            nameSpan.className = 'text-[var(--button-primary-bg)]';
+            nameSpan.className = 'font-bold text-[var(--button-primary-bg)]';
             nameSpan.textContent = step.name || '';
             label.appendChild(numSpan);
             label.appendChild(nameSpan);
@@ -1683,7 +1690,7 @@ function renderSettingsTab() {
                 // Creating one on every step of the pump type would flatten a
                 // profile that deliberately limits a single step.
                 (val) => limitedSteps(pump).forEach(step => { step.limiter.range = val; }),
-                { min: 0, max: 5, disabled: !hasLimiter }
+                { min: 0, max: 5, disabled: !hasLimiter, displaySize: 25.5 }
             );
         };
 
@@ -1697,10 +1704,10 @@ function renderSettingsTab() {
 
     form.appendChild(settingsSectionRow(getTranslation('Stop At'), [
         { label: getTranslation('Weight'), control: createSpinner(
-            profile.target_weight || 0, 0.1, 'g', (val) => { editorState.profile.target_weight = val; }, { min: 0, max: 1000 }
+            profile.target_weight || 0, 0.1, 'g', (val) => { editorState.profile.target_weight = val; }, { min: 0, max: 1000, displaySize: 25.5 }
         ) },
         { label: getTranslation('Volume'), control: createSpinner(
-            profile.target_volume || 0, 1, 'ml', (val) => { editorState.profile.target_volume = val; }, { min: 0, max: 500 }
+            profile.target_volume || 0, 1, 'ml', (val) => { editorState.profile.target_volume = val; }, { min: 0, max: 500, displaySize: 25.5 }
         ) },
     ]));
 
