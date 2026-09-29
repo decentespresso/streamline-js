@@ -3,7 +3,7 @@ import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
 import { initResizablePanels, showToast, initFullscreenHandler, updateProfileName, setupPressAndHold } from './ui.js';
-import { sendProfile, getWorkflow, updateWorkflow, callPluginEndpoint, getPluginSettings, setPluginSettings, verifyVisualizerCredentials, deleteProfile, updateProfileVisibility, API_BASE_URL } from './api.js';
+import { sendProfile, getWorkflow, updateWorkflow, callPluginEndpoint, getPluginSettings, verifyVisualizerCredentials, deleteProfile, updateProfileVisibility, getProfileLineage } from './api.js';
 import { initChart, plotProfile } from './chart.js';
 import { translatePage, getTranslation } from './i18n.js';
 import { loadPage } from './router.js';
@@ -346,9 +346,7 @@ function initModals() {
 let selectedProfileKey = null;
 let isShowingHidden = false; // State to track if hidden profiles should be shown
 let isSearching = false; // State to track if search mode is active
-const LONG_PRESS_DURATION = 400; // ms
 const FAV_COUNT = 5;
-let favoriteButtons = [];
 
 // Suppress browser-default text selection, context menu, tap-highlight, drag, and
 // iOS callout across an entire subtree. Inputs/textareas/contenteditable are
@@ -380,6 +378,145 @@ function getEyeIconSVG(strokeColor) {
     return `<svg aria-hidden="true" class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
+// Quick-hide affordance on the selected row (Figma: inline eye-off icon).
+function getEyeOffIconSVG(strokeColor) {
+    return `<svg aria-hidden="true" class="w-[30px] h-[30px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L57 57" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/></svg>`;
+}
+
+// Shared by the row context menu's "Hide" item and the selected-row inline
+// eye-off icon so both stay in sync with the draft-vs-real-profile distinction.
+async function hideOrDeleteProfile(key, profileRecord) {
+    if (profileRecord.isDraft) {
+        // A draft never reached the server — nothing to hide there, and
+        // deleteOrHideProfile would 404 trying. Just drop the local copy.
+        await deleteProfileDraft(key);
+    } else {
+        await deleteOrHideProfile(key, { forceHide: true });
+    }
+    const container = document.getElementById('profile-list');
+    if (container) {
+        const item = container.querySelector(`[data-profile-key="${key}"]`);
+        if (item) item.click(); else updateSelectedProfileView(null);
+    }
+    if (profileRecord.isDraft) document.dispatchEvent(new CustomEvent('profiles-updated'));
+}
+
+// Short, human-readable summary of what a Reset to `other` would actually
+// change versus `current` -- shown next to each row's date so picking a
+// version isn't a blind guess from timestamps alone. Execution fields only
+// (steps, shot parameters) -- the same fields REA hashes into the profile
+// id -- so a title-only rename never shows up here, matching the
+// PRESENTATION_FIELDS split profile_editor.js's saveProfile uses.
+const DIFF_FIELD_LABELS = [
+    ['target_weight', 'target weight'],
+    ['target_volume', 'target volume'],
+    ['beverage_type', 'beverage type'],
+    ['tank_temperature', 'tank temperature'],
+    ['target_volume_count_start', 'pre-infusion end'],
+];
+function summarizeProfileDiff(current, other) {
+    if (!current || !other) return '';
+    const parts = [];
+    const stepsA = current.steps || [];
+    const stepsB = other.steps || [];
+    if (stepsA.length !== stepsB.length) {
+        parts.push(`${stepsB.length} step${stepsB.length === 1 ? '' : 's'}`);
+    } else {
+        let changed = 0;
+        for (let i = 0; i < stepsA.length; i++) {
+            if (JSON.stringify(stepsA[i]) !== JSON.stringify(stepsB[i])) changed++;
+        }
+        if (changed) parts.push(`${changed} step${changed === 1 ? '' : 's'} changed`);
+    }
+    for (const [field, label] of DIFF_FIELD_LABELS) {
+        if ((current[field] ?? null) !== (other[field] ?? null)) parts.push(label);
+    }
+    return parts.length ? parts.join(', ') : 'No changes';
+}
+
+// Version picker for the Reset flow. Returns the chosen ProfileRecord, or
+// null on cancel. Picking a row selects it; Confirm applies it -- a row used
+// to restore on the single tap that selected it, which put an unconfirmed,
+// destructive profile swap one stray tap away. `currentProfile` is what a
+// row's date-and-summary line is diffed against -- the profile Reset would
+// actually replace.
+function promptVersionRestore(versions, currentProfile) {
+    return new Promise((resolve) => {
+        const ROW_BASE     = 'text-left px-[16px] py-[14px] rounded-[10px] border-2 bg-[var(--box-color)] cursor-pointer';
+        const ROW_IDLE     = `${ROW_BASE} border-[var(--border-color)] hover:border-[var(--mimoja-blue)]`;
+        const ROW_SELECTED = `${ROW_BASE} border-[var(--mimoja-blue)]`;
+
+        const dlg = document.createElement('dialog');
+        dlg.className = 'pe-history-dialog rounded-[16px] bg-[var(--box-color)] p-0 border border-[var(--border-color)] max-w-[560px] w-[90vw] shadow-2xl';
+        dlg.style.marginTop = '8vh';
+        dlg.style.marginBottom = 'auto';
+
+        dlg.innerHTML = `
+            <div class="flex flex-col gap-[16px] p-[24px]">
+                <h3 class="text-[24px] font-bold text-[var(--text-primary)]">${getTranslation('Version')}</h3>
+                <div data-rows class="flex flex-col gap-[10px] max-h-[46vh] overflow-y-auto"></div>
+                <div class="flex flex-wrap justify-end gap-[12px] mt-[8px]">
+                    <button type="button" data-act="cancel" class="px-[18px] py-[10px] rounded-[10px] bg-[var(--button-grey)] text-[var(--text-primary)] text-[20px] font-semibold cursor-pointer">${getTranslation('Cancel')}</button>
+                    <button type="button" data-act="ok" class="hidden px-[18px] py-[10px] rounded-[10px] bg-[var(--mimoja-blue)] text-white text-[20px] font-semibold cursor-pointer">${getTranslation('Confirm')}</button>
+                </div>
+            </div>`;
+
+        const rowsHost  = dlg.querySelector('[data-rows]');
+        const confirmBtn = dlg.querySelector('[data-act="ok"]');
+        let selected = null;
+
+        // Rows are built as DOM, not interpolated markup: the title is
+        // user-supplied text and this dialog is rendered with innerHTML.
+        const rowBtns = versions.map((v, i) => {
+            const when  = new Date(v.createdAt);
+            const label = isNaN(when.getTime()) ? '' : when.toLocaleString();
+            const summary = summarizeProfileDiff(currentProfile, v.profile);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = ROW_IDLE;
+            btn.dataset.idx = String(i);
+            btn.setAttribute('aria-pressed', 'false');
+
+            const title = document.createElement('div');
+            title.className = 'text-[20px] font-semibold text-[var(--text-primary)]';
+            title.textContent = v.profile?.title || 'Untitled';
+
+            const stamp = document.createElement('div');
+            stamp.className = 'text-[16px] text-[var(--text-primary)]';
+            stamp.style.opacity = '0.6';
+            stamp.textContent = summary ? `${label} · ${summary}` : label;
+
+            btn.appendChild(title);
+            btn.appendChild(stamp);
+            btn.addEventListener('click', () => {
+                selected = v;
+                rowBtns.forEach((b) => {
+                    const on = b === btn;
+                    b.className = on ? ROW_SELECTED : ROW_IDLE;
+                    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+                confirmBtn.classList.remove('hidden');
+            });
+
+            rowsHost.appendChild(btn);
+            return btn;
+        });
+
+        function done(result) {
+            try { dlg.close(); } catch (_) {}
+            dlg.remove();
+            resolve(result);
+        }
+
+        dlg.querySelector('[data-act="cancel"]').addEventListener('click', () => done(null));
+        confirmBtn.addEventListener('click', () => done(selected));
+        dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });
+
+        document.body.appendChild(dlg);
+        dlg.showModal();
+    });
+}
 
 // Copied from profileManager.js to keep that module's interface clean
 // async function verifyProfileChange(sentProfileTitle, retries = 5, delay = 300) {
@@ -402,6 +539,21 @@ function getEyeIconSVG(strokeColor) {
 // }
 
 let isConfirmingProfile = false;
+
+// Reflects why the user landed here: a long press on an unassigned/replaceable
+// favorite button on the main page routes here with pendingAssignmentIndex set
+// (see profileManager.js handleProfileClick/openFavoriteContextMenu) — that is
+// now the only way to assign a favorite, so the header button must say so
+// instead of a generic CONFIRM.
+function applyConfirmButtonLabel(button) {
+    const pendingAssignmentIndex = sessionStorage.getItem('pendingAssignmentIndex');
+    const parsedIndex = pendingAssignmentIndex !== null ? parseInt(pendingAssignmentIndex) : NaN;
+    if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < FAV_COUNT) {
+        button.textContent = `${getTranslation('ASSIGN TO')} #${parsedIndex + 1}`;
+    } else {
+        button.textContent = getTranslation('CONFIRM');
+    }
+}
 
 async function handleConfirm() {
     if (isConfirmingProfile) return;
@@ -509,6 +661,37 @@ function handleCancel() {
 }
 
 
+const NOTES_TRUNCATE_LENGTH = 220;
+
+function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Notes come from profile JSON (uploaded files, imports) so they're untrusted
+// text -- always escape before injecting. Truncates long notes behind a
+// READ MORE/READ LESS toggle (Figma). The toggle button is recreated on every
+// call, so there is never a stale listener to clean up.
+function renderProfileNotes(notesElement, rawNotes, expanded = false) {
+    const safe = escapeHtml(rawNotes || 'No notes for this profile.');
+    const isLong = safe.length > NOTES_TRUNCATE_LENGTH;
+    const body = isLong && !expanded ? `${safe.slice(0, NOTES_TRUNCATE_LENGTH).trim()}&hellip;` : safe;
+    const toggleLabel = expanded ? 'READ LESS' : 'READ MORE';
+    const toggle = isLong ? ` <button type="button" class="font-bold text-[var(--mimoja-blue)]" data-notes-toggle>${toggleLabel}</button>` : '';
+    notesElement.innerHTML = `<p>${body}${toggle}</p>`;
+    notesElement.querySelector('[data-notes-toggle]')?.addEventListener('click', () => {
+        renderProfileNotes(notesElement, rawNotes, !expanded);
+    });
+}
+
+// RESET only makes sense on a saved copy (has a parentId to revert to) --
+// an original profile has nothing to reset, so the button stays out of the
+// way instead of being clickable just to show an error toast.
+function updateResetButtonVisibility(profileRecord) {
+    const btn = document.getElementById('reset_btn');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !profileRecord?.parentId);
+}
+
 function updateSelectedProfileView(profileItem) {
     console.log('updateSelectedProfileView: Updating selected profile view');
     if (!profileItem) {
@@ -524,6 +707,7 @@ function updateSelectedProfileView(profileItem) {
         }
         plotProfile(null); // Clear chart
         selectedProfileKey = null;
+        updateResetButtonVisibility(null);
         return;
     }
 
@@ -542,6 +726,7 @@ function updateSelectedProfileView(profileItem) {
 
     const profileRecord = availableProfiles[selectedProfileKey];
     console.log('updateSelectedProfileView: Profile record found:', !!profileRecord);
+    updateResetButtonVisibility(profileRecord);
 
     if (profileRecord && profileRecord.profile) {
         const profile = profileRecord.profile;
@@ -549,7 +734,7 @@ function updateSelectedProfileView(profileItem) {
         // Update notes
         const notesElement = document.getElementById('profile_notes');
         if (notesElement) {
-            notesElement.innerHTML = `<p>${profile.notes || 'No notes for this profile.'}</p>`;
+            renderProfileNotes(notesElement, profile.notes);
             console.log('updateSelectedProfileView: Updated profile notes');
         }
 
@@ -571,21 +756,7 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
     const isHidden = profileRecord.visibility === 'hidden';
     const isDraft = profileRecord.isDraft === true;
 
-    async function doHide() {
-        if (isDraft) {
-            // A draft never reached the server — nothing to hide there, and
-            // deleteOrHideProfile would 404 trying. Just drop the local copy.
-            await deleteProfileDraft(key);
-        } else {
-            await deleteOrHideProfile(key, { forceHide: true });
-        }
-        const container = document.getElementById('profile-list');
-        if (container) {
-            const item = container.querySelector(`[data-profile-key="${key}"]`);
-            if (item) item.click(); else updateSelectedProfileView(null);
-        }
-        if (isDraft) document.dispatchEvent(new CustomEvent('profiles-updated'));
-    }
+    const doHide = () => hideOrDeleteProfile(key, profileRecord);
 
     async function doAssign(slotIndex) {
         try {
@@ -695,7 +866,70 @@ function renderProfiles() {
             container.appendChild(h);
         };
 
-        const renderProfileItem = ([key, profileRecord]) => {
+        // A family with no real profile named just the base ("A-Flow") gets
+        // this plain, unselectable label as its head instead -- no
+        // data-profile-key, so selectItem's full-list sweep and the initial
+        // auto-select logic both skip right over it.
+        const renderFamilyHeader = (base) => {
+            const h = document.createElement('div');
+            h.className = 'p-3 text-[30px] text-[var(--text-primary)] select-none';
+            h.setAttribute('role', 'presentation');
+            h.textContent = base;
+            container.appendChild(h);
+        };
+
+        // Group profiles that share a name family: either a common prefix
+        // before a "/", "•" or ":" separator ("A-Flow / default-dark",
+        // "A-Flow / default-light", ... -> family "A-Flow"), or -- when there
+        // is no separator -- an auto-suffixed duplicate title ("Adaptive v2"
+        // / "Adaptive v2 (2)" -> family "Adaptive v2"). Pure title match,
+        // unrelated to parentId/clone lineage -- the "from X" badge below
+        // still covers that separately.
+        const isProfileVisible = (rec) => isShowingHidden || rec.visibility !== 'hidden';
+        const familyBaseTitle = (title) => {
+            const t = title || '';
+            const sep = t.match(/^(.*?)\s*[/•:]\s*\S.*$/);
+            if (sep) return sep[1].trim();
+            return t.replace(/\s*\(\d+\)\s*$/, '').trim();
+        };
+        const familyGroups = new Map();
+        for (const [key, rec] of sortedProfiles) {
+            const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
+            const base = familyBaseTitle(title);
+            if (!familyGroups.has(base)) familyGroups.set(base, []);
+            familyGroups.get(base).push([key, rec, title]);
+        }
+        // Headed family: one member's own title IS the bare base name, so it
+        // renders normally at depth 0 and the rest nest under it (existing
+        // profile as head). Headless family (no member is titled just the
+        // base -- "A-Flow" itself isn't a profile): a synthetic, unselectable
+        // label row stands in as the head instead.
+        const childrenByFamily = new Map();
+        const syntheticFamilies = new Map();
+        for (const [base, members] of familyGroups) {
+            const visibleMembers = members.filter(([, rec]) => isProfileVisible(rec));
+            if (visibleMembers.length < 2) continue;
+            const headIdx = visibleMembers.findIndex(([, , title]) => title === base);
+            if (headIdx !== -1) {
+                const [headKey] = visibleMembers[headIdx];
+                const children = visibleMembers.filter((_, i) => i !== headIdx).map(([k, rec]) => [k, rec]);
+                if (children.length > 0) childrenByFamily.set(headKey, children);
+            } else {
+                syntheticFamilies.set(base, {
+                    members: visibleMembers.map(([k, rec]) => [k, rec]),
+                    isDefault: visibleMembers[0][1].isDefault === true,
+                });
+            }
+        }
+        const nestedChildKeys = new Set();
+        for (const kids of childrenByFamily.values()) {
+            for (const [k] of kids) nestedChildKeys.add(k);
+        }
+        for (const { members } of syntheticFamilies.values()) {
+            for (const [k] of members) nestedChildKeys.add(k);
+        }
+
+        const renderProfileItem = ([key, profileRecord], depth = 0) => {
             const profile = profileRecord.profile;
             if (!profile) return;
 
@@ -720,22 +954,65 @@ function renderProfiles() {
             div.setAttribute('aria-label', displayTitle);
             div.tabIndex = -1;
 
+            // Tree indent step matches the Figma spec (node 2662-1377,
+            // Group 315/316: solid black 2px lines) scaled by this app's
+            // usual 0.75 design-px factor (70px indent -> 52px). Each row
+            // draws its own "L" corner (border-left down to its own
+            // mid-height, border-bottom turning right) as ONE element, so it
+            // is always connected by construction -- adjacent siblings'
+            // left borders chain into what reads as one continuous trunk
+            // with a branch off it per row, matching Group 315/316.
+            if (depth > 0) {
+                const indent = depth * 52;
+                div.classList.add('relative');
+                div.style.paddingLeft = `${12 + indent}px`;
+                const connector = document.createElement('span');
+                connector.setAttribute('aria-hidden', 'true');
+                connector.className = 'absolute top-0 bottom-1/2 pointer-events-none';
+                connector.style.left = `${12 + indent - 20}px`;
+                connector.style.width = '20px';
+                connector.style.borderLeft = '2px solid black';
+                connector.style.borderBottom = '2px solid black';
+                div.appendChild(connector);
+            }
+
             const leftSide = document.createElement('div');
             leftSide.className = 'flex items-baseline gap-2 min-w-0';
             const titleSpan = document.createElement('span');
             titleSpan.textContent = displayTitle;
             leftSide.appendChild(titleSpan);
 
-            // Lineage badge — "from <parent>" when this is a user-edited clone of a default
+            // Lineage badge only when this row could not be nested under its
+            // parent (parent hidden/filtered out) -- otherwise tree position
+            // already conveys it.
             const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
             const parentTitle = parentRecord?.profile?.title;
-            if (parentTitle) {
+            if (parentTitle && !nestedChildKeys.has(key)) {
                 const badge = document.createElement('span');
                 badge.className = 'text-[16px] px-2 py-0.5 rounded-full bg-white/15 whitespace-nowrap';
                 badge.textContent = `from ${translateProfileTitle(parentTitle)}`;
                 leftSide.appendChild(badge);
             }
             div.appendChild(leftSide);
+
+            const createHideButton = () => {
+                const hideButton = document.createElement('button');
+                hideButton.className = 'profile-hide-btn p-1 rounded-full flex-shrink-0';
+                hideButton.title = 'Hide this profile';
+                hideButton.setAttribute('aria-label', `Hide profile ${displayTitle}`);
+                hideButton.innerHTML = getEyeOffIconSVG('currentColor');
+                hideButton.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await hideOrDeleteProfile(key, profileRecord);
+                    renderProfiles();
+                });
+                hideButton.addEventListener('pointerdown', (e) => e.stopPropagation());
+                return hideButton;
+            };
+
+            if (!isHidden && key === selectedProfileKey) {
+                div.appendChild(createHideButton());
+            }
 
             if (isHidden) {
                 div.classList.add('text-[var(--low-contrast-white)]');
@@ -768,6 +1045,7 @@ function renderProfiles() {
                 for(const item of allItems) {
                     item.classList.remove('bg-[#385a92]', 'text-white', 'rounded-[8px]', 'bg-gray-200', 'text-black');
                     item.setAttribute('aria-selected', 'false');
+                    item.querySelector('.profile-hide-btn')?.remove();
                     const itemKey = item.dataset.profileKey;
                     if (itemKey && availableProfiles[itemKey] && availableProfiles[itemKey].visibility === 'hidden') {
                         item.classList.add('text-[var(--low-contrast-white)]');
@@ -783,6 +1061,7 @@ function renderProfiles() {
                 } else {
                     clickedItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
                     clickedItem.classList.remove('text-[#121212]');
+                    clickedItem.appendChild(createHideButton());
                 }
 
                 clickedItem.setAttribute('aria-selected', 'true');
@@ -807,45 +1086,104 @@ function renderProfiles() {
             });
 
             container.appendChild(div);
+
+            const kids = childrenByFamily.get(key);
+            if (kids) kids.forEach(child => renderProfileItem(child, depth + 1));
+
+            return div;
         };
 
-        // Partition: built-in defaults vs user-owned (kv records, includes clones)
-        const defaultsList = sortedProfiles.filter(([, r]) => r.isDefault === true);
-        const yoursList = sortedProfiles.filter(([, r]) => r.isDefault !== true);
+        // Resolve the initial selection BEFORE building any rows -- the
+        // per-row render logic below (hide icon, selected background) keys
+        // off selectedProfileKey, so it has to be set first or the very row
+        // it points at renders as if nothing were selected.
+        let justAutoSelected = false;
+        if (!selectedProfileKey) {
+            // Honor a return-from-editor hint, then the loaded profile, before
+            // falling back to the first visible item.
+            const lastEditedKey = sessionStorage.getItem('lastEditedProfileKey');
+            let initialKey = null;
+            if (lastEditedKey) {
+                sessionStorage.removeItem('lastEditedProfileKey');
+                if (availableProfiles[lastEditedKey] && isProfileVisible(availableProfiles[lastEditedKey])) {
+                    initialKey = lastEditedKey;
+                }
+            }
+            if (!initialKey) {
+                const activeKey = findActiveProfileKey();
+                if (activeKey && availableProfiles[activeKey] && isProfileVisible(availableProfiles[activeKey])) {
+                    initialKey = activeKey;
+                }
+            }
+            selectionIsFallback = !initialKey;
+            if (!initialKey) {
+                const firstVisible = sortedProfiles.find(([, r]) => isProfileVisible(r));
+                initialKey = firstVisible ? firstVisible[0] : null;
+            }
+            if (initialKey) {
+                selectedProfileKey = initialKey;
+                justAutoSelected = true;
+            }
+        }
+
+        // Top-level rows: real profiles not absorbed into a family (as a head
+        // or a child either way), plus one synthetic entry per headless
+        // family -- merged and re-sorted together so a family sits wherever
+        // its base name falls alphabetically, same as any other row.
+        const topLevelEntries = [];
+        for (const [key, rec] of sortedProfiles) {
+            if (nestedChildKeys.has(key)) continue;
+            const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
+            topLevelEntries.push({ type: 'profile', key, rec, sortLabel: title, isDefault: rec.isDefault === true });
+        }
+        for (const [base, info] of syntheticFamilies) {
+            topLevelEntries.push({ type: 'family', base, members: info.members, sortLabel: base, isDefault: info.isDefault });
+        }
+        topLevelEntries.sort((a, b) => a.sortLabel.localeCompare(b.sortLabel));
+
+        const renderTopLevelEntry = (entry) => {
+            if (entry.type === 'family') {
+                renderFamilyHeader(entry.base);
+                entry.members.forEach(member => renderProfileItem(member, 1));
+            } else {
+                renderProfileItem([entry.key, entry.rec], 0);
+            }
+        };
+
+        // Partition: built-in defaults vs user-owned (kv records, includes clones).
+        // Nested children are rendered by their parent's recursive call above,
+        // not as their own top-level row.
+        const defaultsList = topLevelEntries.filter((e) => e.isDefault);
+        const yoursList = topLevelEntries.filter((e) => !e.isDefault);
 
         if (yoursList.length > 0) {
             renderSectionHeader('Your Profiles');
-            yoursList.forEach(renderProfileItem);
+            yoursList.forEach(renderTopLevelEntry);
         }
         if (defaultsList.length > 0) {
             renderSectionHeader('Built-In Profiles');
-            defaultsList.forEach(renderProfileItem);
+            defaultsList.forEach(renderTopLevelEntry);
         }
 
         console.log('renderProfiles: Total visible profiles:', visibleProfileCount);
-        if (visibleProfileCount > 0 && !selectedProfileKey) {
-            // Honor a return-from-editor hint, then the loaded profile, before
-            // falling back to first item.
-            const lastEditedKey = sessionStorage.getItem('lastEditedProfileKey');
-            let initialItem = null;
-            if (lastEditedKey) {
-                initialItem = container.querySelector(`[data-profile-key="${CSS.escape(lastEditedKey)}"]`);
-                sessionStorage.removeItem('lastEditedProfileKey');
-            }
-            if (!initialItem) {
-                const activeKey = findActiveProfileKey();
-                if (activeKey) initialItem = container.querySelector(`[data-profile-key="${CSS.escape(activeKey)}"]`);
-            }
-            selectionIsFallback = !initialItem;
-            if (!initialItem) initialItem = container.querySelector('[data-profile-key]');
-            if (initialItem) {
-                initialItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
-                initialItem.setAttribute('aria-selected', 'true');
-                updateSelectedProfileView(initialItem);
+        if (justAutoSelected) {
+            const selectedEl = container.querySelector(`[data-profile-key="${CSS.escape(selectedProfileKey)}"]`);
+            if (selectedEl) {
+                updateSelectedProfileView(selectedEl);
                 // The list is taller than the pane and sorted alphabetically, so the
-                // pre-selected item is usually out of view. 'nearest' leaves an
-                // already-visible item alone instead of yanking the list.
-                initialItem.scrollIntoView({ block: 'nearest' });
+                // pre-selected item is usually out of view on open. Center it at eye
+                // level rather than snapped to whichever edge it scrolled in from.
+                // justAutoSelected only fires once per page-open (selectedProfileKey
+                // is reset in initializeProfileSelector and set by hand on every
+                // later click), so this never yanks the list out from under someone
+                // who has since scrolled or picked a row.
+                //
+                // Scrolled by hand on #profile-list itself rather than via
+                // scrollIntoView: that walks every scrollable ancestor, including
+                // the app-wide #scaling-container (overflow:hidden but still a JS
+                // scroll target), which shifts the whole scaled page and clips the
+                // fixed-height subpage header off-screen.
+                container.scrollTop = selectedEl.offsetTop - container.clientHeight / 2 + selectedEl.clientHeight / 2;
             }
         }
 
@@ -859,84 +1197,6 @@ function renderProfiles() {
             container.innerHTML = '<div class="p-3 text-error">Error loading profiles. See console for details.</div>';
         }
     }
-}
-
-async function initFavoriteButtons() {
-    await loadAssignments();
-
-    favoriteButtons = [];
-
-    for (let i = 0; i < FAV_COUNT; i++) {
-        const button = document.getElementById(`assign-fav-btn-${i}`);
-        if (button) {
-            favoriteButtons.push(button);
-        }
-    }
-
-    favoriteButtons.forEach((button, index) => {
-        let pressTimer = null;
-
-        // Browser long-press defaults (text selection, context menu, iOS callout,
-        // tap-highlight, drag) are suppressed at the page root via
-        // suppressBrowserActions(). No per-button wiring needed here.
-
-        const startPress = async () => {
-            if (index < 0 || index >= FAV_COUNT) {
-                logger.error(`Invalid button index ${index} in initFavoriteButtons startPress - must be between 0 and ${FAV_COUNT - 1}`);
-                return;
-            }
-            clearTimeout(pressTimer);
-            showToast(`Hold to assign profile.`, 1500, 'info');
-            pressTimer = setTimeout(async () => {
-                if (selectedProfileKey) {
-                    let assignResult = 'unchanged';
-                    try {
-                        assignResult = await assignProfile(index, selectedProfileKey);
-                    } catch (e) {
-                        logger.warn('Caught expected error from assignProfile modal close:', e.message);
-                    }
-                    const profileRecord = availableProfiles[selectedProfileKey];
-                    if (profileRecord && profileRecord.profile) {
-                        const profile = profileRecord.profile;
-                        const meta = profileRecord.metadata || {};
-                        const savedGrind = meta.grinderSetting ?? null;
-                        const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-                        const effectiveDose = meta.targetDoseWeight ?? (profile.dose_weight || 18);
-                        const effectiveYield = meta.targetYield ?? parseFloat(profile.target_weight);
-                        const displayYield = isNaN(effectiveYield) ? 0 : effectiveYield;
-                        try {
-                            await updateWorkflow({
-                                profile,
-                                context: { targetDoseWeight: effectiveDose, targetYield: displayYield, ...grindContext }
-                            });
-                            setActiveProfile(selectedProfileKey);
-                            updateProfileName(profile.title);
-                        } catch (e) {
-                            logger.error('Failed to send profile to machine after assignment:', e);
-                        }
-                        // Only on a genuinely new assignment — a rejected assign has
-                        // already shown its own error toast.
-                        if (assignResult === 'assigned') {
-                            showToast(`${getTranslation('Assign to favourite {n}').replace('{n}', index + 1)}: ${translateProfileTitle(profile.title)}`, 3000, 'success');
-                        }
-                    }
-                } else {
-                    showToast('Please select a profile from the list to assign it.', 3000, 'error');
-                }
-                pressTimer = null;
-            }, LONG_PRESS_DURATION);
-        };
-
-        const cancelPress = () => {
-            clearTimeout(pressTimer);
-        };
-
-        button.addEventListener('mousedown', startPress);
-        button.addEventListener('mouseup', cancelPress);
-        button.addEventListener('mouseleave', cancelPress);
-        button.addEventListener('touchstart', startPress, { passive: true });
-        button.addEventListener('touchend', cancelPress);
-    });
 }
 
 function initDeleteButton() {
@@ -1552,6 +1812,7 @@ export async function initializeProfileSelector() {
         const newConfirmBtn = confirmBtn.cloneNode(true);
         confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
         newConfirmBtn.addEventListener('click', handleConfirm);
+        applyConfirmButtonLabel(newConfirmBtn);
     }
 
     console.log('initializeProfileSelector: Setting up cancel button');
@@ -1566,43 +1827,42 @@ export async function initializeProfileSelector() {
     initDeleteButton();
     console.log('initializeProfileSelector: Initializing view button');
     initViewButton();
-    console.log('initializeProfileSelector: Initializing favorite buttons');
-    await initFavoriteButtons();
     console.log('initializeProfileSelector: Initializing search button');
     initSearchButton();
     console.log('initializeProfileSelector: Initializing fullscreen handler');
     initFullscreenHandler();
 
 
-    const editProfileBtnRaw = document.getElementById('edit_profile');
-    const editProfileBtn = editProfileBtnRaw ? (() => {
-        const clone = editProfileBtnRaw.cloneNode(true);
-        editProfileBtnRaw.parentNode.replaceChild(clone, editProfileBtnRaw);
-        return clone;
-    })() : null;
-    if (editProfileBtn) {
-        editProfileBtn.addEventListener('click', () => {
-            console.log('[EditBtn] clicked. selectedProfileKey=', selectedProfileKey);
+    const wireEditTrigger = (id) => {
+        const raw = document.getElementById(id);
+        if (!raw) {
+            console.warn(`[EditBtn] #${id} not found in DOM`);
+            return;
+        }
+        const clone = raw.cloneNode(true);
+        raw.parentNode.replaceChild(clone, raw);
+        clone.addEventListener('click', () => {
             if (!selectedProfileKey) {
                 showToast('Select a profile first', 3000, 'error');
                 return;
             }
             const profileRecord = availableProfiles[selectedProfileKey];
-            console.log('[EditBtn] profileRecord=', profileRecord);
-            if (!profileRecord) {
-                console.warn('[EditBtn] profileRecord is null/undefined, aborting');
-                return;
-            }
-            console.log('[EditBtn] Setting window.__pendingEditProfile and navigating...');
+            if (!profileRecord) return;
             window.__pendingEditProfile = profileRecord;
-            console.log('[EditBtn] window.__pendingEditProfile set:', window.__pendingEditProfile?.profile?.title);
             loadPage('src/profiles/profile_editor.html');
         });
-    } else {
-        console.warn('[EditBtn] #edit_profile button not found in DOM');
-    }
+    };
+    wireEditTrigger('edit_profile');
+    wireEditTrigger('edit-profile-name-btn');
 
     // Wire reset button
+    // Reset used to jump exactly one hop up profileRecord.parentId, no matter
+    // how many saves separated the current record from the one that hop
+    // landed on. Older saves are never actually deleted (see saveProfile's
+    // hide+replace overwrite) -- they sit hidden in the lineage, restorable --
+    // so ask which one first instead of guessing.
+    let pendingResetTarget = null;
+
     const resetBtnRaw = document.getElementById('reset_btn');
     const resetBtn = resetBtnRaw ? (() => {
         const clone = resetBtnRaw.cloneNode(true);
@@ -1610,7 +1870,7 @@ export async function initializeProfileSelector() {
         return clone;
     })() : null;
     if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
+        resetBtn.addEventListener('click', async () => {
             if (!selectedProfileKey) {
                 showToast('Select a profile first', 3000, 'error');
                 return;
@@ -1623,9 +1883,35 @@ export async function initializeProfileSelector() {
                 return;
             }
 
+            let lineage;
+            try {
+                lineage = await getProfileLineage(selectedProfileKey);
+            } catch (e) {
+                showToast('Could not load version history', 3000, 'error');
+                return;
+            }
+            // /lineage returns the whole chain -- parents AND children -- so
+            // without this Reset could offer a *later* fork as something to
+            // "revert" to. Strictly older only: it's a revert, never a jump
+            // forward.
+            const currentCreatedAt = new Date(profileRecord.createdAt);
+            const versions = (lineage || [])
+                .filter(r => r.id !== selectedProfileKey && r.profile && new Date(r.createdAt) < currentCreatedAt)
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            if (!versions.length) {
+                showToast('No previous versions to reset to.', 2500, 'info');
+                return;
+            }
+
+            // Always shown, even with a single entry -- one consistent picker
+            // rather than two different popups depending on chain length.
+            const chosen = await promptVersionRestore(versions, profileRecord.profile);
+            if (!chosen) return;
+            pendingResetTarget = chosen;
+
             const title = translateProfileTitle(profileRecord.profile?.title) || 'this profile';
             const msgEl = document.getElementById('reset-profile-msg');
-            if (msgEl) msgEl.textContent = `"${title}" is a saved copy. Resetting will delete it and restore the original. This cannot be undone.`;
+            if (msgEl) msgEl.textContent = `"${title}" is a saved copy. Resetting will delete it and restore the selected version. This cannot be undone.`;
 
             const modal = document.getElementById('reset-profile-modal');
             if (modal) modal.showModal();
@@ -1640,6 +1926,7 @@ export async function initializeProfileSelector() {
     })() : null;
     if (resetCancelBtn) {
         resetCancelBtn.addEventListener('click', () => {
+            pendingResetTarget = null;
             document.getElementById('reset-profile-modal')?.close();
         });
     }
@@ -1653,23 +1940,28 @@ export async function initializeProfileSelector() {
     if (resetConfirmBtn) {
         resetConfirmBtn.addEventListener('click', async () => {
             document.getElementById('reset-profile-modal')?.close();
-            if (!selectedProfileKey) return;
-
-            const profileRecord = availableProfiles[selectedProfileKey];
-            const parentId = profileRecord?.parentId || null;
-            if (!parentId) return;
+            const target = pendingResetTarget;
+            pendingResetTarget = null;
+            if (!selectedProfileKey || !target) return;
 
             try {
                 await deleteProfile(selectedProfileKey);
                 delete availableProfiles[selectedProfileKey];
-                selectedProfileKey = availableProfiles[parentId] ? parentId : null;
+                // The chosen version may be an older, hidden save (saveProfile
+                // hides the predecessor on every overwrite) -- surface it again.
+                if (target.visibility !== 'visible') {
+                    await updateProfileVisibility(target.id, 'visible');
+                    target.visibility = 'visible';
+                }
+                availableProfiles[target.id] = target;
+                selectedProfileKey = availableProfiles[target.id] ? target.id : null;
                 renderProfiles();
                 // updateSelectedProfileView expects the rendered DOM element, not the record
                 const nextItem = selectedProfileKey
                     ? document.querySelector(`#profile-list [data-profile-key="${CSS.escape(selectedProfileKey)}"]`)
                     : null;
                 updateSelectedProfileView(nextItem);
-                showToast('Profile reset to original.', 2500, 'success');
+                showToast('Profile reset.', 2500, 'success');
             } catch (e) {
                 console.error('[ResetProfile] delete failed:', e);
                 showToast(`Failed to reset profile: ${e.message}`, 4000, 'error');
@@ -1677,76 +1969,7 @@ export async function initializeProfileSelector() {
         });
     }
 
-    await initAiGenerateButton();
     console.log('initializeProfileSelector: Initialization complete');
-}
-
-async function initAiGenerateButton() {
-    const link = document.getElementById('ai_generate_profile');
-    if (!link) return;
-
-    try {
-        const resp = await fetch(`${API_BASE_URL}/plugins`);
-        if (!resp.ok) throw new Error('plugins fetch failed');
-        const plugins = await resp.json();
-        const plugin = plugins.find(p => p.id === 'decent-profile.reaplugin');
-        if (!plugin?.loaded) { link.style.display = 'none'; return; }
-    } catch {
-        link.style.display = 'none';
-        return;
-    }
-
-    // No profileGenerated WS subscription here on purpose: a generated profile
-    // must never be auto-imported. The plugin's "upload to Decent" button is the
-    // only path — it uploads on explicit user action. Subscribing here re-imported
-    // the WS's retained last generation on every page open (spurious green toast).
-
-    // Point the link at the SAME reaprime the skin talks to (reaHostname), not a
-    // hardcoded localhost. Otherwise, when reaHostname is a remote/device IP, the
-    // plugin opens on localhost and its "Upload to Decent" POST /api/v1/profiles
-    // saves to a DIFFERENT server than the skin lists from — the profile persists
-    // but never shows up here. API_BASE_URL already encodes host:port.
-    link.href = `${API_BASE_URL}/plugins/decent-profile.reaplugin/ui?layout=baseline`;
-
-    // Set the output format once now (not on click) so the tap can navigate
-    // natively — the plain <a href> (no target) is a same-frame navigation, which
-    // the host intercepts to open the OS browser with the plugin URL (gh#384).
-    setPluginSettings('decent-profile.reaplugin', { profileFormat: 'json-v2' })
-        .catch((err) => logger.warn('Could not set profileFormat=json-v2:', err));
-
-    // The anchor's own same-frame navigation performs the tap; we only add a flag
-    // handler so we know the user left for the plugin. The plugin's "Upload to
-    // Decent" saves via POST /api/v1/profiles, so when the user returns we just
-    // re-pull the library and it appears. Same-frame nav guarantees the skin page
-    // is either hidden (webview -> OS browser) or unloaded (browser), so one of
-    // pageshow/visibilitychange always fires on return.
-    const fresh = link.cloneNode(true); // drop stale listeners
-    link.parentNode.replaceChild(fresh, link);
-    fresh.addEventListener('click', () => { window.__reaAwaitGeneratedProfile = true; });
-
-    // Register the return-listeners once — initAiGenerateButton re-runs on every
-    // dynamic-content-loaded, so guard against stacking duplicate handlers.
-    if (!window.__reaProfileRefreshWired) {
-        window.__reaProfileRefreshWired = true;
-        const refreshIfReturning = async () => {
-            if (!window.__reaAwaitGeneratedProfile) return;
-            if (document.visibilityState === 'hidden') return; // wait until actually shown
-            window.__reaAwaitGeneratedProfile = false;
-            await initProfileManager(); // re-fetch /api/v1/profiles into availableProfiles
-            renderProfiles();
-            // The plugin's "Upload to Decent" also does PUT /workflow, making the
-            // uploaded profile the active one. Re-pull the workflow so #profile-name
-            // (and the dose/grind/steam displays) reflect the new active profile.
-            try {
-                const workflow = await getWorkflow();
-                if (workflow) applyWorkflowToMainPageUI(workflow); // updateName defaults true
-            } catch (e) {
-                logger.warn('Workflow refresh after profile upload failed:', e);
-            }
-        };
-        document.addEventListener('visibilitychange', refreshIfReturning);
-        window.addEventListener('pageshow', refreshIfReturning); // bfcache restore (browser)
-    }
 }
 
 // Call initialization when DOM is ready for traditional page loads

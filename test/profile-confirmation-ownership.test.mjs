@@ -19,6 +19,7 @@ function loadHarness(dependencies) {
         ${source.slice(start, end)}
         return {
             handleConfirm,
+            applyConfirmButtonLabel,
             select(profileKey) { selectedProfileKey = profileKey; }
         };
     `)(dependencies);
@@ -80,4 +81,65 @@ test('profile confirmation pins its selection and rejects overlap', async () => 
     assert.deepEqual(appliedTitles, ['A', 'B']);
     assert.equal(navigationCount, 2);
     assert.equal(alertCount, 0);
+});
+
+// A long press on an unassigned/replaceable favorite button on the main page
+// stashes pendingAssignmentIndex and routes here (profileManager.js
+// handleProfileClick / openFavoriteContextMenu) -- that is now the only way to
+// assign a favorite, so the header button must say so instead of a generic
+// CONFIRM.
+test('confirm button label reflects a pending favorite assignment', () => {
+    const harness = loadHarness({
+        availableProfiles: {},
+        logger: { info() {}, error() {} },
+        alert() {},
+        showToast() {},
+        sessionStorage: { getItem: () => null, removeItem() {} },
+        withSavedBrewTemp: (profile) => profile,
+        assignProfile: async () => 'unchanged',
+        getTranslation: value => value,
+        updateWorkflow: async (w) => w,
+        setActiveProfile() {},
+        applyWorkflowToMainPageUI() {},
+        loadPage() {}
+    });
+
+    const button = { textContent: '' };
+
+    harness.applyConfirmButtonLabel(button);
+    assert.equal(button.textContent, 'CONFIRM', 'no pending assignment falls back to CONFIRM');
+
+    const pendingHarness = loadHarness({
+        availableProfiles: {},
+        logger: { info() {}, error() {} },
+        alert() {},
+        showToast() {},
+        sessionStorage: { getItem: () => '2', removeItem() {} },
+        withSavedBrewTemp: (profile) => profile,
+        assignProfile: async () => 'unchanged',
+        getTranslation: value => value,
+        updateWorkflow: async (w) => w,
+        setActiveProfile() {},
+        applyWorkflowToMainPageUI() {},
+        loadPage() {}
+    });
+    pendingHarness.applyConfirmButtonLabel(button);
+    assert.equal(button.textContent, 'ASSIGN TO #3', 'pending index 2 labels the button as favorite slot 3');
+
+    const outOfRangeHarness = loadHarness({
+        availableProfiles: {},
+        logger: { info() {}, error() {} },
+        alert() {},
+        showToast() {},
+        sessionStorage: { getItem: () => '9', removeItem() {} },
+        withSavedBrewTemp: (profile) => profile,
+        assignProfile: async () => 'unchanged',
+        getTranslation: value => value,
+        updateWorkflow: async (w) => w,
+        setActiveProfile() {},
+        applyWorkflowToMainPageUI() {},
+        loadPage() {}
+    });
+    outOfRangeHarness.applyConfirmButtonLabel(button);
+    assert.equal(button.textContent, 'CONFIRM', 'an out-of-range pending index must not be shown as a slot');
 });
