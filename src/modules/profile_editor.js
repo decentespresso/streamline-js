@@ -1376,18 +1376,18 @@ function renderFlowCalibrationFields(col) {
         wrapper.appendChild(headerRow);
 
         const label = document.createElement('div');
-        // Same label color/width every other section title uses (see
-        // settingsSectionRow); this one was left on --text-primary instead of
-        // --button-primary-bg and without the shared w-[127.5px].
-        // whitespace-nowrap + fitTextToWidth, not break-words: "calibration"
-        // alone is wider than the 127.5px column at 24px, so break-words was
-        // hyphenating it mid-word and stranding a lone "n" on its own third
-        // line. Shrinking to fit one line (the data-fit-text convention other
-        // fixed-width tablet labels use) reads cleanly instead.
-        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 whitespace-nowrap';
+        // Same label color/style every other section title uses (see
+        // settingsSectionRow), but w-[180px] instead of the shared
+        // w-[127.5px): "calibration" alone is wider than 127.5px at this
+        // font-size, so that width either forced a mid-word break (stranding
+        // a lone "n" on its own line) or, if shrunk to fit via fitTextToWidth,
+        // read visibly smaller than every sibling label at a fixed 24px.
+        // 180px fits "Flow" / "calibration" on two whole-word lines at the
+        // same 24px size as everything else -- a one-row exception to the
+        // shared gutter, not a change to it.
+        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[180px] shrink-0';
         label.textContent = getTranslation('Flow calibration');
         headerRow.appendChild(label);
-        fitTextToWidth(label);
 
         const toggleRow = document.createElement('label');
         toggleRow.className = 'flex items-center gap-[15px] text-[20px] text-[var(--text-primary)]'
