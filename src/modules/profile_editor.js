@@ -1379,9 +1379,15 @@ function renderFlowCalibrationFields(col) {
         // Same label color/width every other section title uses (see
         // settingsSectionRow); this one was left on --text-primary instead of
         // --button-primary-bg and without the shared w-[127.5px].
-        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 break-words';
+        // whitespace-nowrap + fitTextToWidth, not break-words: "calibration"
+        // alone is wider than the 127.5px column at 24px, so break-words was
+        // hyphenating it mid-word and stranding a lone "n" on its own third
+        // line. Shrinking to fit one line (the data-fit-text convention other
+        // fixed-width tablet labels use) reads cleanly instead.
+        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 whitespace-nowrap';
         label.textContent = getTranslation('Flow calibration');
         headerRow.appendChild(label);
+        fitTextToWidth(label);
 
         const toggleRow = document.createElement('label');
         toggleRow.className = 'flex items-center gap-[15px] text-[20px] text-[var(--text-primary)]'
@@ -1592,9 +1598,10 @@ const SCROLL_THUMB_HEIGHT = 119.25;
 // match the LEFT (form card) pill down to the RIGHT one's start, rather than
 // the other way around, even though that's not what the Figma reference
 // shows (its Description pill starts below its own header, not level with
-// the header-less form card). topOffset shifts this pill's whole track down
-// by that same header+divider height and shortens its travel range to match,
-// so it still reaches exactly the bottom edge on a full scroll.
+// the header-less form card). The same gap is now mirrored at the bottom of
+// the track (rather than letting the pill run flush to the container's
+// bottom edge on a full scroll) so the two ends read the same on a real
+// tablet instead of only the top having breathing room.
 function updateScrollThumb(containerId, thumbId, topOffset = 0) {
     const container = document.getElementById(containerId);
     const thumb = document.getElementById(thumbId);
@@ -1605,8 +1612,9 @@ function updateScrollThumb(containerId, thumbId, topOffset = 0) {
         return;
     }
     thumb.classList.remove('hidden');
-    const pillHeight = Math.min(SCROLL_THUMB_HEIGHT, container.clientHeight - topOffset);
-    const travel = container.clientHeight - topOffset - pillHeight;
+    const bottomOffset = topOffset;
+    const pillHeight = Math.min(SCROLL_THUMB_HEIGHT, container.clientHeight - topOffset - bottomOffset);
+    const travel = container.clientHeight - topOffset - bottomOffset - pillHeight;
     const top = topOffset + (travel > 0 ? (container.scrollTop / maxScroll) * travel : 0);
     thumb.style.height = `${pillHeight}px`;
     thumb.style.top = `${top}px`;
@@ -2107,10 +2115,32 @@ function createScriptChip({ states, index, labelFor, onChange }) {
     const chip = document.createElement('button');
     chip.type = 'button';
     // Same py/-my hit-area expansion as createSettingPill's PILL_CLASS.
-    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none px-[4px] py-[10px] -my-[10px] rounded-[4px]';
+    // inline-block + text-center: needed for the min-width reserved below to
+    // actually hold the box open, centered so a shorter label (e.g. "Mix"
+    // against "Group"'s reserved width) sits in the middle of its tap target
+    // instead of flush against one edge.
+    chip.className = 'text-[var(--button-primary-bg)] font-semibold cursor-pointer select-none px-[4px] py-[10px] -my-[10px] rounded-[4px] inline-block text-center';
 
     function render() { chip.textContent = labelFor(states[i], i); }
     render();
+
+    // Reserve width for the widest of this chip's own labels (e.g. "Group" vs
+    // "Mix") once it's actually mounted and has real fonts/layout to measure
+    // against -- otherwise cycling through states reflows every word after it
+    // on the same scriptBullet line. Deferred to the next frame since the
+    // caller (scriptBullet) hasn't appended this chip into the live DOM yet;
+    // the in-frame textContent swaps below never get painted.
+    requestAnimationFrame(() => {
+        if (!chip.isConnected) return;
+        const current = chip.textContent;
+        let maxWidth = 0;
+        for (let s = 0; s < states.length; s++) {
+            chip.textContent = labelFor(states[s], s);
+            maxWidth = Math.max(maxWidth, chip.getBoundingClientRect().width);
+        }
+        chip.textContent = current;
+        chip.style.minWidth = `${maxWidth}px`;
+    });
 
     chip.addEventListener('click', () => {
         i = (i + 1) % states.length;
