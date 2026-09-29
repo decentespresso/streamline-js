@@ -24,12 +24,21 @@ const PAGES = {
     home: [
         { sel: '#fav-profile-btn-0', title: 'Favourite profiles', tip: 'Tap to switch profile. Long-press to assign a different one.' },
         { sel: '#profile-name', title: 'Current profile', tip: 'Tap to browse profiles. Long-press to browse, edit or revert the current profile.' },
+        { sel: '#profile-select-btn', title: 'Browse profiles', tip: 'Tap to open the profile list.' },
+        { sel: '#profile-edit-btn', title: 'Edit profile', tip: 'Tap to open the current profile in the editor.' },
         { sel: '#dose-label', title: 'Adjust a value', tip: 'Tap +/- to step. Tap the number to type an exact value.' },
         { sel: '#temp-presets', title: 'Presets', tip: 'Tap to apply. Long-press to edit, save the current value, or reset.' },
         { sel: '#steam-mode-toggle', title: 'Mode switch', tip: 'Tap to switch between Time and Flow, Hot water Temperature and Volume.' },
         { sel: '#hot-water-mode-toggle', ringOnly: true },
+        // Explains this release's rename/behavior change rather than a gesture —
+        // remove once the "Mix"/"Group" labels are no longer a fresh surprise to
+        // returning users.
+        { sel: '#telemetry-row', title: 'Machine telemetry', tip: '"Mix" is now called "Water". "Group" is now "Puck" and only appears while a shot is running.' },
         { sel: '#data-weight', title: 'Scale', tip: 'Tap the weight to tare the connected scale.' },
         { sel: '#ghc-controls', title: 'Machine controls', tip: 'Coffee, Water, Steam, Flush — and Stop.' },
+        // Injected into the machine-status line by ui.js only while a shot step
+        // is running; skipped on every other screen state.
+        { sel: '#skip-step-indicator', title: 'Skip step', tip: 'Tap to end the current step and move straight to the next one.' },
         { sel: '#shot-history-panel', title: 'Shot history', tip: 'Use the arrows to browse past shots.' },
         { sel: '#sleep-button', title: 'Sleep', tip: 'Put the machine to sleep.' },
         { sel: '#settings-btn', title: 'Settings', tip: 'Open the settings page.' },
@@ -47,9 +56,9 @@ const PAGES = {
         { sel: '#view_profile', title: 'View all', tip: 'Show all hidden profiles.' },
         { sel: '#search_profile', title: 'Search', tip: 'Search your profiles.' },
         { sel: '#delete_profile', title: 'Delete', tip: 'Delete the selected profile. Built-in profiles are hidden instead of removed.' },
-        { sel: '#profile-list', title: 'Profiles', tip: 'Tap a profile to preview its graph and notes. Long-press for more options: hide, assign to a favourite, or edit.' },
+        { sel: '#profile-list', title: 'Profiles', tip: 'Tap a profile to preview its graph and notes. Long-press for more options: hide, assign to a favourite, duplicate, or edit.' },
         { sel: '#edit_profile', title: 'Edit', tip: 'Open the selected profile in the editor.' },
-        { sel: '#reset_btn', title: 'Reset', tip: 'Restore the selected profile to its original settings.' },
+        { sel: '#reset_btn', title: 'Reset', tip: 'Only for a saved copy. Tap to pick an earlier version to restore — the current copy is deleted and this cannot be undone.' },
         { sel: '#cancel-profile-btn', title: 'Cancel', tip: 'Discard changes and return without switching profile.' },
         { sel: '#confirm-profile-btn', title: 'Confirm', tip: 'Use this profile for your next shot.' },
     ],
@@ -58,6 +67,8 @@ const PAGES = {
         { sel: '.editor-tab-btn[data-tab="0"]', title: 'Cards', tip: 'Edit the profile as step cards. Tap a card to expand it.' },
         { sel: '.editor-tab-btn[data-tab="2"]', title: 'Script', tip: 'Edit the profile as plain sentences, with a graph preview.' },
         { sel: '.editor-tab-btn[data-tab="1"]', title: 'Settings', tip: 'Profile-wide settings (dose, yield, temperature…).' },
+        // Hidden outside the CARDS tab, so this mark only appears there.
+        { sel: '#editor-paging-controls', title: 'Card paging', tip: 'Tap the arrows to reach step cards that are off-screen.' },
         { sel: '#editor-steps-container', title: 'Steps', tip: 'Each card is a step. Tap a card to expand it, then tap any value to edit it, or use +/-. The card footer inserts or deletes steps.' },
         { sel: '#editor-row-temp', title: 'Temp', tip: 'Target temperature for the step, and which sensor it follows (Coffee or Water).' },
         { sel: '#editor-row-pump', title: 'Pump', tip: 'Sets the step’s pressure or flow and how fast it ramps there. The limiter caps the opposite value.' },

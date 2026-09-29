@@ -76,57 +76,7 @@
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
-    <dialog id="add-profile-modal" class="modal">
-    <div class="modal-box bg-[var(--box-color)] max-w-[500px] rounded-[20px] p-8">
-        <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-6">Add Profile</h3>
-        <div class="flex flex-col gap-4">
-            <button id="upload-local-btn" class="w-full h-[80px] bg-[var(--mimoja-blue)] text-white text-[22px] font-bold rounded-[15px] flex items-center justify-center gap-3 hover:opacity-90">
-                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
-                </svg>
-                Upload Local File
-            </button>
-            <button id="import-share-code-btn" class="w-full h-[80px] border-2 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] text-[22px] font-bold rounded-[15px] flex items-center justify-center gap-3 hover:bg-[var(--mimoja-blue)] hover:text-white transition-colors">
-                <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-                </svg>
-                Import from Share Code
-            </button>
-        </div>
-        <button id="add-profile-modal-close" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 text-[var(--text-primary)]">✕</button>
     </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
-</dialog>
-
-<dialog id="share-code-modal" class="modal">
-    <div class="modal-box bg-[var(--box-color)] max-w-[450px] rounded-[20px] p-8">
-        <h3 class="font-bold text-[26px] text-[var(--text-primary)] mb-4">Import from Visualizer</h3>
-        <p class="text-[18px] text-[var(--text-primary)] mb-6">Enter the 4-character share code from visualizer.coffee</p>
-        <input type="text" id="share-code-input" maxlength="4" placeholder="ABCD" autocomplete="off" class="w-full h-[70px] text-[36px] text-center font-bold tracking-[20px] bg-[var(--profile-button-background-color)] border-2 border-[var(--border-color)] rounded-[15px] focus:outline-none focus:border-[var(--mimoja-blue)] mb-4 placeholder-gray-400" style="color: black;"/>
-        <p id="share-code-error" class="text-[16px] text-red-500 mb-4 hidden"></p>
-        <div class="flex gap-4">
-            <button id="share-code-cancel-btn" class="flex-1 h-[60px] border-2 border-[var(--border-color)] text-[var(--text-primary)] text-[20px] font-bold rounded-[15px]" data-i18n-key="Cancel">Cancel</button>
-            <button id="share-code-import-btn" class="flex-1 h-[60px] bg-[var(--mimoja-blue)] text-white text-[20px] font-bold rounded-[15px]" data-i18n-key="Import">Import</button>
-        </div>
-        <button id="share-code-modal-close" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 text-[var(--text-primary)]">✕</button>
-    </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
-</dialog>
-
-<dialog id="login-required-modal" class="modal">
-    <div class="modal-box bg-[var(--box-color)] max-w-[450px] rounded-[20px] p-8">
-        <h3 class="font-bold text-[26px] text-[var(--text-primary)] mb-4">Login Required</h3>
-        <p class="text-[18px] text-[var(--text-primary)] mb-6">You need to configure your Visualizer credentials first to profiles from import share codes.</p>
-        <div class="flex gap-4">
-            <button id="login-modal-cancel-btn" class="flex-1 h-[60px] border-2 border-[var(--border-color)] text-[var(--text-primary)] text-[20px] font-bold rounded-[15px]" data-i18n-key="Cancel">Cancel</button>
-            <button id="login-modal-go-btn" class="flex-1 h-[60px] bg-[var(--mimoja-blue)] text-white text-[20px] font-bold rounded-[15px]">Go to Settings</button>
-        </div>
-        <button id="login-required-modal-close" class="btn btn-sm btn-circle btn-ghost absolute right-4 top-4 text-[var(--text-primary)]">✕</button>
-    </div>
-    <form method="dialog" class="modal-backdrop"><button>close</button></form>
-</dialog>
-</div>
-<input type="file" id="profile-upload-input" class="hidden" accept=".json" />
 <script src="src/modules/profile_selector.js" type="module" defer></script>
 <script type="module">
     import { initScaling } from 'src/modules/scaling.js';

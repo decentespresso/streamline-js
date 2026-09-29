@@ -1437,14 +1437,14 @@ function renderFlowCalibrationFields(col) {
             wrapper.appendChild(boxRowLine);
         }
 
-        const hint = document.createElement('p');
-        hint.className = 'text-[18px] text-[var(--text-primary)] opacity-60 leading-[1.3]';
-        hint.textContent = profileId
-            ? (enabled
+        if (profileId) {
+            const hint = document.createElement('p');
+            hint.className = 'text-[18px] text-[var(--text-primary)] opacity-60 leading-[1.3]';
+            hint.textContent = enabled
                 ? getTranslation('Applied while this profile is loaded. Other profiles go back to the global value.')
-                : `${getTranslation('Using the global value')}: ${roundTo(baseline.weightFlowMultiplier, 0.1)} / ${roundTo(baseline.volumeFlowMultiplier, 0.05)} s`)
-            : getTranslation('Save this profile first to give it its own flow calibration');
-        wrapper.appendChild(hint);
+                : `${getTranslation('Using the global value')}: ${roundTo(baseline.weightFlowMultiplier, 0.1)} / ${roundTo(baseline.volumeFlowMultiplier, 0.05)} s`;
+            wrapper.appendChild(hint);
+        }
     }
 
     paint();
@@ -1646,18 +1646,6 @@ function renderSettingsTab() {
     form.className = 'flex flex-col gap-[34px] pl-[22.5px] pr-[30px] pt-[45px] pb-[45px]';
     formCard.appendChild(form);
 
-    function appendBoltedField(labelText, element) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'flex flex-col gap-[12px] pl-[15px]';
-        const label = document.createElement('div');
-        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)]';
-        label.textContent = labelText;
-        wrapper.appendChild(label);
-        wrapper.appendChild(element);
-        form.appendChild(wrapper);
-        return wrapper;
-    }
-
     // ── Water Settings: Preheat Water Tank, Pre-infusion ends at ──
 
     form.appendChild(settingsSectionRow(getTranslation('Water Settings'), [
@@ -1798,11 +1786,15 @@ function renderSettingsTab() {
     if (isNewProfile) {
         // Upload local file button
         const uploadBtn = document.createElement('button');
-        uploadBtn.className = 'w-full h-[56px] bg-[var(--mimoja-blue)] text-white text-[20px] font-semibold rounded-[12px] flex items-center justify-center gap-[10px] hover:opacity-90 transition-opacity';
+        // w-fit, not w-full: a full-width button's right edge lands exactly on
+        // this card's pr-[30px] edge, which the absolutely-positioned custom
+        // scrollbar thumb (editor-settings-form-card-thumb, right-[3px]
+        // w-[39px] on the wrap) overlaps by 12px — clipping the button.
+        uploadBtn.className = 'w-fit h-[56px] px-[24px] bg-[var(--mimoja-blue)] text-white text-[20px] font-semibold rounded-[12px] flex items-center justify-center gap-[10px] hover:opacity-90 transition-opacity';
         const uploadIcon = document.createElement('span');
         uploadIcon.innerHTML = `<svg class="w-[22px] h-[22px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>`;
         const uploadText = document.createElement('span');
-        uploadText.textContent = getTranslation('Upload Local File');
+        uploadText.textContent = getTranslation('Upload');
         uploadBtn.appendChild(uploadIcon);
         uploadBtn.appendChild(uploadText);
         uploadBtn.addEventListener('click', () => {
@@ -1843,11 +1835,27 @@ function renderSettingsTab() {
             };
             fileInput.click();
         });
-        appendBoltedField(getTranslation('Upload Local File'), uploadBtn);
+        // Label beside its control, same row-level convention as the Flow
+        // calibration header row above (fixed w-[127.5px] label, items-center).
+        const uploadRow = document.createElement('div');
+        uploadRow.className = 'flex items-center gap-[15px] pl-[15px]';
+        const uploadLabel = document.createElement('div');
+        uploadLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 break-words';
+        uploadLabel.textContent = getTranslation('Upload Local File');
+        uploadRow.appendChild(uploadLabel);
+        uploadRow.appendChild(uploadBtn);
+        form.appendChild(uploadRow);
 
-        // Import from share code
+        // Import from Visualizer (by share code)
+        // mr-[15px]: same scrollbar-thumb clearance issue as uploadBtn above —
+        // the input is flex-1, so it stretches the Import button flush to the
+        // card's pr-[30px] edge, 12px under the thumb, without this margin.
         const shareSection = document.createElement('div');
-        shareSection.className = 'flex flex-col gap-[10px]';
+        // flex-1 min-w-0: shareSection is now a flex item beside the field's own
+        // label (shareFieldRow below), not the label's stacked full-width child
+        // it used to be -- without this it shrinks to fit-content instead of
+        // filling the row, and shareInput's own flex-1 has nothing to grow against.
+        shareSection.className = 'flex flex-col gap-[10px] mr-[15px] flex-1 min-w-0';
 
         const shareRow = document.createElement('div');
         shareRow.className = 'flex gap-[10px]';
@@ -1922,7 +1930,17 @@ function renderSettingsTab() {
         shareRow.appendChild(shareImportBtn);
         shareSection.appendChild(shareRow);
         shareSection.appendChild(shareStatus);
-        appendBoltedField(getTranslation('Import from Share Code'), shareSection);
+        // items-start, not items-center: shareSection also carries the status
+        // line below the input+button, so centering the label against the
+        // whole block would drop it below the row it's meant to label.
+        const shareFieldRow = document.createElement('div');
+        shareFieldRow.className = 'flex items-start gap-[15px] pl-[15px]';
+        const shareLabel = document.createElement('div');
+        shareLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 break-words';
+        shareLabel.textContent = getTranslation('Import from Visualizer');
+        shareFieldRow.appendChild(shareLabel);
+        shareFieldRow.appendChild(shareSection);
+        form.appendChild(shareFieldRow);
     }
 
     // ── Description (right card, node 2662:1633's Description panel) ──
