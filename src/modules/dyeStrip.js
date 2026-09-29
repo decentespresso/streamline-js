@@ -298,8 +298,12 @@ async function applyFavLegacy(live, fav) {
     if (on('note') && snp.note) ctx.extras = { ...(ctx.extras || {}), note: snp.note };
     live.context = ctx;
     if (on('profile') && (snp.profileId || snp.profileTitle)) {
-        const full = snp.profileId ? await resolveFullProfile(snp.profileId) : null;
-        live.profile = full || { id: snp.profileId, title: snp.profileTitle };
+        if (snp.profileSnapshot && Array.isArray(snp.profileSnapshot.steps)) {
+            live.profile = snp.profileSnapshot;
+        } else {
+            const full = snp.profileId ? await resolveFullProfile(snp.profileId) : null;
+            live.profile = full || { id: snp.profileId, title: snp.profileTitle };
+        }
     }
 }
 
@@ -318,8 +322,12 @@ async function applyRecipeLegacy(live, recipe) {
     if (recipe.drinker) ctx.drinkerName = recipe.drinker;
     live.context = ctx;
     if (recipe.profileId || recipe.profileTitle) {
-        const full = recipe.profileId ? await resolveFullProfile(recipe.profileId) : null;
-        live.profile = full || { id: recipe.profileId, title: recipe.profileTitle };
+        if (recipe.profileSnapshot && Array.isArray(recipe.profileSnapshot.steps)) {
+            live.profile = recipe.profileSnapshot;
+        } else {
+            const full = recipe.profileId ? await resolveFullProfile(recipe.profileId) : null;
+            live.profile = full || { id: recipe.profileId, title: recipe.profileTitle };
+        }
     }
 }
 
