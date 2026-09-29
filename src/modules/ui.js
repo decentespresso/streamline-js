@@ -540,6 +540,20 @@ function toggleHotWaterMode() {
     updateHotWaterPresetDisplay();
 }
 
+// Set the hot-water tile's displayed unit (volume vs temperature) directly,
+// rather than cycling like toggleHotWaterMode. Used after applying a DYE2
+// recipe so the tile's bold sub-value matches the unit the recipe actually
+// wrote, instead of whatever unit happened to be showing before. Purely a
+// display/interaction mode -- no hardware call either way.
+export function setHotWaterTileMode(mode) {
+    if (mode !== 'volume' && mode !== 'temperature') return;
+    if (hotWaterMode === mode) return;
+    hotWaterMode = mode;
+    logger.info(`Hot water tile mode set to: ${hotWaterMode}`);
+    updateHotWaterDisplay({ targetHotWaterVolume: currentHotWaterVolume, targetHotWaterTemp: currentHotWaterTemp });
+    updateHotWaterPresetDisplay();
+}
+
 function setupValueAdjuster(minusBtnId, plusBtnId, valueElId, step, min, formatter, onUpdate, afterUpdate) {
     const minusBtn = document.getElementById(minusBtnId);
     const plusBtn = document.getElementById(plusBtnId);
@@ -1383,6 +1397,25 @@ async function toggleSteamMode() {
     }
 
     logger.info(`Steam mode switched to: ${steamMode}`);
+    updateSteamDisplay({ targetSteamDuration: currentSteamDuration, targetSteamFlow: currentSteamFlow });
+    updateSteamPresetDisplay();
+}
+
+// Set the steam tile's displayed unit (time vs flow) directly, WITHOUT going
+// through toggleSteamMode's mode-cycle logic. A DYE2 recipe's steamMode is
+// only ever 'time' or 'flow' (recipe-edit.ts's UI offers no other choice), so
+// this only ever moves between those two plain manual modes and deliberately
+// refuses to touch 'auto' (calibrated steam) or 'temperature' (milk
+// auto-stop) -- both drive real hardware/firmware calls (calibratedSteam
+// .enter/.leave, setStopAtTemperature) that applying a recipe has no
+// business triggering. No-ops unless the tile is already in a plain manual
+// mode, so a calibrated or milk-stop session is left alone.
+export function setSteamTileModeIfSafe(mode) {
+    if (mode !== 'time' && mode !== 'flow') return;
+    if (steamMode !== 'time' && steamMode !== 'flow') return;
+    if (steamMode === mode) return;
+    steamMode = mode;
+    logger.info(`Steam tile mode set to: ${steamMode}`);
     updateSteamDisplay({ targetSteamDuration: currentSteamDuration, targetSteamFlow: currentSteamFlow });
     updateSteamPresetDisplay();
 }

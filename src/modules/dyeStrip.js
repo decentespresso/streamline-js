@@ -17,11 +17,11 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate } from './api.js';
+import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, getProfiles } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox } from './i18n.js';
-import { setupPressAndHold } from './ui.js';
+import { setupPressAndHold, setSteamTileModeIfSafe, setHotWaterTileMode } from './ui.js';
 
 const AF_KEY = 'autoFavourites';
 const RECIPES_KEY = 'recipes';
@@ -179,9 +179,9 @@ export async function applyFavourite(fav) {
     if (!fav) return;
     const live = (await getWorkflow()) || {};
     if (fav.workflow) {
-        applyStoredWorkflow(live, fav.workflow);
+        await applyStoredWorkflow(live, fav.workflow);
     } else {
-        applyFavLegacy(live, fav); // snapshot + copyMask
+        await applyFavLegacy(live, fav); // snapshot + copyMask
     }
     await withAutoSaveSuppressed(() => updateWorkflow(live));
     // Makes this favourite active for auto-save (see below) — set after the PUT
@@ -202,12 +202,13 @@ export async function applyRecipe(recipe) {
     if (!recipe) return;
     const live = (await getWorkflow()) || {};
     if (recipe.workflow) {
-        applyStoredWorkflow(live, recipe.workflow);
+        await applyStoredWorkflow(live, recipe.workflow);
     } else {
-        applyRecipeLegacy(live, recipe); // dashboardVariables + top-level fields
+        await applyRecipeLegacy(live, recipe); // dashboardVariables + top-level fields
     }
     // Steam / hot-water / flush are NOT in the stored workflow — live-merge them.
-    mergeRecipeLiveSettings(live, recipe.dashboardVariables || {});
+    const dv = recipe.dashboardVariables || {};
+    await mergeRecipeLiveSettings(live, dv);
     await withAutoSaveSuppressed(() => updateWorkflow(live));
     // This PUT is what makes the recipe active for auto-save (see below) — set
     // it after the PUT lands so a failed apply never arms auto-save on a stale
@@ -221,19 +222,57 @@ export async function applyRecipe(recipe) {
         profileId: recipe.profileId ?? recipe.workflow?.profile?.id ?? null,
         profileFingerprint: profileFingerprint(live.profile),
     };
-    await refreshAfterApply();
+    // Pass the recipe's own mode along so the tile's bold sub-value matches
+    // what was actually just applied, not whatever unit the tile happened to
+    // be showing before (see refreshAfterApply).
+    await refreshAfterApply({ steamMode: dv.steamMode, hotWaterMode: dv.hotWaterMode });
+}
+
+// PUT /api/v1/workflow deep-merges the request body onto whatever workflow is
+// currently loaded (reaprime workflow_handler.dart _applyUpdate:
+// deepMergeJson(currentJson, merge) then Workflow.fromJson) -- it does not
+// replace it. So a `profile` of only { id, title } overwrites just those two
+// keys on the profile ALREADY on the machine: the `steps` array (the actual
+// brew recipe) stays whatever was loaded before. The machine keeps brewing
+// the old profile, now mislabeled with the new one's name.
+//
+// Resolve `stub` (an { id, title } thin reference, an id string, or an
+// already-full Profile) to the full Profile object (steps included) via
+// GET /profiles, so callers can PUT the real thing. Returns null (never
+// throws) when the id can't be resolved -- an ad-hoc/deleted profile with no
+// library record has nothing else to load; callers fall back to the thin
+// stub and a warning is logged.
+async function resolveFullProfile(stub) {
+    if (!stub) return null;
+    const id = typeof stub === 'string' ? stub : stub.id;
+    if (!id) return null;
+    if (typeof stub === 'object' && Array.isArray(stub.steps)) return stub; // already full
+    try {
+        const records = await getProfiles();
+        const record = Array.isArray(records) ? records.find(r => r && r.id === id) : null;
+        if (record && record.profile) return record.profile;
+    } catch (e) {
+        logger.warn(`resolveFullProfile: failed to fetch profiles while resolving ${id}`, e);
+    }
+    logger.warn(`resolveFullProfile: could not resolve profile ${id} to a full record (deleted/ad-hoc profile?) — applying id/title only, brew steps will not change`);
+    return null;
 }
 
 // The stored `workflow` is a ready-to-PUT { context, profile? }. Merge its context
 // over the live context (preserving fields it doesn't set) and its profile if any.
-function applyStoredWorkflow(live, workflow) {
+// The profile is resolved to its full record as a backstop regardless of what
+// shape was actually stored (older KV items may still carry the legacy thin
+// { id, title } stub — see resolveFullProfile).
+async function applyStoredWorkflow(live, workflow) {
     live.context = { ...(live.context || {}), ...(workflow.context || {}) };
-    if (workflow.profile) live.profile = workflow.profile;
+    if (workflow.profile) {
+        live.profile = (await resolveFullProfile(workflow.profile)) || workflow.profile;
+    }
 }
 
 // Legacy favourite (no `workflow`): copyMask-gated snapshot → context. Mirrors
 // dashboard.ts applyAutoFavourite. Absent mask key ⇒ on.
-function applyFavLegacy(live, fav) {
+async function applyFavLegacy(live, fav) {
     const snp = fav.snapshot || {};
     const mask = fav.copyMask || {};
     const on = k => mask[k] !== false;
@@ -259,13 +298,14 @@ function applyFavLegacy(live, fav) {
     if (on('note') && snp.note) ctx.extras = { ...(ctx.extras || {}), note: snp.note };
     live.context = ctx;
     if (on('profile') && (snp.profileId || snp.profileTitle)) {
-        live.profile = { id: snp.profileId, title: snp.profileTitle };
+        const full = snp.profileId ? await resolveFullProfile(snp.profileId) : null;
+        live.profile = full || { id: snp.profileId, title: snp.profileTitle };
     }
 }
 
 // Legacy recipe (no `workflow`): dashboardVariables → context. Mirrors dashboard.ts
 // applyRecipe (context portion; steam/hw/flush handled by mergeRecipeLiveSettings).
-function applyRecipeLegacy(live, recipe) {
+async function applyRecipeLegacy(live, recipe) {
     const dv = recipe.dashboardVariables || {};
     const ctx = { ...(live.context || {}) };
     if (dv.dose != null) ctx.targetDoseWeight = dv.dose;
@@ -278,43 +318,87 @@ function applyRecipeLegacy(live, recipe) {
     if (recipe.drinker) ctx.drinkerName = recipe.drinker;
     live.context = ctx;
     if (recipe.profileId || recipe.profileTitle) {
-        live.profile = { id: recipe.profileId, title: recipe.profileTitle };
+        const full = recipe.profileId ? await resolveFullProfile(recipe.profileId) : null;
+        live.profile = full || { id: recipe.profileId, title: recipe.profileTitle };
     }
 }
 
 // Override only the recipe's steam/hot-water/flush fields on the LIVE sub-objects
 // (which already carry the required targetTemperature/flow). Guarded so we never
 // send a partial. Identical to dashboard.ts applyRecipe.
-function mergeRecipeLiveSettings(wf, dv) {
+//
+// Also persists each field we touch to its "last value" KV record
+// (api.persistSharedValue — a plain KV write, no hardware call). Those records
+// are what api.resyncIfDrifted compares against on the very next
+// loadInitialData() (see refreshAfterApply): applyRecipe PUTs the new value
+// straight onto the workflow, bypassing the api.setTargetSteam*/setTargetHotWater*
+// setters that normally keep the KV record in sync. Without this, the refresh
+// right after applying the recipe sees the new value as *drift* from the old
+// remembered one and immediately pushes the OLD value back over both the
+// workflow and the live machine — silently reverting the recipe's own change.
+async function mergeRecipeLiveSettings(wf, dv) {
     if (wf.steamSettings && (dv.steamTimeS != null || dv.steamFlowMls != null)) {
         const ss = { ...wf.steamSettings };
-        if (dv.steamMode === 'time' && dv.steamTimeS != null) ss.duration = dv.steamTimeS;
-        if (dv.steamMode === 'flow' && dv.steamFlowMls != null) ss.flow = dv.steamFlowMls;
+        if (dv.steamMode === 'time' && dv.steamTimeS != null) {
+            ss.duration = dv.steamTimeS;
+            await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, dv.steamTimeS);
+        }
+        if (dv.steamMode === 'flow' && dv.steamFlowMls != null) {
+            ss.flow = dv.steamFlowMls;
+            await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, dv.steamFlowMls);
+        }
         wf.steamSettings = ss;
     }
     if (wf.hotWaterData && (dv.hotWaterMl != null || dv.hotWaterTempC != null)) {
         const hw = { ...wf.hotWaterData };
-        if (dv.hotWaterMode === 'vol' && dv.hotWaterMl != null) hw.volume = dv.hotWaterMl;
-        if (dv.hotWaterMode === 'temp' && dv.hotWaterTempC != null) hw.targetTemperature = dv.hotWaterTempC;
+        if (dv.hotWaterMode === 'vol' && dv.hotWaterMl != null) {
+            hw.volume = dv.hotWaterMl;
+            await persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, dv.hotWaterMl);
+        }
+        if (dv.hotWaterMode === 'temp' && dv.hotWaterTempC != null) {
+            hw.targetTemperature = dv.hotWaterTempC;
+            await persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, dv.hotWaterTempC);
+        }
         wf.hotWaterData = hw;
     }
     if (wf.rinseData && dv.flushS != null) {
         wf.rinseData = { ...wf.rinseData, duration: dv.flushS };
+        await persistSharedValue(FLUSH_DURATION_LAST_VALUE_KEY, dv.flushS);
     }
 }
 
 // Re-pull the workflow and update the left-rail controls — the same path used on
 // initial load / after a profile change (window.loadInitialData is set by app.js).
-async function refreshAfterApply() {
+//
+// modeHints (optional, recipe apply only): { steamMode: 'time'|'flow',
+// hotWaterMode: 'vol'|'temp' } straight off the recipe's dashboardVariables.
+// Neither repaint path above has any notion of "which unit was the recipe's
+// own" — they repaint the tiles' numbers straight from the live workflow and
+// never touch ui.js's private steamMode/hotWaterMode display-mode variables.
+// Applied here, directly against ui.js, after the repaint settles, so the
+// tile's bold sub-value matches what the recipe actually set instead of
+// whatever unit happened to be showing before. Hot water has no hardware
+// side effect either way; steam is routed through setSteamTileModeIfSafe,
+// which refuses to touch 'auto'/'temperature' (real hardware/firmware calls —
+// see ui.js toggleSteamMode) and only moves between plain 'time'/'flow'.
+async function refreshAfterApply(modeHints) {
     try {
         if (typeof window.loadInitialData === 'function') {
             await window.loadInitialData();
-            return;
+        } else {
+            const wf = await getWorkflow();
+            applyWorkflowToMainPageUI(wf);
         }
-        const wf = await getWorkflow();
-        applyWorkflowToMainPageUI(wf);
     } catch (e) {
         logger.error('dyeStrip refreshAfterApply failed', e);
+    }
+    if (modeHints) {
+        if (modeHints.steamMode === 'time' || modeHints.steamMode === 'flow') {
+            setSteamTileModeIfSafe(modeHints.steamMode);
+        }
+        if (modeHints.hotWaterMode === 'vol' || modeHints.hotWaterMode === 'temp') {
+            setHotWaterTileMode(modeHints.hotWaterMode === 'temp' ? 'temperature' : 'volume');
+        }
     }
 }
 
