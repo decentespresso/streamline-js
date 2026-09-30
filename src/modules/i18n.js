@@ -149,7 +149,7 @@ else document.addEventListener('DOMContentLoaded', () => document.body.appendChi
  */
 /**
  * Height variant of fitTextToWidth, for labels that WRAP inside a fixed box
- * (the 240x98 favourite cells). Shrinks until the wrapped text stops overflowing.
+ * (the 225x90 favourite cells). Shrinks until the wrapped text stops overflowing.
  *
  * Measures the element itself rather than the off-screen meter: wrapping depends
  * on the real box width, which the meter (white-space:nowrap) cannot reproduce.

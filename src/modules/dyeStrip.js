@@ -42,7 +42,7 @@ export const PLUGIN_RELEASES_PAGE = 'https://github.com/decentespresso/dye2/rele
 // F/R strip is visually identical to the P strip.
 const CELL_BASE =
     'flex justify-center items-center text-center text-balance px-3 leading-tight ' +
-    'overflow-hidden [overflow-wrap:anywhere] w-[240px] h-[98px] text-[22px] rounded-[19px] ' +
+    'overflow-hidden [overflow-wrap:anywhere] w-[225px] h-[90px] text-[21px] rounded-[15px] ' +
     'border-2 font-semibold cursor-pointer';
 const CELL_IDLE = ' border-[var(--profile-button-outline-color)] bg-[var(--profile-button-background-color)] text-[var(--profile-button-text-color)]';
 const CELL_ACTIVE = ' border-[var(--mimoja-blue)] bg-[var(--mimoja-blue-v2)] text-white';
@@ -51,7 +51,7 @@ const CELL_ACCENT = ' border-[var(--mimoja-blue)] bg-[var(--box-color)] text-[va
 // child, so without it the strip collapses to one line of text and the hint sits
 // at the top of the band instead of centred against where the cells would be.
 const HINT_CLASS =
-    'flex items-center h-[98px] text-[20px] text-[var(--low-contrast-white)] px-2';
+    'flex items-center h-[90px] text-[20px] text-[var(--low-contrast-white)] px-2';
 
 let favCache = [];
 let recipeCache = [];
@@ -163,7 +163,7 @@ export function renderStrip(mode) {
     fitStripCells(strip);
 }
 
-// Shrink any label that wraps past its cell. Cells are a fixed 98px tall and the
+// Shrink any label that wraps past its cell. Cells are a fixed 90px tall and the
 // box only clips, so without this a long bean name loses its last line under the
 // bottom border.
 function fitStripCells(nav) {
@@ -804,7 +804,7 @@ export function setStripMode(mode) {
 // The favourite strip and the right-hand controls are both absolutely positioned,
 // so neither pushes the other out of the way. With DYE2 on the strip starts 50px
 // further right and the DYE button widens the controls; add the Bengle cup warmer
-// and the five 240px cells run underneath them. Bound the strips at the controls'
+// and the five 225px cells run underneath them. Bound the strips at the controls'
 // measured edge and let the cells shrink into what is left — measured rather than
 // hardcoded so it follows cup-warmer/fullscreen visibility and translated labels.
 const STRIP_GAP = 20;
@@ -890,7 +890,7 @@ export async function enableDye2Ui() {
     const profileNav = document.getElementById('profile-fav-nav');
     const toggle = document.getElementById('dye-strip-toggle');
     const dyeBtn = document.getElementById('dye-open-btn');
-    if (profileNav) { profileNav.classList.remove('left-[30px]'); profileNav.classList.add('left-[80px]'); }
+    if (profileNav) { profileNav.classList.remove('left-[37.5px]'); profileNav.classList.add('left-[80px]'); }
     if (toggle) toggle.style.display = '';   // revert to class-defined flex
     if (dyeBtn) dyeBtn.style.display = '';
     syncStripBounds();
@@ -916,7 +916,7 @@ export function disableDye2Ui() {
     if (profileNav) {
         profileNav.style.display = '';
         profileNav.classList.remove('left-[80px]');
-        profileNav.classList.add('left-[30px]');
+        profileNav.classList.add('left-[37.5px]');
     }
     clearStripBounds();
 }
