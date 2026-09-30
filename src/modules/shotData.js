@@ -39,8 +39,8 @@ function updateText(element, value) {
     if (element && element.textContent !== value) element.textContent = value;
 }
 
-// A flow or pressure phase renders as start➔peak➔end, and once a value passes 10
-// each segment gains a digit: "10.5➔12.0➔10.1" is wider than the column the
+// A flow or pressure phase renders as start→peak→end, and once a value passes 10
+// each segment gains a digit: "10.5→12.0→10.1" is wider than the column the
 // design draws. Rather than widen the column away from the design, shrink just
 // that cell until it fits -- ordinary values are well inside the column and keep
 // their full size. Only re-fits on an actual change, to stay off the hot path.
@@ -55,7 +55,7 @@ function formatRange(values, precision) {
     const min = Math.min(...values).toFixed(precision);
     const max = Math.max(...values).toFixed(precision);
     if (min === max) return min;
-    return `${min}➔${max}`;
+    return `${min}→${max}`;
 }
 
 function formatStartPeakEnd(values, precision) {
@@ -64,8 +64,8 @@ function formatStartPeakEnd(values, precision) {
     const end = values[values.length - 1].toFixed(precision);
     const peak = Math.max(...values).toFixed(precision);
     if (start === end) return start;
-    if (peak === start || peak === end) return `${start}➔${end}`;
-    return `${start}➔${peak}➔${end}`;
+    if (peak === start || peak === end) return `${start}→${end}`;
+    return `${start}→${peak}→${end}`;
 }
 
 function getPhaseData(dataArray, startIndex, endIndex) {
@@ -81,7 +81,7 @@ function toDisplayTemps(celsiusValues) {
 
 function updateTempHeader() {
     const header = document.getElementById('shot-data-temp-header');
-    if (header) header.textContent = getTempUnit() === 'F' ? '°F' : '°C';
+    if (header) header.textContent = getTempUnit() === 'F' ? '°f' : '°c';
 }
 
 // --- CORE LOGIC ---
