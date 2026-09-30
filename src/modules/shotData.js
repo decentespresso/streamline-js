@@ -33,6 +33,9 @@ function getElements() {
 }
 
 // --- UTILITY FUNCTIONS ---
+const ARROW = '\u2192';
+const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+
 function updateText(element, value) {
     // Called for every cell on every telemetry sample, so skip the write when the
     // value is unchanged -- most samples move only one or two of them.
@@ -46,8 +49,19 @@ function updateText(element, value) {
 // their full size. Only re-fits on an actual change, to stay off the hot path.
 function updateRangeText(element, value) {
     if (!element || element.textContent === value) return;
-    element.textContent = value;
+    element.innerHTML = withLiftedArrows(value);
     fitTextToWidth(element);
+}
+
+// The arrow needs its own element to be nudged up (see .range-arrow), so the
+// range is written as markup rather than text. Everything around the arrows is
+// escaped: these are only ever formatted numbers today, but the cell is written
+// with innerHTML now and should not depend on that staying true.
+function withLiftedArrows(value) {
+    return value
+        .split(ARROW)
+        .map(part => part.replace(/[&<>"']/g, c => HTML_ESCAPES[c]))
+        .join(`<span class="range-arrow">${ARROW}</span>`);
 }
 
 function formatRange(values, precision) {
@@ -55,7 +69,7 @@ function formatRange(values, precision) {
     const min = Math.min(...values).toFixed(precision);
     const max = Math.max(...values).toFixed(precision);
     if (min === max) return min;
-    return `${min}→${max}`;
+    return `${min}${ARROW}${max}`;
 }
 
 function formatStartPeakEnd(values, precision) {
@@ -64,8 +78,8 @@ function formatStartPeakEnd(values, precision) {
     const end = values[values.length - 1].toFixed(precision);
     const peak = Math.max(...values).toFixed(precision);
     if (start === end) return start;
-    if (peak === start || peak === end) return `${start}→${end}`;
-    return `${start}→${peak}→${end}`;
+    if (peak === start || peak === end) return `${start}${ARROW}${end}`;
+    return `${start}${ARROW}${peak}${ARROW}${end}`;
 }
 
 function getPhaseData(dataArray, startIndex, endIndex) {
@@ -164,7 +178,7 @@ function calculateAndRender(shotData) {
         updateText(elements.pi.time, `${Math.round(piTime)}`);
         updateText(elements.pi.weight, piWeight !== null ? `${piWeight.toFixed(1)}g` : '0.0');
         updateText(elements.pi.volume, `${piVolume.toFixed(0)}`);
-        updateText(elements.pi.temp, `${formatRange(toDisplayTemps(piTemps), 0)}`);
+        updateRangeText(elements.pi.temp, `${formatRange(toDisplayTemps(piTemps), 0)}`);
         updateRangeText(elements.pi.flow, `${formatStartPeakEnd(piFlows, 1)} `);
         updateRangeText(elements.pi.pressure, `${formatStartPeakEnd(piPressures, 1)}`);
 
@@ -172,7 +186,7 @@ function calculateAndRender(shotData) {
             updateText(elements.ex.time, `${Math.round(exTime)}`);
             updateText(elements.ex.weight, exWeight !== null ? `${exWeight.toFixed(1)}g` : '0.0');
             updateText(elements.ex.volume, `${exVolume.toFixed(0)}`);
-            updateText(elements.ex.temp, `${formatRange(toDisplayTemps(exTemps), 0)}`);
+            updateRangeText(elements.ex.temp, `${formatRange(toDisplayTemps(exTemps), 0)}`);
             updateRangeText(elements.ex.flow, `${formatStartPeakEnd(exFlows, 1)} `);
             updateRangeText(elements.ex.pressure, `${formatStartPeakEnd(exPressures, 1)}`);
         }

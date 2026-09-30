@@ -164,6 +164,17 @@ body {
     font-family: 'NotoSansMono', monospace;
 }
 
+/* NotoSansMono draws U+2192 low: the glyph's centre sits 191/1000 em under the
+   digits' centre (digits span -10..724, the arrow 49..283), so "75→84" reads
+   with the arrow down on the baseline instead of between the numbers as the
+   design has it. Lift it by that difference. `position: relative` so the shift
+   is purely visual -- the advance width stays put, which the shot-data columns
+   are measured against. */
+.range-arrow {
+    position: relative;
+    top: -0.19em;
+}
+
 .font-inter-custom {
     font-family: 'Inter', sans-serif;
 }
