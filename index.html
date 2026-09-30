@@ -80,10 +80,10 @@
 
     <div class="flex-grow flex">
         <!-- Left Sidebar: Shot Settings -->
-        <aside id="shot-settings" class="bg-[var(--box-color)] pl-9 pr-3 md:pr-[6px] py-3 flex flex-col justify-around border-r border-base-400 w-[480px] h-[1036px]" aria-label="Shot Settings">
+        <aside id="shot-settings" class="bg-[var(--box-color)] pl-[37.5px] pr-3 md:pr-[6px] py-3 flex flex-col justify-around border-r border-base-400 w-[480px] h-[1036px]" aria-label="Shot Settings">
             <!-- Grind -->
-            <div id="grind-section" class="flex justify-start items-center gap-[20px]">
-                <span id="grind-label" class="w-[130px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Grind">Grind</span>
+            <div id="grind-section" class="flex justify-start items-center gap-[39px]">
+                <span id="grind-label" class="w-[112.5px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Grind">Grind</span>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="grind-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Grind"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <span id="grind-value" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center text-[var(--text-primary)] text-[25.5px] font-bold" aria-labelledby="grind-label">1.4</span>
@@ -91,8 +91,8 @@
                 </div>
             </div>
             <!-- Dose In -->
-            <div id="dose-section" class="flex justify-start items-center gap-[20px]">
-                <span id="dose-label" class="w-[130px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Dose">Dose</span>
+            <div id="dose-section" class="flex justify-start items-center gap-[39px]">
+                <span id="dose-label" class="w-[112.5px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Dose">Dose</span>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="dose-in-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Dose"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <span id="dose-in-value" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center text-[var(--text-primary)] text-[25.5px] font-bold" aria-labelledby="dose-label">g</span>
@@ -100,8 +100,8 @@
                 </div>
             </div>
             <!-- Drink out -->
-            <div id="drink-section" class="flex justify-start items-center gap-[20px]">
-                <span id="drink-label" class="w-[130px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Drink">Drink</span>
+            <div id="drink-section" class="flex justify-start items-center gap-[39px]">
+                <span id="drink-label" class="w-[112.5px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Drink">Drink</span>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="drink-out-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Drink Amount"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center" aria-labelledby="drink-label">
@@ -111,7 +111,7 @@
                     <button id="drink-out-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Drink Amount"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
-            <div id="drink-out-presets" class="w-[398px] h-[42px] flex justify-between items-center " aria-label="Drink amount presets">
+            <div id="drink-out-presets" class="w-[397.5px] h-[45px] flex justify-between items-center " aria-label="Drink amount presets">
                 <button id="drink-out-preset-1" class="justify-center text-left text-[var(--preset-value-color)] text-[21px] font-semibold">18:36</button>
                 <button id="drink-out-preset-2" class="text-center justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">20:40</button>
                 <button id="drink-out-preset-3" class="text-center justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">22:44</button>
@@ -119,15 +119,15 @@
             </div>
             <div class="border-t border-base-400 w-[480px] ml-[-36px] mr-[-24px]" role="separator"></div>
             <!-- Temp -->
-             <div id="brew-section" class="flex justify-start items-center gap-[20px]">
-                <span id="brew-label" class="w-[130px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Brew">Brew</span>
+             <div id="brew-section" class="flex justify-start items-center gap-[39px]">
+                <span id="brew-label" class="w-[112.5px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Brew">Brew</span>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="temp-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Brew Temperature"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <span id="temp-value" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center text-[var(--text-primary)] text-[25.5px] font-bold" aria-labelledby="brew-label">92°c</span>
                     <button id="temp-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Brew Temperature"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
-            <div id="temp-presets" class="w-[398px] h-[42px] flex justify-between items-center " aria-label="Temperature presets">
+            <div id="temp-presets" class="w-[397.5px] h-[45px] flex justify-between items-center " aria-label="Temperature presets">
                 <button id="temp-preset-75" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">75°c</button>
                 <button id="temp-preset-80" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">80°c</button>
                 <button id="temp-preset-85" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">85°c</button>
@@ -135,10 +135,10 @@
             </div>
              <div class="border-t border-base-400 w-[480px] ml-[-36px] mr-[-24px]" role="separator"></div>
             <!-- Steam -->
-            <div id="steam-section" class="flex justify-start items-center gap-9">
-                <div class="w-[114px]">
+            <div id="steam-section" class="flex justify-start items-center gap-[19.5px]">
+                <div class="w-[132px]">
                     <span id="steam-label" class="text-[var(--left-label-text)] text-[25.5px] font-bold block" data-i18n-key="Steam">Steam</span>
-                    <span id="steam-mode-toggle" class="w-[114px] text-[var(--low-contrast-white)] text-[21px] font-semibold text-nowrap block leading-6 cursor-pointer" role="button" tabindex="0" aria-label="Toggle Steam Mode">
+                    <span id="steam-mode-toggle" class="w-[132px] text-[var(--low-contrast-white)] text-[21px] font-semibold text-nowrap block leading-6 cursor-pointer" role="button" tabindex="0" aria-label="Toggle Steam Mode">
                         <span id="steam-mode-standard"><span id="steam-mode-time" data-i18n-key="Time">Time</span><span id="steam-mode-milk" data-i18n-key="Milk" style="display:none">Milk</span> | <span id="steam-mode-flow" data-i18n-key="Flow">Flow</span></span><span id="steam-mode-auto" data-fit-text style="display:none;width:114px"><span data-steam-mode="auto">Auto</span> | <span data-steam-mode="flow" title="Flow">F</span> | <span data-steam-mode="time" title="Time">T</span></span>
                     </span>
                 </div>
@@ -151,26 +151,26 @@
                     <button id="steam-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Steam Setting"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
-            <div id="steam-presets" class="w-[398px] h-[42px] flex justify-between items-center " aria-label="Steam duration presets">
+            <div id="steam-presets" class="w-[397.5px] h-[45px] flex justify-between items-center " aria-label="Steam duration presets">
                 <button id="steam-preset-1" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">15s</button>
                 <button id="steam-preset-2" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">30s</button>
                 <button id="steam-preset-3" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">45s</button>
                 <button id="steam-preset-4" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">60s</button>
             </div>
-            <div id="steam-auto-presets" class="w-[398px] h-[42px] flex justify-between items-center hidden" aria-label="Calculate steam time by pitcher">
+            <div id="steam-auto-presets" class="w-[397.5px] h-[45px] flex justify-between items-center hidden" aria-label="Calculate steam time by pitcher">
                 <span id="steam-auto-setup" style="font-size:18px;line-height:20px" data-i18n-key="Set up pitchers in Settings > Extensions">Set up pitchers in Settings &gt; Extensions</span>
                 <button type="button" data-auto-pitcher="small" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold" style="min-width:72px;height:42px" aria-label="Calculate with small pitcher selection" aria-pressed="false">S</button>
                 <button type="button" data-auto-pitcher="medium" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold" style="min-width:72px;height:42px" aria-label="Calculate with medium pitcher selection" aria-pressed="false">M</button>
                 <button type="button" data-auto-pitcher="large" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold" style="min-width:72px;height:42px" aria-label="Calculate with large pitcher selection" aria-pressed="false">L</button>
                 <button type="button" data-auto-pitcher="auto" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold" style="min-width:72px;height:42px" aria-label="Calculate with auto pitcher selection" aria-pressed="false">Auto</button>
             </div>
-            <div id="steam-milk-presets" class="w-[398px] h-[42px] flex justify-between items-center hidden" aria-label="Milk stop temperature presets">
+            <div id="steam-milk-presets" class="w-[397.5px] h-[45px] flex justify-between items-center hidden" aria-label="Milk stop temperature presets">
                 <button id="steam-milk-preset-1" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">55°c</button>
                 <button id="steam-milk-preset-2" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">60°c</button>
                 <button id="steam-milk-preset-3" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">65°c</button>
                 <button id="steam-milk-preset-4" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">70°c</button>
             </div>
-            <div id="steam-flow-presets" class="w-[398px] h-[42px] flex justify-between items-center " aria-label="Steam flow presets">
+            <div id="steam-flow-presets" class="w-[397.5px] h-[45px] flex justify-between items-center " aria-label="Steam flow presets">
                 <button id="steam-flow-preset-1" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">0.5ml/s</button>
                 <button id="steam-flow-preset-2" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">1.0ml/s</button>
                 <button id="steam-flow-preset-3" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">1.5ml/s</button>
@@ -178,15 +178,15 @@
             </div>
             <div class="border-t border-base-400 w-[480px] ml-[-36px] mr-[-24px]" role="separator"></div>
             <!-- Flush -->
-            <div id="flush-section" class="flex justify-start items-center gap-9">
-                <span id="flush-label" class="w-[114px] text-[var(--left-label-text)] text-[25.5px] font-bold" data-i18n-key="Flush">Flush</span>
+            <div id="flush-section" class="flex justify-start items-center gap-[19.5px]">
+                <span id="flush-label" class="w-[132px] text-[var(--left-label-text)] text-[25.5px] font-bold" data-i18n-key="Flush">Flush</span>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="flush-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Flush Duration"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <span id="flush-value" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center text-[var(--text-primary)] text-[25.5px] font-bold" aria-labelledby="flush-label">s</span>
                     <button id="flush-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Flush Duration"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
-                <div id="flush-presets" class="w-[398px] h-[42px] flex justify-between items-center " aria-label="Flush duration presets">
+                <div id="flush-presets" class="w-[397.5px] h-[45px] flex justify-between items-center " aria-label="Flush duration presets">
                 <button id="flush-preset-0" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">5s</button>
                 <button id="flush-preset-1" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">10s</button>
                 <button id="flush-preset-2" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">15s</button>
@@ -199,10 +199,10 @@
                  at 150px (130+20 for Grind/Dose/Drink/Brew, 114+36 for Steam/Flush).
                  "Hot Water" needs the wider 150px label, so the gap goes to 0 to keep
                  the buttons on that same 150px line. -->
-            <div id="hotwater-section" class="flex justify-start items-center gap-0">
-                <div class="w-[150px]">
+            <div id="hotwater-section" class="flex justify-start items-center gap-[19.5px]">
+                <div class="w-[132px]">
                     <span id="hotwater-label" class="text-[var(--left-label-text)] text-[25.5px] font-bold block text-nowrap" data-i18n-key="Hot Water">Hot Water</span>
-                    <span id="hot-water-mode-toggle" class="w-[150px] text-[var(--low-contrast-white)] text-[21px] font-semibold text-nowrap block leading-6 cursor-pointer" role="button" tabindex="0" aria-label="Toggle Hot Water Mode">
+                    <span id="hot-water-mode-toggle" class="w-[132px] text-[var(--low-contrast-white)] text-[21px] font-semibold text-nowrap block leading-6 cursor-pointer" role="button" tabindex="0" aria-label="Toggle Hot Water Mode">
                         <span id="hot-water-mode-temp" data-i18n-key="Temp">Temp</span> | <span id="hot-water-mode-vol" data-i18n-key="Vol">Vol</span>
                     </span>
                 </div>
@@ -215,7 +215,7 @@
                     <button id="hot-water-vol-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Hot Water Amount"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
-            <div id="hotwater-presets" class="w-[398px] h-[42px] flex justify-between items-center " aria-label="Hot water presets">
+            <div id="hotwater-presets" class="w-[397.5px] h-[45px] flex justify-between items-center " aria-label="Hot water presets">
                 <button id="hotwater-temp-preset0" class="justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">75°c</button>
                 <button id="hotwater-temp-preset1" class="text-center justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">80°c</button>
                 <button id="hotwater-temp-preset2" class="text-center justify-center text-[var(--preset-value-color)] text-[21px] font-semibold">85°c</button>
