@@ -11,8 +11,10 @@
     color: var(--preset-active-color) !important;
 }
 
+/* main.css is linked after this file, so any dark token it also defines wins.
+   --text-primary and --button-grey live there; setting them here would read as
+   if it worked and do nothing. */
 [data-theme="dark"] {
-    --text-primary: #E0E0E0;
     --preset-active-color: #e8e8e8;
     --border-color: #374151; /* gray-700 */
     --mimoja-blue-v2: #415996;
@@ -20,7 +22,6 @@
     --low-contrast-white: #959595;
     --dark-gray: #101217;
     --green: #0CA581;
-    --button-grey: #101115;
     --toggle-off-bg: #2a2a2e;
     --toggle-off-border: #4a4a52;
     --toggle-off-knob: #5a5a64;
