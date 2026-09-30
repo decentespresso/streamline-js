@@ -337,47 +337,47 @@
                 </div>
             </div>
             <div id="shot-data-panel" class="w-[1050px] h-60 left-[863px] top-[958px] border-r-0 border-b-0 absolute bg-[var(--bgmain-color)] border border-base-400" role="grid" aria-label="Detailed Shot Data">
-                <div class="shot-data-cols grid grid-cols-7 w-full left-[198px] top-[35px] absolute" style="grid-template-columns: 90px 100px 110px 120px 190px 150px;" role="row">
+                <div class="shot-data-cols grid grid-cols-7 w-full left-[187px] top-[35px] absolute" style="grid-template-columns: 90px 112.5px 97.5px 112.5px 172.5px 157.5px;" role="row">
                     <div class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start whitespace-nowrap" data-i18n-key="Time" role="columnheader">Time</div>
                     <div class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start whitespace-nowrap" data-i18n-key="Grams" role="columnheader">Grams</div>
-                    <div class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start pl-[20px] whitespace-nowrap" data-i18n-key="mL" role="columnheader">mL</div>
+                    <div class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start whitespace-nowrap" data-i18n-key="mL" role="columnheader">mL</div>
                     <div id="shot-data-temp-header" class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start whitespace-nowrap" role="columnheader">°C</div>
                     <div class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start whitespace-nowrap" data-i18n-key="mL/s" role="columnheader">mL/s</div>
                     <div id="shot-header-pressure" class="h-9 text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 text-left flex items-center justify-start whitespace-nowrap" data-i18n-key="Pressure" role="columnheader">Pressure</div>
                 </div>
 
-                <div class="left-[20px] top-[88px] absolute flex flex-col justify-start items-start gap-[10px] ">
-                    <div class="grid grid-cols-7 w-full" style="grid-template-columns: 150px 30px repeat(5, 1fr);" role="row">
+                <div class="left-[19px] top-[85px] absolute flex flex-col justify-start items-start gap-[12px] ">
+                    <div class="grid grid-cols-7 w-full" style="grid-template-columns: 130px 38px repeat(5, 1fr);" role="row">
                         <div class="h-9 text-end text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 flex items-center justify-end whitespace-nowrap" data-i18n-key="Preinfusion" role="rowheader">Preinfusion</div>
                         <div class="h-9"></div> <!-- Empty column for spacing -->
-                        <div class="shot-data-cols col-span-5 grid grid-cols-6 w-full" style="grid-template-columns: 90px 100px 110px 120px 190px 150px;">
+                        <div class="shot-data-cols col-span-5 grid grid-cols-6 w-full" style="grid-template-columns: 90px 112.5px 97.5px 112.5px 172.5px 157.5px;">
                             <div id="shot-data-pi-time" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">15s </div>
                             <div id="shot-data-pi-weight" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">10g</div>
-                            <div id="shot-data-pi-volume" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start pl-[20px] whitespace-nowrap" role="gridcell">17ml</div>
+                            <div id="shot-data-pi-volume" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">17ml</div>
                             <div id="shot-data-pi-temp" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">90°c</div>
                             <div id="shot-data-pi-flow" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">0–8.1 ml/s</div>
                             <div id="shot-data-pi-pressure" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">0–3.3 bar</div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-7 w-full" style="grid-template-columns: 150px 30px repeat(5, 1fr);" role="row">
+                    <div class="grid grid-cols-7 w-full" style="grid-template-columns: 130px 38px repeat(5, 1fr);" role="row">
                         <div class="h-9 text-end text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 flex items-center justify-end whitespace-nowrap" data-i18n-key="Extraction" role="rowheader">Extraction</div>
                         <div class="h-9"></div> <!-- Empty column for spacing -->
-                        <div class="shot-data-cols col-span-5 grid grid-cols-6 w-full" style="grid-template-columns: 90px 100px 110px 120px 190px 150px;">
+                        <div class="shot-data-cols col-span-5 grid grid-cols-6 w-full" style="grid-template-columns: 90px 112.5px 97.5px 112.5px 172.5px 157.5px;">
                             <div id="shot-data-ex-time" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">30s </div>
                             <div id="shot-data-ex-weight" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">29g</div>
-                            <div id="shot-data-ex-volume" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start pl-[20px] whitespace-nowrap" role="gridcell">30ml</div>
+                            <div id="shot-data-ex-volume" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">30ml</div>
                             <div id="shot-data-ex-temp" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">90°–80°c</div>
                             <div id="shot-data-ex-flow" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">0.4–2.5 ml/s</div>
                             <div id="shot-data-ex-pressure" class="h-9 text-[var(--text-primary)] text-[22.5px] font-medium font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">3–9 bar</div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-7 w-full" style="grid-template-columns: 150px 30px repeat(5, 1fr);" role="row">
+                    <div class="grid grid-cols-7 w-full" style="grid-template-columns: 130px 38px repeat(5, 1fr);" role="row">
                         <div class="h-9 text-end text-[var(--data-card-title-text-color)] text-[22.5px] font-bold font-['Inter'] leading-6 flex items-center justify-end whitespace-nowrap" data-i18n-key="Total" role="rowheader">Total</div>
                         <div class="h-9"></div> <!-- Empty column for spacing -->
-                        <div class="shot-data-cols col-span-5 grid grid-cols-6 w-full" style="grid-template-columns: 90px 100px 110px 120px 190px 150px;">
+                        <div class="shot-data-cols col-span-5 grid grid-cols-6 w-full" style="grid-template-columns: 90px 112.5px 97.5px 112.5px 172.5px 157.5px;">
                             <div id="shot-data-total-time" class="h-9 text-[var(--text-primary)] text-[22.5px] font-extrabold font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">45s </div>
-                            <div id="shot-data-total-weight" class="h-9 text-[var(--text-primary)] text-[22.5px] font-extrabold font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">39g (1:2.5)</div>
-                            <div id="shot-data-total-volume" class="h-9 text-[var(--text-primary)] text-[22.5px] font-extrabold font-mono-custom leading-6 text-left flex items-center justify-start pl-[20px] whitespace-nowrap" role="gridcell">57ml</div>
+                            <div id="shot-data-total-weight" class="h-9 text-[var(--text-primary)] text-[22.5px] font-extrabold font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">32.7g</div>
+                            <div id="shot-data-total-volume" class="h-9 text-[var(--text-primary)] text-[22.5px] font-extrabold font-mono-custom leading-6 text-left flex items-center justify-start whitespace-nowrap" role="gridcell">57ml</div>
                             <div class="h-9 text-left flex items-center justify-start invisible" role="gridcell">Temp</div>
                             <div class="h-9 text-left flex items-center justify-start invisible" role="gridcell">Flow</div>
                             <div class="h-9 text-left flex items-center justify-start invisible" role="gridcell">Pressure</div>
