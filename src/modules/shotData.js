@@ -1,5 +1,6 @@
 import { logger } from './logger.js';
 import { getTempUnit, celsiusToFahrenheit } from './units.js';
+import { fitTextToWidth } from './i18n.js';
 
 // Holds the raw data for the current shot
 let currentShot = {};
@@ -33,7 +34,20 @@ function getElements() {
 
 // --- UTILITY FUNCTIONS ---
 function updateText(element, value) {
-    if (element) element.textContent = value;
+    // Called for every cell on every telemetry sample, so skip the write when the
+    // value is unchanged -- most samples move only one or two of them.
+    if (element && element.textContent !== value) element.textContent = value;
+}
+
+// A flow or pressure phase renders as start➔peak➔end, and once a value passes 10
+// each segment gains a digit: "10.5➔12.0➔10.1" is wider than the column the
+// design draws. Rather than widen the column away from the design, shrink just
+// that cell until it fits -- ordinary values are well inside the column and keep
+// their full size. Only re-fits on an actual change, to stay off the hot path.
+function updateRangeText(element, value) {
+    if (!element || element.textContent === value) return;
+    element.textContent = value;
+    fitTextToWidth(element);
 }
 
 function formatRange(values, precision) {
@@ -89,7 +103,9 @@ export function clearShotData() {
     const elements = getElements();
     for (const phase of Object.values(elements)) {
         for (const element of Object.values(phase)) {
-            updateText(element, '-');
+            // Through the fitting path so a cell shrunk by the previous shot's
+            // long value is returned to its CSS size rather than keeping it.
+            updateRangeText(element, '-');
         }
     }
     updateTempHeader();
@@ -149,16 +165,16 @@ function calculateAndRender(shotData) {
         updateText(elements.pi.weight, piWeight !== null ? `${piWeight.toFixed(1)}g` : '0.0');
         updateText(elements.pi.volume, `${piVolume.toFixed(0)}`);
         updateText(elements.pi.temp, `${formatRange(toDisplayTemps(piTemps), 0)}`);
-        updateText(elements.pi.flow, `${formatStartPeakEnd(piFlows, 1)} `);
-        updateText(elements.pi.pressure, `${formatStartPeakEnd(piPressures, 1)}`);
+        updateRangeText(elements.pi.flow, `${formatStartPeakEnd(piFlows, 1)} `);
+        updateRangeText(elements.pi.pressure, `${formatStartPeakEnd(piPressures, 1)}`);
 
         if (exTime > 0) {
             updateText(elements.ex.time, `${Math.round(exTime)}`);
             updateText(elements.ex.weight, exWeight !== null ? `${exWeight.toFixed(1)}g` : '0.0');
             updateText(elements.ex.volume, `${exVolume.toFixed(0)}`);
             updateText(elements.ex.temp, `${formatRange(toDisplayTemps(exTemps), 0)}`);
-            updateText(elements.ex.flow, `${formatStartPeakEnd(exFlows, 1)} `);
-            updateText(elements.ex.pressure, `${formatStartPeakEnd(exPressures, 1)}`);
+            updateRangeText(elements.ex.flow, `${formatStartPeakEnd(exFlows, 1)} `);
+            updateRangeText(elements.ex.pressure, `${formatStartPeakEnd(exPressures, 1)}`);
         }
 
         updateText(elements.total.time, `${Math.round(totalTime)}`);
