@@ -26,8 +26,13 @@ test('EasyMDE toolbar icon font is bundled for its first render', () => {
 test('font faces use WOFF2 with swap and no browser TTF references', () => {
     const css = read('src/css/main.css');
     assert.doesNotMatch(css, /url\([^)]*\.ttf/);
-    assert.equal((css.match(/font-display: swap/g) || []).length, 11);
-    for (const name of ['Inter-Regular', 'Inter-SemiBold', 'Inter-Bold', 'NotoSansMono-SemiBold']) {
+    // Every declared face, however many there are, has to carry swap -- counting
+    // against the faces themselves rather than a fixed number so that adding a
+    // weight fails this only when it actually forgets swap.
+    const faces = (css.match(/@font-face/g) || []).length;
+    assert.ok(faces > 0);
+    assert.equal((css.match(/font-display: swap/g) || []).length, faces);
+    for (const name of ['Inter-Regular', 'Inter-SemiBold', 'Inter-Bold', 'NotoSansMono-SemiBold', 'NotoSansMono-Medium']) {
         assert.equal(existsSync(new URL(`src/ui/${name}.woff2`, root)), true);
     }
 });
