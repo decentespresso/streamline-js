@@ -1,4 +1,4 @@
-import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft } from './profileManager.js';
+import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight } from './profileManager.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
@@ -257,9 +257,12 @@ async function handleConfirm() {
     }
     const profile = profileRecord.profile;
     const meta = profileRecord.metadata || {};
-    const savedGrind = meta.grinderSetting ?? null;
+    // Fall back to the last grind/dose the user set on any profile before the
+    // profile's own defaults, so switching to one they have never adjusted does
+    // not blank the grind tile.
+    const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
     const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const effectiveDose  = meta.targetDoseWeight  ?? (profile.dose_weight   || 18);
+    const effectiveDose  = meta.targetDoseWeight  ?? lastTargetDoseWeight() ?? (profile.dose_weight   || 18);
     const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
     // Same saved-override fold the favourite buttons do (profileManager
     // applyProfileToMachine) -- this page is the other way into a profile

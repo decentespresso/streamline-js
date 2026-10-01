@@ -575,7 +575,43 @@ export function withSavedBrewTemp(profile, metadata) {
     return { ...profile, steps: profile.steps.map(step => ({ ...step, temperature: temp })) };
 }
 
+// A grind setting belongs to the grinder and the beans, and a dose to the
+// basket -- neither is really a property of the profile. So remember the last
+// one the user set, whichever profile they set it on: a profile they have never
+// adjusted then opens on those numbers instead of a blank grind tile. Yield and
+// brew temperature are deliberately not remembered; those come from the
+// profile's own recipe, and carrying them across would change how it brews.
+const LAST_GRIND_KEY = 'lastGrinderSetting';
+const LAST_DOSE_KEY = 'lastTargetDoseWeight';
+
+function rememberTileDefaults(fields) {
+    try {
+        if (fields?.grinderSetting != null) localStorage.setItem(LAST_GRIND_KEY, String(fields.grinderSetting));
+        if (fields?.targetDoseWeight != null) localStorage.setItem(LAST_DOSE_KEY, String(fields.targetDoseWeight));
+    } catch (e) {
+        logger.warn('Could not remember last tile values:', e);
+    }
+}
+
+export function lastGrinderSetting() {
+    try {
+        const stored = localStorage.getItem(LAST_GRIND_KEY);
+        return stored === null || stored === '' ? null : stored;
+    } catch { return null; }
+}
+
+export function lastTargetDoseWeight() {
+    try {
+        const parsed = parseFloat(localStorage.getItem(LAST_DOSE_KEY));
+        return Number.isFinite(parsed) ? parsed : null;
+    } catch { return null; }
+}
+
 export async function saveContextToActiveProfile(fields) {
+    // Before the active-profile guard below: a number the user typed is worth
+    // remembering as the fallback even on the path where there is no profile to
+    // attach it to.
+    rememberTileDefaults(fields);
     // Last-ditch bind: the machine's profile is on screen even when nothing has
     // set the id this session. Better than dropping the user's number.
     if (!activeProfileId || !availableProfiles[activeProfileId]) {
@@ -820,9 +856,12 @@ async function handleProfileClick(index) {
     logger.info(`Sending profile '${profile.title}' to REA (callId: ${callId})...`);
     let profileSuccessfullySet = false;
     const meta = profileRecord.metadata || {};
-    const savedGrind = meta.grinderSetting ?? null;
+    // Fall back to the last grind/dose the user set on any profile before the
+    // profile's own defaults, so switching to one they have never adjusted does
+    // not blank the grind tile.
+    const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
     const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const effectiveDose  = meta.targetDoseWeight  ?? (profile.dose_weight   || 18);
+    const effectiveDose  = meta.targetDoseWeight  ?? lastTargetDoseWeight() ?? (profile.dose_weight   || 18);
     const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
     const displayYield = Number.isFinite(effectiveYield) ? effectiveYield : 0;
     // The UI yield override lives in metadata (targetYield), but on non-autonomous
