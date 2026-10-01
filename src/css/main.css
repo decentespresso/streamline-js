@@ -635,6 +635,35 @@ body {
   width: 181.5px;
 }
 
+/* Profile selector's list (Figma node 2662-1356) draws the same bare pill as
+   the profile editor's panes above -- 60px wide on the canvas, in
+   --secondary-button-bg -- so it reuses that treatment rather than the
+   browser's default bar. Same reasoning as #editor-steps-container: declaring
+   ::-webkit-scrollbar keeps a classic space-taking thumb instead of an
+   overlay one that fades out on touch, the id outranks dark-mode.css's
+   app-wide scrollbar rules, and the token carries its own dark value. */
+#profile-list {
+  scrollbar-gutter: stable;
+}
+@supports not selector(::-webkit-scrollbar) {
+  #profile-list {
+    scrollbar-color: var(--secondary-button-bg) transparent;
+  }
+}
+#profile-list::-webkit-scrollbar {
+  width: 45px;
+}
+#profile-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+#profile-list::-webkit-scrollbar-thumb {
+  background-color: var(--secondary-button-bg);
+  border-radius: 9999px;
+  /* Inset so it reads as a floating pill rather than a full-width bar. */
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
 #review-steps-col::-webkit-scrollbar-thumb,
 #review-right-col::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.42);
