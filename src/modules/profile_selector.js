@@ -1,4 +1,4 @@
-import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings } from './profileManager.js';
+import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings, DEFAULT_DOSE_WEIGHT } from './profileManager.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
@@ -258,17 +258,13 @@ async function handleConfirm() {
     const profile = profileRecord.profile;
     const meta = profileRecord.metadata || {};
     // Same fallback chains as the favourite buttons (profileManager
-    // applyProfileToMachine) -- keep the two in step. Most specific first: the
-    // user's saved override, the profile's own recipe (a legacy TCL string as
-    // often as a number), then the last dose they set anywhere and the stock
-    // basket, which exist only so a profile stating no dose shows a real number
-    // rather than 0. Grind is not a profile field, so there is nothing between
-    // their override and the last one they set.
+    // applyProfileToMachine) -- keep the two in step. Neither dose nor grind is a
+    // profile field (see DEFAULT_DOSE_WEIGHT), so behind the user's saved override
+    // for this profile there is only the last number they set anywhere. Yield is a
+    // profile field, so the recipe answers for it.
     const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
     const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const profileDose = parseFloat(profile.dose_weight);
-    const effectiveDose  = meta.targetDoseWeight ?? (Number.isFinite(profileDose) ? profileDose : null)
-        ?? lastTargetDoseWeight() ?? 18;
+    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
     const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
     // Same saved-override fold the favourite buttons do (profileManager
     // applyProfileToMachine) -- this page is the other way into a profile
@@ -313,7 +309,7 @@ async function handleConfirm() {
             const workflowUpdate = {
                 profile: profileToSend,
                 context: {
-                    targetDoseWeight: effectiveDose,
+                    targetDoseWeight,
                     targetYield: effectiveYield,
                     ...grindContext
                 }
@@ -322,7 +318,7 @@ async function handleConfirm() {
             sentworkflow = await updateWorkflow(workflowUpdate);
         } else {
             const displayYield = isNaN(effectiveYield) ? 0 : effectiveYield;
-            sentworkflow = await updateWorkflow({ profile: profileToSend, context: { targetDoseWeight: effectiveDose, targetYield: displayYield, ...grindContext } });
+            sentworkflow = await updateWorkflow({ profile: profileToSend, context: { targetDoseWeight, targetYield: displayYield, ...grindContext } });
         }
 
         const verified = sentworkflow.profile.title === profile.title;
@@ -461,19 +457,16 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
             const pr = availableProfiles[key];
             if (pr?.profile) {
                 const meta = pr.metadata || {};
-                // Same chain as handleConfirm and the favourite buttons: the
-                // user's override, then the profile's own dose even when it is 0,
-                // and only then the last dose they set anywhere.
-                const profileDose = parseFloat(pr.profile.dose_weight);
-                const dose     = meta.targetDoseWeight ?? (Number.isFinite(profileDose) ? profileDose : null)
-                    ?? lastTargetDoseWeight() ?? 18;
+                // Same chain as handleConfirm and the favourite buttons: the user's
+                // override for this profile, then the last dose they set anywhere.
+                const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
                 const yieldVal = meta.targetYield ?? parseFloat(pr.profile.target_weight);
                 const grind    = meta.grinderSetting ?? lastGrinderSetting();
                 try {
                     // Assigning from here switches the machine to the profile, so it
                     // owes the same saved overrides as the other two ways in: the
                     // brew temp folded onto the profile, and steam pushed after.
-                    await updateWorkflow({ profile: withSavedBrewTemp(pr.profile, meta), context: { targetDoseWeight: dose, targetYield: isNaN(yieldVal) ? 0 : yieldVal, grinderSetting: grind } });
+                    await updateWorkflow({ profile: withSavedBrewTemp(pr.profile, meta), context: { targetDoseWeight, targetYield: isNaN(yieldVal) ? 0 : yieldVal, grinderSetting: grind } });
                     await applySavedSteamSettings(meta);
                     setActiveProfile(key);
                     updateProfileName(pr.profile.title);

@@ -17,6 +17,7 @@ function loadHarness(dependencies) {
         } = dependencies;
         let selectedProfileKey = null;
         const FAV_COUNT = 5;
+        const DEFAULT_DOSE_WEIGHT = 18; // profileManager's, not an injected dependency
         ${source.slice(start, end)}
         return {
             handleConfirm,
@@ -36,8 +37,8 @@ test('profile confirmation pins its selection and rejects overlap', async () => 
     let alertCount = 0;
 
     const availableProfiles = Object.freeze({
-        a: Object.freeze({ profile: Object.freeze({ title: 'A', target_weight: '36', dose_weight: 18 }) }),
-        b: Object.freeze({ profile: Object.freeze({ title: 'B', target_weight: '40', dose_weight: 20 }) })
+        a: Object.freeze({ profile: Object.freeze({ title: 'A', target_weight: '36' }) }),
+        b: Object.freeze({ profile: Object.freeze({ title: 'B', target_weight: '40' }) })
     });
     const harness = loadHarness({
         availableProfiles,
@@ -157,14 +158,14 @@ test('confirm button label reflects a pending favorite assignment', () => {
     assert.equal(button.textContent, 'CONFIRM', 'an out-of-range pending index must not be shown as a slot');
 });
 
-// Grind belongs to the grinder, so a profile the user has never adjusted opens on
-// the last grind they set rather than a blank tile. Dose is a profile field, so
-// the recipe outranks the carried number -- which exists only to keep a profile
-// that states no dose off 0. Yield is never carried; it comes from the recipe.
-test('a profile with no saved grind/dose falls back to the last ones set', async () => {
+// Decaid's profile schema has no dose (profile.dart toJson), so dose and grind
+// both come down to the user's saved override for this profile, then the last
+// number they set anywhere, then the stock basket. Yield IS a profile field, so
+// it comes from the recipe and is never carried across a switch.
+test('dose and grind fall back to the last ones set, yield to the recipe', async () => {
     const sent = [];
     const steamApplied = [];
-    const base = (meta, profile = { title: 'A', target_weight: '36', dose_weight: 18 }) => ({
+    const base = (meta, profile = { title: 'A', target_weight: '36' }) => ({
         availableProfiles: {
             a: { profile, metadata: meta }
         },
@@ -185,32 +186,28 @@ test('a profile with no saved grind/dose falls back to the last ones set', async
     blank.select('a');
     await blank.handleConfirm();
     assert.equal(sent[0].grinderSetting, '3.5', 'grind carries over rather than clearing');
-    assert.equal(sent[0].targetDoseWeight, 18, "the profile's own dose outranks the carried one");
+    assert.equal(sent[0].targetDoseWeight, 20, 'with no override, the last dose set is used');
     assert.equal(sent[0].targetYield, 36, 'yield still comes from the profile');
-
-    const doseless = loadHarness(base({}, { title: 'A', target_weight: '36' }));
-    doseless.select('a');
-    await doseless.handleConfirm();
-    assert.equal(sent[1].targetDoseWeight, 20, 'with no dose in the recipe, the last one set is used');
 
     const saved = loadHarness(base({ grinderSetting: '1.2', targetDoseWeight: 15 }));
     saved.select('a');
     await saved.handleConfirm();
-    assert.equal(sent[2].grinderSetting, '1.2', "this profile's own grind still wins");
-    assert.equal(sent[2].targetDoseWeight, 15, "the user's saved dose outranks the recipe");
+    assert.equal(sent[1].grinderSetting, '1.2', "this profile's own grind still wins");
+    assert.equal(sent[1].targetDoseWeight, 15, "the user's saved dose outranks the carried one");
 
-    // A recipe that states zero states a number: the tiles must read what the
-    // machine is actually set to, not the last dose from another profile.
-    const zero = loadHarness(base({}, { title: 'A', target_weight: '0', dose_weight: 0 }));
+    // Zero is a value, not an absence: a saved dose of 0 must reach the machine as
+    // 0, and a recipe with no target weight must send 0 rather than a stale yield.
+    const zero = loadHarness(base({ targetDoseWeight: 0 }, { title: 'A', target_weight: '0' }));
     zero.select('a');
     await zero.handleConfirm();
-    assert.equal(sent[3].targetDoseWeight, 0, 'a dose of 0 in the recipe is sent as 0');
-    assert.equal(sent[3].targetYield, 0, 'a target weight of 0 is sent as 0');
+    assert.equal(sent[2].targetDoseWeight, 0, 'a saved dose of 0 is sent as 0');
+    assert.equal(sent[2].targetYield, 0, 'a target weight of 0 is sent as 0');
 
     // Steam rides its own setters rather than the workflow context, so confirming
     // here has to hand this profile's metadata to the same applier the favourite
     // buttons use -- otherwise a saved steam setting only survives one of the two
     // ways into a profile switch.
-    assert.deepEqual(steamApplied, [{}, {}, { grinderSetting: '1.2', targetDoseWeight: 15 }, {}],
+    assert.deepEqual(steamApplied,
+        [{}, { grinderSetting: '1.2', targetDoseWeight: 15 }, { targetDoseWeight: 0 }],
         'every confirm offers the profile metadata to the steam applier');
 });

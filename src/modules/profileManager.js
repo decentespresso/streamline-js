@@ -612,6 +612,15 @@ export async function applySavedSteamSettings(metadata) {
 // the fallback chain -- a profile that states its own dose keeps it. Yield and
 // brew temperature are deliberately not remembered at all; those come from the
 // profile's own recipe, and carrying them across would change how it brews.
+// Decaid's Profile schema carries no dose at all -- see profile.dart toJson():
+// version, title, notes, author, beverage_type, steps, target_volume,
+// target_weight, target_volume_count_start, tank_temperature. The dose lives only
+// on the workflow context (context.targetDoseWeight), which is where every tile
+// edit writes it. So behind the user's saved override for a profile there is no
+// recipe number to fall back to -- only the last dose they set, then the stock
+// basket.
+export const DEFAULT_DOSE_WEIGHT = 18;
+
 const LAST_GRIND_KEY = 'lastGrinderSetting';
 const LAST_DOSE_KEY = 'lastTargetDoseWeight';
 
@@ -695,12 +704,14 @@ export async function loadProfileForWake(profileId) {
         logger.warn(`Wake profile ${profileId} not found — skipping.`);
         return false;
     }
-    const parsedDose = parseFloat(profile.dose_weight);
-    const defaultDose = isNaN(parsedDose) ? 18 : parsedDose;
+    // No dose in the profile schema (see DEFAULT_DOSE_WEIGHT), so waking onto one
+    // keeps the last dose the user set. Yield is a profile field, so it comes
+    // from the recipe -- coerced, since target_weight can be a legacy TCL string.
+    const targetDoseWeight = lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
     const parsedYield = parseFloat(profile.target_weight);
-    const displayYield = isNaN(parsedYield) ? 0 : parsedYield;
+    const targetYield = isNaN(parsedYield) ? 0 : parsedYield;
     try {
-        await updateWorkflow({ profile, context: { targetDoseWeight: defaultDose, targetYield: displayYield, grinderSetting: null } });
+        await updateWorkflow({ profile, context: { targetDoseWeight, targetYield, grinderSetting: null } });
         setActiveProfile(profileId);
         // Don't rely on the racy, unawaited loadInitialData() call app.js fires
         // alongside this one to catch #profile-name up — its GET /workflow can
@@ -741,17 +752,17 @@ export async function resetActiveProfileToDefaults() {
     // the profile that is loaded now owns the live setting, not this one.
     applyFlowCalibrationForProfile(profileId);
 
-    // Re-send the profile using its own defaults (no metadata overrides).
-    // WorkflowContext requires numeric targetDoseWeight/targetYield (schema:
-    // number/double); profile.dose_weight is a legacy TCL field that may be a
-    // string, so coerce both rather than passing through raw.
-    const parsedDose = parseFloat(profile.dose_weight);
-    const defaultDose = isNaN(parsedDose) ? 18 : parsedDose;
+    // Re-send the profile using its own defaults (no overrides). WorkflowContext
+    // requires numeric targetDoseWeight/targetYield (schema: number/double), and
+    // target_weight can be a legacy TCL string, so coerce it. The dose is not a
+    // profile field at all (see DEFAULT_DOSE_WEIGHT): with the user's override
+    // dropped, the stock basket is the only default there is to reset to.
+    const targetDoseWeight = DEFAULT_DOSE_WEIGHT;
     const parsedYield = parseFloat(profile.target_weight);
-    const displayYield = isNaN(parsedYield) ? 0 : parsedYield;
+    const targetYield = isNaN(parsedYield) ? 0 : parsedYield;
     let sentWorkflow;
     try {
-        sentWorkflow = await updateWorkflow({ profile, context: { targetDoseWeight: defaultDose, targetYield: displayYield, grinderSetting: null } });
+        sentWorkflow = await updateWorkflow({ profile, context: { targetDoseWeight, targetYield, grinderSetting: null } });
     } catch (error) {
         logger.error('Failed to re-apply profile defaults to workflow:', error);
         return false;
@@ -886,17 +897,13 @@ async function handleProfileClick(index) {
     logger.info(`Sending profile '${profile.title}' to REA (callId: ${callId})...`);
     let profileSuccessfullySet = false;
     const meta = profileRecord.metadata || {};
-    // Fallback chains, most specific first. Grind is not a profile field at all,
-    // so the last one the user set is all there is behind their saved override.
-    // Dose: their override for this profile, the profile's own recipe (a legacy
-    // TCL string as often as a number), the last dose they set anywhere, then
-    // the stock basket -- the last two only so a profile that states no dose
-    // shows a real number rather than 0.
+    // Fallback chains, most specific first. Neither dose nor grind is a profile
+    // field (see DEFAULT_DOSE_WEIGHT), so behind the user's saved override for
+    // this profile there is only the last number they set anywhere. Yield is a
+    // profile field, so the recipe answers for it and nothing is carried over.
     const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
     const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const profileDose = parseFloat(profile.dose_weight);
-    const effectiveDose  = meta.targetDoseWeight ?? (Number.isFinite(profileDose) ? profileDose : null)
-        ?? lastTargetDoseWeight() ?? 18;
+    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
     const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
     const displayYield = Number.isFinite(effectiveYield) ? effectiveYield : 0;
     // The UI yield override lives in metadata (targetYield), but on non-autonomous
@@ -915,7 +922,7 @@ async function handleProfileClick(index) {
 
         const workflowResponse = await updateWorkflow({
             profile: profileToSend,
-            context: { targetDoseWeight: effectiveDose, targetYield: displayYield, ...grindContext }
+            context: { targetDoseWeight, targetYield: displayYield, ...grindContext }
         });
         // Paint the tiles from the workflow Rea echoed back rather than from the
         // numbers we meant to send, so what the user reads is what the machine
