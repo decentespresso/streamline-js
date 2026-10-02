@@ -87,7 +87,7 @@
 
 #chart-wrap {
     flex: 1 1 0;
-    min-height: 650px;   /* the design height -- never shrink below it */
+    min-height: 643px;   /* the design height -- never shrink below it */
 }
 
 /* Scoped to the main page on purpose: profile_selector.html reuses the

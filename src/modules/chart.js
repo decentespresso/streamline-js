@@ -236,10 +236,10 @@ const baseLayout = {
     autosize: true,
     margin: {
         autoexpand: true,
-        l: 50,
-        r: 50,
-        t: 20,
-        b: 40,
+        l: 88,
+        r: 69,
+        t: 38,
+        b: 72,
         pad: 0
     },
     showlegend: false,
@@ -303,16 +303,16 @@ function measureTextWidth(text) {
 // Plot pixel width (between left and right margin). Falls back to a sensible
 // default when the chart element is hidden or hasn't been measured yet —
 // returning a tiny value here would blow up `rangeMaxForLabels`.
-const DEFAULT_PLOT_PX_WIDTH = 1360; // baseline 1460 chart - margin.l(50) - margin.r(50)
+const DEFAULT_PLOT_PX_WIDTH = 1283; // baseline 1440 chart - margin.l(88) - margin.r(69)
 let observedChartSize = { width: 0, height: 0 };
 function getPlotPixelWidth() {
-    const usable = observedChartSize.width - 100; // baseLayout margin.l + margin.r
+    const usable = observedChartSize.width - 157; // baseLayout margin.l + margin.r
     return usable > 200 ? usable : DEFAULT_PLOT_PX_WIDTH;
 }
 
-const DEFAULT_PLOT_PX_HEIGHT = 590; // baseline 650 chart - margin.t(20) - margin.b(40)
+const DEFAULT_PLOT_PX_HEIGHT = 533; // baseline 643 chart - margin.t(38) - margin.b(72)
 function getPlotPixelHeight() {
-    const usable = observedChartSize.height - 60;
+    const usable = observedChartSize.height - 110; // baseLayout margin.t + margin.b
     return usable > 100 ? usable : DEFAULT_PLOT_PX_HEIGHT;
 }
 
@@ -402,7 +402,7 @@ function getAnnotations() {
 // it's done (see isLiveShot below).
 function applyLabelLayout(layout) {
     layout.annotations = isLiveShot ? [] : getAnnotations();
-    layout.margin = { ...(layout.margin || {}), r: 50 };
+    layout.margin = { ...(layout.margin || {}), r: 69 };
 }
 
 function applyFinalXRange(layout) {
