@@ -577,9 +577,11 @@ export function withSavedBrewTemp(profile, metadata) {
 
 // A grind setting belongs to the grinder and the beans, and a dose to the
 // basket -- neither is really a property of the profile. So remember the last
-// one the user set, whichever profile they set it on: a profile they have never
-// adjusted then opens on those numbers instead of a blank grind tile. Yield and
-// brew temperature are deliberately not remembered; those come from the
+// one the user set, whichever profile they set it on, and use it when nothing
+// better is known: a profile the user has never adjusted then opens on a real
+// number instead of a blank grind tile or a 0 dose. These sit at the BACK of
+// the fallback chain -- a profile that states its own dose keeps it. Yield and
+// brew temperature are deliberately not remembered at all; those come from the
 // profile's own recipe, and carrying them across would change how it brews.
 const LAST_GRIND_KEY = 'lastGrinderSetting';
 const LAST_DOSE_KEY = 'lastTargetDoseWeight';
@@ -718,17 +720,16 @@ export async function resetActiveProfileToDefaults() {
     const defaultDose = isNaN(parsedDose) ? 18 : parsedDose;
     const parsedYield = parseFloat(profile.target_weight);
     const displayYield = isNaN(parsedYield) ? 0 : parsedYield;
+    let sentWorkflow;
     try {
-        await updateWorkflow({ profile, context: { targetDoseWeight: defaultDose, targetYield: displayYield, grinderSetting: null } });
+        sentWorkflow = await updateWorkflow({ profile, context: { targetDoseWeight: defaultDose, targetYield: displayYield, grinderSetting: null } });
     } catch (error) {
         logger.error('Failed to re-apply profile defaults to workflow:', error);
         return false;
     }
 
-    updateDoseInDisplay(defaultDose);
-    updateDrinkOut(displayYield);
-    updateDrinkRatio();
-    if (profile.steps?.length > 0) updateTemperatureDisplay(profile.steps[0].temperature);
+    // Tiles come from what Rea echoed back, so they show the machine's numbers.
+    applyWorkflowToMainPageUI(sentWorkflow, { updateName: false });
     const grindEl = document.getElementById('grind-value');
     if (grindEl) grindEl.textContent = '0';
     logger.info(`Reset profile ${activeProfileId} to its default numbers.`);
@@ -736,7 +737,7 @@ export async function resetActiveProfileToDefaults() {
 }
 
 export async function saveGrindToActiveProfile(grindValue) {
-    console.log(`[saveGrindToActiveProfile] grindValue=${grindValue} activeProfileId=${activeProfileId} profileFound=${!!availableProfiles[activeProfileId]}`);
+    logger.debug(`[saveGrindToActiveProfile] grindValue=${grindValue} activeProfileId=${activeProfileId} profileFound=${!!availableProfiles[activeProfileId]}`);
     return saveContextToActiveProfile({ grinderSetting: String(grindValue) });
 }
 
@@ -856,12 +857,17 @@ async function handleProfileClick(index) {
     logger.info(`Sending profile '${profile.title}' to REA (callId: ${callId})...`);
     let profileSuccessfullySet = false;
     const meta = profileRecord.metadata || {};
-    // Fall back to the last grind/dose the user set on any profile before the
-    // profile's own defaults, so switching to one they have never adjusted does
-    // not blank the grind tile.
+    // Fallback chains, most specific first. Grind is not a profile field at all,
+    // so the last one the user set is all there is behind their saved override.
+    // Dose: their override for this profile, the profile's own recipe (a legacy
+    // TCL string as often as a number), the last dose they set anywhere, then
+    // the stock basket -- the last two only so a profile that states no dose
+    // shows a real number rather than 0.
     const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
     const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const effectiveDose  = meta.targetDoseWeight  ?? lastTargetDoseWeight() ?? (profile.dose_weight   || 18);
+    const profileDose = parseFloat(profile.dose_weight);
+    const effectiveDose  = meta.targetDoseWeight ?? (Number.isFinite(profileDose) ? profileDose : null)
+        ?? lastTargetDoseWeight() ?? 18;
     const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
     const displayYield = Number.isFinite(effectiveYield) ? effectiveYield : 0;
     // The UI yield override lives in metadata (targetYield), but on non-autonomous
@@ -882,23 +888,23 @@ async function handleProfileClick(index) {
             profile: profileToSend,
             context: { targetDoseWeight: effectiveDose, targetYield: displayYield, ...grindContext }
         });
-        updateDrinkOut(displayYield);
-        updateDoseInDisplay(effectiveDose);
-        updateDrinkRatio();
+        // Paint the tiles from the workflow Rea echoed back rather than from the
+        // numbers we meant to send, so what the user reads is what the machine
+        // will actually brew with -- no guessing whether a value stuck.
+        applyWorkflowToMainPageUI(workflowResponse, { updateName: false });
 
         // Use the response from updateWorkflow to confirm the profile was set
         if (workflowResponse && workflowResponse.profile && workflowResponse.profile.title === profile.title) {
             profileSuccessfullySet = true;
             logger.info(`Profile successfully set (callId: ${callId})`);
+            // Not from the workflow: the tile shows the translated title.
             const translatedTitle = translateProfileTitle(profile.title);
             updateProfileName(translatedTitle);
-            if (profileToSend.steps && profileToSend.steps.length > 0) {
-                updateTemperatureDisplay(profileToSend.steps[0].temperature);
-            }
 
-            if (savedGrind != null) {
-                updateGrindDisplay({ grinderSetting: savedGrind });
-            } else {
+            // The one tile applyWorkflowToMainPageUI cannot paint: a null grind
+            // means nothing is known, and leaving the previous profile's number
+            // standing would claim the machine is set to it.
+            if (workflowResponse.context?.grinderSetting == null) {
                 const grindEl = document.getElementById('grind-value');
                 if (grindEl) grindEl.textContent = '0';
             }

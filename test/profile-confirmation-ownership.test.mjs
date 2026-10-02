@@ -153,16 +153,15 @@ test('confirm button label reflects a pending favorite assignment', () => {
     assert.equal(button.textContent, 'CONFIRM', 'an out-of-range pending index must not be shown as a slot');
 });
 
-// Grind belongs to the grinder and dose to the basket, so a profile the user has
-// never adjusted opens on the last numbers they set rather than a blank grind
-// tile. A number saved against this profile still wins, and the profile's own
-// dose is the last resort. Yield is deliberately not carried -- it comes from
-// the profile's recipe.
+// Grind belongs to the grinder, so a profile the user has never adjusted opens on
+// the last grind they set rather than a blank tile. Dose is a profile field, so
+// the recipe outranks the carried number -- which exists only to keep a profile
+// that states no dose off 0. Yield is never carried; it comes from the recipe.
 test('a profile with no saved grind/dose falls back to the last ones set', async () => {
     const sent = [];
-    const base = (meta) => ({
+    const base = (meta, profile = { title: 'A', target_weight: '36', dose_weight: 18 }) => ({
         availableProfiles: {
-            a: { profile: { title: 'A', target_weight: '36', dose_weight: 18 }, metadata: meta }
+            a: { profile, metadata: meta }
         },
         logger: { info() {}, error() {} },
         alert() {}, showToast() {},
@@ -180,12 +179,17 @@ test('a profile with no saved grind/dose falls back to the last ones set', async
     blank.select('a');
     await blank.handleConfirm();
     assert.equal(sent[0].grinderSetting, '3.5', 'grind carries over rather than clearing');
-    assert.equal(sent[0].targetDoseWeight, 20, 'dose carries over rather than using the profile default');
+    assert.equal(sent[0].targetDoseWeight, 18, "the profile's own dose outranks the carried one");
     assert.equal(sent[0].targetYield, 36, 'yield still comes from the profile');
+
+    const doseless = loadHarness(base({}, { title: 'A', target_weight: '36' }));
+    doseless.select('a');
+    await doseless.handleConfirm();
+    assert.equal(sent[1].targetDoseWeight, 20, 'with no dose in the recipe, the last one set is used');
 
     const saved = loadHarness(base({ grinderSetting: '1.2', targetDoseWeight: 15 }));
     saved.select('a');
     await saved.handleConfirm();
-    assert.equal(sent[1].grinderSetting, '1.2', "this profile's own grind still wins");
-    assert.equal(sent[1].targetDoseWeight, 15, "this profile's own dose still wins");
+    assert.equal(sent[2].grinderSetting, '1.2', "this profile's own grind still wins");
+    assert.equal(sent[2].targetDoseWeight, 15, "the user's saved dose outranks the recipe");
 });

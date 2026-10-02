@@ -257,12 +257,18 @@ async function handleConfirm() {
     }
     const profile = profileRecord.profile;
     const meta = profileRecord.metadata || {};
-    // Fall back to the last grind/dose the user set on any profile before the
-    // profile's own defaults, so switching to one they have never adjusted does
-    // not blank the grind tile.
+    // Same fallback chains as the favourite buttons (profileManager
+    // applyProfileToMachine) -- keep the two in step. Most specific first: the
+    // user's saved override, the profile's own recipe (a legacy TCL string as
+    // often as a number), then the last dose they set anywhere and the stock
+    // basket, which exist only so a profile stating no dose shows a real number
+    // rather than 0. Grind is not a profile field, so there is nothing between
+    // their override and the last one they set.
     const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
     const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const effectiveDose  = meta.targetDoseWeight  ?? lastTargetDoseWeight() ?? (profile.dose_weight   || 18);
+    const profileDose = parseFloat(profile.dose_weight);
+    const effectiveDose  = meta.targetDoseWeight ?? (Number.isFinite(profileDose) ? profileDose : null)
+        ?? lastTargetDoseWeight() ?? 18;
     const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
     // Same saved-override fold the favourite buttons do (profileManager
     // applyProfileToMachine) -- this page is the other way into a profile
