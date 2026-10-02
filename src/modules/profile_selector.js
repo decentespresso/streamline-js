@@ -1,0 +1,1777 @@
+import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings, DEFAULT_DOSE_WEIGHT } from './profileManager.js';
+import { resolveProfileKeyByTitle } from './active-profile.js';
+import { openDB } from './idb.js';
+import { logger } from './logger.js';
+import { initResizablePanels, showToast, initFullscreenHandler, updateProfileName, setupPressAndHold } from './ui.js';
+import { sendProfile, getWorkflow, updateWorkflow, deleteProfile, updateProfileVisibility, getProfileLineage } from './api.js';
+import { initChart, plotProfile } from './chart.js';
+import { translatePage, getTranslation } from './i18n.js';
+import { loadPage } from './router.js';
+import { openContextMenu, closeContextMenu } from './context-menu.js';
+
+const initializedProfileRoots = new WeakSet();
+// True when the pre-selected profile is just "the first row" rather than the
+// profile the machine actually has loaded -- see initializeProfileSelector.
+let selectionIsFallback = false;
+let profilesUpdatedListenerInstalled = false;
+
+function handleProfilesUpdated() {
+    logger.info('Received profiles-updated event, re-rendering profile list.');
+    renderProfiles();
+}
+
+function ensureProfilesUpdatedListener() {
+    if (profilesUpdatedListenerInstalled) return;
+    document.addEventListener('profiles-updated', handleProfilesUpdated);
+    profilesUpdatedListenerInstalled = true;
+}
+
+let selectedProfileKey = null;
+let isShowingHidden = false; // State to track if hidden profiles should be shown
+let isSearching = false; // State to track if search mode is active
+const FAV_COUNT = 5;
+
+// Suppress browser-default text selection, context menu, tap-highlight, drag, and
+// iOS callout across an entire subtree. Inputs/textareas/contenteditable are
+// exempted so typing in the search field still works.
+function suppressBrowserActions(root) {
+    if (!root || root.dataset.browserActionsSuppressed === '1') return;
+    root.dataset.browserActionsSuppressed = '1';
+
+    root.style.userSelect = 'none';
+    root.style.webkitUserSelect = 'none';
+    root.style.webkitTouchCallout = 'none';
+    root.style.webkitTapHighlightColor = 'transparent';
+    root.style.touchAction = 'manipulation';
+
+    const isTypingTarget = (el) =>
+        !!el && !!el.closest && !!el.closest('input, textarea, [contenteditable="true"]');
+
+    const block = (e) => {
+        if (isTypingTarget(e.target)) return;
+        e.preventDefault();
+    };
+
+    root.addEventListener('contextmenu', block);
+    root.addEventListener('selectstart', block);
+    root.addEventListener('dragstart', block);
+}
+
+function getEyeIconSVG(strokeColor) {
+    return `<svg aria-hidden="true" class="w-[49.5px] h-[49.5px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+// Quick-hide affordance on the selected row (Figma: inline eye-off icon).
+function getEyeOffIconSVG(strokeColor) {
+    return `<svg aria-hidden="true" class="w-[30px] h-[30px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L57 57" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/></svg>`;
+}
+
+// Shared by the row context menu's "Hide" item and the selected-row inline
+// eye-off icon so both stay in sync with the draft-vs-real-profile distinction.
+async function hideOrDeleteProfile(key, profileRecord) {
+    if (profileRecord.isDraft) {
+        // A draft never reached the server — nothing to hide there, and
+        // deleteOrHideProfile would 404 trying. Just drop the local copy.
+        await deleteProfileDraft(key);
+    } else {
+        await deleteOrHideProfile(key, { forceHide: true });
+    }
+    const container = document.getElementById('profile-list');
+    if (container) {
+        const item = container.querySelector(`[data-profile-key="${key}"]`);
+        if (item) item.click(); else updateSelectedProfileView(null);
+    }
+    if (profileRecord.isDraft) document.dispatchEvent(new CustomEvent('profiles-updated'));
+}
+
+// Short, human-readable summary of what a Reset to `other` would actually
+// change versus `current` -- shown next to each row's date so picking a
+// version isn't a blind guess from timestamps alone. Execution fields only
+// (steps, shot parameters) -- the same fields REA hashes into the profile
+// id -- so a title-only rename never shows up here, matching the
+// PRESENTATION_FIELDS split profile_editor.js's saveProfile uses.
+const DIFF_FIELD_LABELS = [
+    ['target_weight', 'target weight'],
+    ['target_volume', 'target volume'],
+    ['beverage_type', 'beverage type'],
+    ['tank_temperature', 'tank temperature'],
+    ['target_volume_count_start', 'pre-infusion end'],
+];
+function summarizeProfileDiff(current, other) {
+    if (!current || !other) return '';
+    const parts = [];
+    const stepsA = current.steps || [];
+    const stepsB = other.steps || [];
+    if (stepsA.length !== stepsB.length) {
+        parts.push(`${stepsB.length} step${stepsB.length === 1 ? '' : 's'}`);
+    } else {
+        let changed = 0;
+        for (let i = 0; i < stepsA.length; i++) {
+            if (JSON.stringify(stepsA[i]) !== JSON.stringify(stepsB[i])) changed++;
+        }
+        if (changed) parts.push(`${changed} step${changed === 1 ? '' : 's'} changed`);
+    }
+    for (const [field, label] of DIFF_FIELD_LABELS) {
+        if ((current[field] ?? null) !== (other[field] ?? null)) parts.push(label);
+    }
+    return parts.length ? parts.join(', ') : 'No changes';
+}
+
+// Version picker for the Reset flow. Returns the chosen ProfileRecord, or
+// null on cancel. Picking a row selects it; Confirm applies it -- a row used
+// to restore on the single tap that selected it, which put an unconfirmed,
+// destructive profile swap one stray tap away. `currentProfile` is what a
+// row's date-and-summary line is diffed against -- the profile Reset would
+// actually replace.
+function promptVersionRestore(versions, currentProfile) {
+    return new Promise((resolve) => {
+        const ROW_BASE     = 'text-left px-[16px] py-[14px] rounded-[10px] border-2 bg-[var(--box-color)] cursor-pointer';
+        const ROW_IDLE     = `${ROW_BASE} border-[var(--border-color)] hover:border-[var(--mimoja-blue)]`;
+        const ROW_SELECTED = `${ROW_BASE} border-[var(--mimoja-blue)]`;
+
+        const dlg = document.createElement('dialog');
+        dlg.className = 'pe-history-dialog rounded-[16px] bg-[var(--box-color)] p-0 border border-[var(--border-color)] max-w-[560px] w-[90vw] shadow-2xl';
+        dlg.style.marginTop = '8vh';
+        dlg.style.marginBottom = 'auto';
+
+        dlg.innerHTML = `
+            <div class="flex flex-col gap-[16px] p-[24px]">
+                <h3 class="text-[24px] font-bold text-[var(--text-primary)]">${getTranslation('Version')}</h3>
+                <div data-rows class="flex flex-col gap-[10px] max-h-[46vh] overflow-y-auto"></div>
+                <div class="flex flex-wrap justify-end gap-[12px] mt-[8px]">
+                    <button type="button" data-act="cancel" class="px-[18px] py-[10px] rounded-[10px] bg-[var(--button-grey)] text-[var(--text-primary)] text-[20px] font-semibold cursor-pointer">${getTranslation('Cancel')}</button>
+                    <button type="button" data-act="ok" class="hidden px-[18px] py-[10px] rounded-[10px] bg-[var(--mimoja-blue)] text-white text-[20px] font-semibold cursor-pointer">${getTranslation('Confirm')}</button>
+                </div>
+            </div>`;
+
+        const rowsHost  = dlg.querySelector('[data-rows]');
+        const confirmBtn = dlg.querySelector('[data-act="ok"]');
+        let selected = null;
+
+        // Rows are built as DOM, not interpolated markup: the title is
+        // user-supplied text and this dialog is rendered with innerHTML.
+        const rowBtns = versions.map((v, i) => {
+            const when  = new Date(v.createdAt);
+            const label = isNaN(when.getTime()) ? '' : when.toLocaleString();
+            const summary = summarizeProfileDiff(currentProfile, v.profile);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = ROW_IDLE;
+            btn.dataset.idx = String(i);
+            btn.setAttribute('aria-pressed', 'false');
+
+            const title = document.createElement('div');
+            title.className = 'text-[20px] font-semibold text-[var(--text-primary)]';
+            title.textContent = v.profile?.title || 'Untitled';
+
+            const stamp = document.createElement('div');
+            stamp.className = 'text-[16px] text-[var(--text-primary)]';
+            stamp.style.opacity = '0.6';
+            stamp.textContent = summary ? `${label} · ${summary}` : label;
+
+            btn.appendChild(title);
+            btn.appendChild(stamp);
+            btn.addEventListener('click', () => {
+                selected = v;
+                rowBtns.forEach((b) => {
+                    const on = b === btn;
+                    b.className = on ? ROW_SELECTED : ROW_IDLE;
+                    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                });
+                confirmBtn.classList.remove('hidden');
+            });
+
+            rowsHost.appendChild(btn);
+            return btn;
+        });
+
+        function done(result) {
+            try { dlg.close(); } catch (_) {}
+            dlg.remove();
+            resolve(result);
+        }
+
+        dlg.querySelector('[data-act="cancel"]').addEventListener('click', () => done(null));
+        confirmBtn.addEventListener('click', () => done(selected));
+        dlg.addEventListener('cancel', (e) => { e.preventDefault(); done(null); });
+
+        document.body.appendChild(dlg);
+        dlg.showModal();
+    });
+}
+
+// Copied from profileManager.js to keep that module's interface clean
+// async function verifyProfileChange(sentProfileTitle, retries = 5, delay = 300) {
+//     if (retries <= 0) {
+//         logger.error(`Profile verification failed after multiple retries. Sent '${sentProfileTitle}'.`);
+//         return false;
+//     }
+
+//     const currentWorkflow = await getWorkflow();
+//     const activeProfileTitle = currentWorkflow?.profile?.title;
+
+//     if (sentProfileTitle === activeProfileTitle) {
+//         logger.info('Verification successful. Active profile matches sent profile.');
+//         return true;
+//     } else {
+//         logger.warn(`Verification attempt failed. Retrying... (${retries - 1} left). Sent: '${sentProfileTitle}', Active: '${activeProfileTitle}'`);
+//         await new Promise(resolve => setTimeout(resolve, delay));
+//         return verifyProfileChange(sentProfileTitle, retries - 1, delay);
+//     }
+// }
+
+let isConfirmingProfile = false;
+
+// Reflects why the user landed here: a long press on an unassigned/replaceable
+// favorite button on the main page routes here with pendingAssignmentIndex set
+// (see profileManager.js handleProfileClick/openFavoriteContextMenu) — that is
+// now the only way to assign a favorite, so the header button must say so
+// instead of a generic CONFIRM.
+function applyConfirmButtonLabel(button) {
+    const pendingAssignmentIndex = sessionStorage.getItem('pendingAssignmentIndex');
+    const parsedIndex = pendingAssignmentIndex !== null ? parseInt(pendingAssignmentIndex) : NaN;
+    if (!isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < FAV_COUNT) {
+        button.textContent = `${getTranslation('ASSIGN TO')} #${parsedIndex + 1}`;
+    } else {
+        button.textContent = getTranslation('CONFIRM');
+    }
+}
+
+async function handleConfirm() {
+    if (isConfirmingProfile) return;
+
+    let sentworkflow = {};
+    const profileKey = selectedProfileKey;
+    if (!profileKey) {
+        alert('Please select a profile first.');
+        return;
+    }
+
+    const profileRecord = availableProfiles[profileKey];
+    if (!profileRecord || !profileRecord.profile) {
+        logger.error(`Selected profile with key ${profileKey} not found!`);
+        alert('An error occurred: selected profile not found.');
+        showToast(`An error occurred: selected profile not found.`, 3000, 'alert');
+        return;
+    }
+    const profile = profileRecord.profile;
+    const meta = profileRecord.metadata || {};
+    // Same fallback chains as the favourite buttons (profileManager
+    // applyProfileToMachine) -- keep the two in step. Neither dose nor grind is a
+    // profile field (see DEFAULT_DOSE_WEIGHT), so behind the user's saved override
+    // for this profile there is only the last number they set anywhere. Yield is a
+    // profile field, so the recipe answers for it.
+    const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
+    const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
+    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
+    const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
+    // Same saved-override fold the favourite buttons do (profileManager
+    // applyProfileToMachine) -- this page is the other way into a profile
+    // switch, and without it a brew-temp edit is lost coming through here.
+    const profileToSend = withSavedBrewTemp(profile, meta);
+
+    logger.info(`Confirming and sending profile: ${profile.title}`);
+    // A rejected favourite assignment has already put its error toast on screen;
+    // the 'Profile Set' toast below would overwrite it a few hundred ms later,
+    // so the user never gets to read why the assignment did not happen.
+    let assignWasRejected = false;
+    isConfirmingProfile = true;
+    try {
+        // Check if there's a pending assignment from a long press on the main page
+        const pendingAssignmentIndex = sessionStorage.getItem('pendingAssignmentIndex');
+
+        if (pendingAssignmentIndex !== null) {
+            const parsedIndex = parseInt(pendingAssignmentIndex);
+            if (parsedIndex < 0 || parsedIndex >= FAV_COUNT) {
+                logger.error(`Invalid pendingAssignmentIndex ${parsedIndex} from sessionStorage - must be between 0 and ${FAV_COUNT - 1}. Skipping assignment.`);
+                sessionStorage.removeItem('pendingAssignmentIndex');
+                showToast('Invalid favorite button. Please try again.', 3000, 'error');
+            } else {
+                // Assign the profile to the specific favorite button
+                const assignResult = await assignProfile(parsedIndex, profileKey);
+                assignWasRejected = assignResult === 'rejected';
+
+                // Clear the pending assignment
+                sessionStorage.removeItem('pendingAssignmentIndex');
+
+                // Show a success message — but not when the assign was rejected or
+                // was a no-op, or this lands on top of the error toast a second later.
+                if (assignResult === 'assigned') {
+                    setTimeout(() => showToast(`${getTranslation('Assign to favourite {n}').replace('{n}', parsedIndex + 1)}: ${translateProfileTitle(profile.title)}`, 3000, 'success'), 1000  );
+                }
+            }
+        }
+
+        // Update workflow with profile's target weight before sending the profile
+        // This ensures that the target weight from the profile is applied to the workflow
+        if (profile.target_weight) {
+            const workflowUpdate = {
+                profile: profileToSend,
+                context: {
+                    targetDoseWeight,
+                    targetYield: effectiveYield,
+                    ...grindContext
+                }
+            };
+
+            sentworkflow = await updateWorkflow(workflowUpdate);
+        } else {
+            const displayYield = isNaN(effectiveYield) ? 0 : effectiveYield;
+            sentworkflow = await updateWorkflow({ profile: profileToSend, context: { targetDoseWeight, targetYield: displayYield, ...grindContext } });
+        }
+
+        const verified = sentworkflow.profile.title === profile.title;
+        if (verified) {
+            logger.info('Profile sent and verified. Navigating to main page.');
+            setActiveProfile(profileKey);
+            // Push the freshly-sent workflow to the main-page left column + title
+            // so the user lands on a page that already reflects what's on Rea
+            // instead of waiting for the next WS snapshot to repaint.
+            applyWorkflowToMainPageUI(sentworkflow);
+            // Steam rides its own setters, not the workflow context, so the
+            // paint above cannot carry it -- same call the favourite buttons
+            // make (profileManager applyProfileToMachine). Without it a profile
+            // switched through this page kept the previous profile's steam.
+            await applySavedSteamSettings(meta);
+            if (!assignWasRejected) {
+                showToast(`Profile Set`, 3000, 'success');
+            }
+            loadPage('index.html');
+        } else {
+            alert('Failed to set the profile on the machine. Please try again.');
+        }
+    } catch (error) {
+        logger.error('Failed to send profile:', error);
+        alert('An error occurred while sending the profile.');
+    } finally {
+        isConfirmingProfile = false;
+    }
+}
+
+function handleCancel() {
+    loadPage('index.html');
+}
+
+
+const NOTES_TRUNCATE_LENGTH = 220;
+
+function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Notes come from profile JSON (uploaded files, imports) so they're untrusted
+// text -- always escape before injecting. Truncates long notes behind a
+// READ MORE/READ LESS toggle (Figma). The toggle button is recreated on every
+// call, so there is never a stale listener to clean up.
+function renderProfileNotes(notesElement, rawNotes, expanded = false) {
+    const safe = escapeHtml(rawNotes || 'No notes for this profile.');
+    const isLong = safe.length > NOTES_TRUNCATE_LENGTH;
+    const body = isLong && !expanded ? `${safe.slice(0, NOTES_TRUNCATE_LENGTH).trim()}&hellip;` : safe;
+    const toggleLabel = expanded ? 'READ LESS' : 'READ MORE';
+    const toggle = isLong ? ` <button type="button" class="font-bold text-[var(--mimoja-blue-v2)]" data-notes-toggle>${toggleLabel}</button>` : '';
+    notesElement.innerHTML = `<p>${body}${toggle}</p>`;
+    notesElement.querySelector('[data-notes-toggle]')?.addEventListener('click', () => {
+        renderProfileNotes(notesElement, rawNotes, !expanded);
+    });
+}
+
+// RESET only makes sense on a saved copy (has a parentId to revert to) --
+// an original profile has nothing to reset, so the button stays out of the
+// way instead of being clickable just to show an error toast.
+function updateResetButtonVisibility(profileRecord) {
+    const btn = document.getElementById('reset_btn');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !profileRecord?.parentId);
+}
+
+function updateSelectedProfileView(profileItem) {
+    console.log('updateSelectedProfileView: Updating selected profile view');
+    if (!profileItem) {
+        console.log('updateSelectedProfileView: No profile item, clearing view');
+        // Clear the view if nothing is selected
+        const titleElement = document.getElementById('selected_profile_name');
+        if (titleElement) {
+            titleElement.textContent = 'No Profile Selected';
+        }
+        const notesElement = document.getElementById('profile_notes');
+        if (notesElement) {
+            notesElement.innerHTML = '';
+        }
+        plotProfile(null); // Clear chart
+        selectedProfileKey = null;
+        updateResetButtonVisibility(null);
+        return;
+    }
+
+    console.log('updateSelectedProfileView: Profile item found:', profileItem.textContent);
+    // Update title — prefer explicit data attr so badge/decoration text doesn't leak in
+    const profileTitle = profileItem.dataset.profileTitle
+        || translateProfileTitle(availableProfiles[profileItem.dataset.profileKey]?.profile?.title)
+        || profileItem.textContent;
+    const titleElement = document.getElementById('selected_profile_name');
+    if (titleElement) {
+        titleElement.textContent = profileTitle;
+        console.log('updateSelectedProfileView: Updated profile name to', profileTitle);
+    }
+    selectedProfileKey = profileItem.dataset.profileKey;
+    console.log('updateSelectedProfileView: Selected profile key set to', selectedProfileKey);
+
+    const profileRecord = availableProfiles[selectedProfileKey];
+    console.log('updateSelectedProfileView: Profile record found:', !!profileRecord);
+    updateResetButtonVisibility(profileRecord);
+
+    if (profileRecord && profileRecord.profile) {
+        const profile = profileRecord.profile;
+        console.log('updateSelectedProfileView: Updating with profile:', profile.title);
+        // Update notes
+        const notesElement = document.getElementById('profile_notes');
+        if (notesElement) {
+            renderProfileNotes(notesElement, profile.notes);
+            console.log('updateSelectedProfileView: Updated profile notes');
+        }
+
+        // Update chart
+        console.log('updateSelectedProfileView: Calling plotProfile with profile data');
+        plotProfile(profile);
+    } else {
+        console.log('updateSelectedProfileView: Profile record or profile data not found');
+    }
+}
+
+// ─── Profile Context Menu ────────────────────────────────────────────────────
+
+async function unhideProfileEntry(key) {
+    await unhideProfile(key);
+}
+
+function showProfileContextMenu(key, profileRecord, anchorEl) {
+    const isHidden = profileRecord.visibility === 'hidden';
+    const isDraft = profileRecord.isDraft === true;
+
+    const doHide = () => hideOrDeleteProfile(key, profileRecord);
+
+    async function doAssign(slotIndex) {
+        try {
+            const assignResult = await assignProfile(slotIndex, key);
+            const pr = availableProfiles[key];
+            if (pr?.profile) {
+                const meta = pr.metadata || {};
+                // Same chain as handleConfirm and the favourite buttons: the user's
+                // override for this profile, then the last dose they set anywhere.
+                const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
+                const yieldVal = meta.targetYield ?? parseFloat(pr.profile.target_weight);
+                const grind    = meta.grinderSetting ?? lastGrinderSetting();
+                try {
+                    // Assigning from here switches the machine to the profile, so it
+                    // owes the same saved overrides as the other two ways in: the
+                    // brew temp folded onto the profile, and steam pushed after.
+                    await updateWorkflow({ profile: withSavedBrewTemp(pr.profile, meta), context: { targetDoseWeight, targetYield: isNaN(yieldVal) ? 0 : yieldVal, grinderSetting: grind } });
+                    await applySavedSteamSettings(meta);
+                    setActiveProfile(key);
+                    updateProfileName(pr.profile.title);
+                } catch (_) {}
+                if (assignResult === 'assigned') {
+                    showToast(`${getTranslation('Assign to favourite {n}').replace('{n}', slotIndex + 1)}: ${translateProfileTitle(pr.profile.title)}`, 3000, 'success');
+                }
+            }
+        } catch (e) { logger.warn('assignProfile error:', e.message); }
+    }
+
+    const items = [
+        ...(!isHidden ? [{ label: getTranslation(isDraft ? 'Delete' : 'Hide'), danger: isDraft, onSelect: doHide }] : []),
+        { divider: true },
+        ...Array.from({ length: FAV_COUNT }, (_, i) => ({
+            label: getTranslation('Assign to favourite {n}').replace('{n}', i + 1),
+            onSelect: () => doAssign(i),
+        })),
+        { divider: true },
+        {
+            label: getTranslation('Edit'),
+            onSelect: () => {
+                window.__pendingEditProfile = profileRecord;
+                loadPage('src/profiles/profile_editor.html');
+            },
+        },
+        {
+            label: getTranslation('Duplicate'),
+            onSelect: async () => {
+                try {
+                    const draft = await duplicateProfileAsDraft(key);
+                    document.dispatchEvent(new CustomEvent('profiles-updated'));
+                    showToast(`${getTranslation('Duplicated')}: ${translateProfileTitle(draft.profile.title)}`, 3000, 'success');
+                } catch (e) {
+                    logger.warn('Duplicate profile failed:', e);
+                    showToast(getTranslation('Duplicate failed'), 3000, 'error');
+                }
+            },
+        },
+    ];
+
+    openContextMenu(anchorEl, items);
+}
+
+// Key of the profile the machine is currently loaded with, so opening the
+// selector lands on it. activeProfileId is only synced when that profile also
+// sits on a favorite button (app.js), so fall back to the title rendered in
+// #profile-name — the router hides #main-page rather than removing it, so the
+// heading is still readable from here.
+function findActiveProfileKey() {
+    const id = getActiveProfileId();
+    if (id) return id;
+    const shownTitle = document.getElementById('profile-name')?.textContent.trim();
+    if (!shownTitle) return null;
+    return Object.keys(availableProfiles).find(
+        key => translateProfileTitle(availableProfiles[key]?.profile?.title ?? '') === shownTitle
+    ) ?? null;
+}
+
+function renderProfiles() {
+    console.log('renderProfiles: Starting to render profiles, isShowingHidden =', isShowingHidden);
+    logger.info('Profile Editor: Rendering profiles...');
+    try {
+        const container = document.getElementById('profile-list');
+        if (!container) {
+            logger.error('Profile Editor: Profile list container not found.');
+            console.error('renderProfiles: Profile list container not found');
+            return;
+        }
+        container.innerHTML = ''; // Clear static content
+        console.log('renderProfiles: Container cleared');
+
+        const profileEntries = Object.entries(availableProfiles);
+        console.log('renderProfiles: Available profiles count:', profileEntries.length);
+
+        const sortedProfiles = profileEntries.sort(([, a], [, b]) => {
+            if (a.profile && a.profile.title && b.profile && b.profile.title) {
+                return translateProfileTitle(a.profile.title).localeCompare(translateProfileTitle(b.profile.title));
+            }
+            return 0;
+        });
+
+        if (sortedProfiles.length === 0) {
+            console.log('renderProfiles: No profiles to render');
+            container.textContent = 'No profiles found.';
+            updateSelectedProfileView(null); // Clear right panel
+            return;
+        }
+
+        let visibleProfileCount = 0;
+
+        const renderSectionHeader = (label) => {
+            const h = document.createElement('div');
+            h.className = 'px-3 pt-4 pb-1 text-[16px] uppercase tracking-wider text-[var(--low-contrast-white)] select-none';
+            h.textContent = label;
+            container.appendChild(h);
+        };
+
+        // A family with no real profile named just the base ("A-Flow") gets
+        // this plain, unselectable label as its head instead -- no
+        // data-profile-key, so selectItem's full-list sweep and the initial
+        // auto-select logic both skip right over it.
+        const renderFamilyHeader = (base) => {
+            const h = document.createElement('div');
+            h.className = 'p-3 text-[30px] text-[var(--text-primary)] select-none';
+            h.setAttribute('role', 'presentation');
+            h.textContent = base;
+            container.appendChild(h);
+        };
+
+        // Group profiles that share a name family: either a common prefix
+        // before a "/", "•" or ":" separator ("A-Flow / default-dark",
+        // "A-Flow / default-light", ... -> family "A-Flow"), or -- when there
+        // is no separator -- an auto-suffixed duplicate title ("Adaptive v2"
+        // / "Adaptive v2 (2)" -> family "Adaptive v2"). Pure title match,
+        // unrelated to parentId/clone lineage -- the "from X" badge below
+        // still covers that separately.
+        const isProfileVisible = (rec) => isShowingHidden || rec.visibility !== 'hidden';
+        const familyBaseTitle = (title) => {
+            const t = title || '';
+            const sep = t.match(/^(.*?)\s*[/•:]\s*\S.*$/);
+            if (sep) return sep[1].trim();
+            return t.replace(/\s*\(\d+\)\s*$/, '').trim();
+        };
+        const familyGroups = new Map();
+        for (const [key, rec] of sortedProfiles) {
+            const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
+            const base = familyBaseTitle(title);
+            if (!familyGroups.has(base)) familyGroups.set(base, []);
+            familyGroups.get(base).push([key, rec, title]);
+        }
+        // Headed family: one member's own title IS the bare base name, so it
+        // renders normally at depth 0 and the rest nest under it (existing
+        // profile as head). Headless family (no member is titled just the
+        // base -- "A-Flow" itself isn't a profile): a synthetic, unselectable
+        // label row stands in as the head instead.
+        const childrenByFamily = new Map();
+        const syntheticFamilies = new Map();
+        for (const [base, members] of familyGroups) {
+            const visibleMembers = members.filter(([, rec]) => isProfileVisible(rec));
+            if (visibleMembers.length < 2) continue;
+            const headIdx = visibleMembers.findIndex(([, , title]) => title === base);
+            if (headIdx !== -1) {
+                const [headKey] = visibleMembers[headIdx];
+                const children = visibleMembers.filter((_, i) => i !== headIdx).map(([k, rec]) => [k, rec]);
+                if (children.length > 0) childrenByFamily.set(headKey, children);
+            } else {
+                syntheticFamilies.set(base, {
+                    members: visibleMembers.map(([k, rec]) => [k, rec]),
+                    isDefault: visibleMembers[0][1].isDefault === true,
+                });
+            }
+        }
+        const nestedChildKeys = new Set();
+        for (const kids of childrenByFamily.values()) {
+            for (const [k] of kids) nestedChildKeys.add(k);
+        }
+        for (const { members } of syntheticFamilies.values()) {
+            for (const [k] of members) nestedChildKeys.add(k);
+        }
+
+        const renderProfileItem = ([key, profileRecord], depth = 0) => {
+            const profile = profileRecord.profile;
+            if (!profile) return;
+
+            const isHidden = profileRecord.visibility === 'hidden';
+            console.log('renderProfiles: Processing profile', profile.title, 'isHidden:', isHidden);
+
+            if (!isShowingHidden && isHidden) {
+                console.log('renderProfiles: Skipping hidden profile', profile.title);
+                return;
+            }
+            visibleProfileCount++;
+            console.log('renderProfiles: Adding profile to list', profile.title);
+
+            const displayTitle = translateProfileTitle(profile.title) || 'Untitled Profile';
+
+            const div = document.createElement('div');
+            div.className = 'p-3 text-[30px] cursor-pointer flex justify-between items-center no-select';
+            div.dataset.profileKey = key;
+            div.dataset.profileTitle = displayTitle;
+            div.setAttribute('role', 'option');
+            div.setAttribute('aria-selected', (key === selectedProfileKey) ? 'true' : 'false');
+            div.setAttribute('aria-label', displayTitle);
+            div.tabIndex = -1;
+
+            // Tree indent step matches the Figma spec (node 2662-1377,
+            // Group 315/316: solid black 2px lines) scaled by this app's
+            // usual 0.75 design-px factor (70px indent -> 52px). Each row
+            // draws its own "L" corner (border-left down to its own
+            // mid-height, border-bottom turning right) as ONE element, so it
+            // is always connected by construction -- adjacent siblings'
+            // left borders chain into what reads as one continuous trunk
+            // with a branch off it per row, matching Group 315/316.
+            if (depth > 0) {
+                const indent = depth * 52;
+                div.classList.add('relative');
+                div.style.paddingLeft = `${12 + indent}px`;
+                const connector = document.createElement('span');
+                connector.setAttribute('aria-hidden', 'true');
+                connector.className = 'absolute top-0 bottom-1/2 pointer-events-none';
+                connector.style.left = `${12 + indent - 20}px`;
+                connector.style.width = '20px';
+                connector.style.borderLeft = '2px solid black';
+                connector.style.borderBottom = '2px solid black';
+                div.appendChild(connector);
+            }
+
+            const leftSide = document.createElement('div');
+            leftSide.className = 'flex items-baseline gap-2 min-w-0';
+            const titleSpan = document.createElement('span');
+            titleSpan.textContent = displayTitle;
+            leftSide.appendChild(titleSpan);
+
+            // Lineage badge only when this row could not be nested under its
+            // parent (parent hidden/filtered out) -- otherwise tree position
+            // already conveys it.
+            const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
+            const parentTitle = parentRecord?.profile?.title;
+            if (parentTitle && !nestedChildKeys.has(key)) {
+                const badge = document.createElement('span');
+                badge.className = 'text-[16px] px-2 py-0.5 rounded-full bg-white/15 whitespace-nowrap';
+                badge.textContent = `from ${translateProfileTitle(parentTitle)}`;
+                leftSide.appendChild(badge);
+            }
+            div.appendChild(leftSide);
+
+            const createHideButton = () => {
+                const hideButton = document.createElement('button');
+                hideButton.className = 'profile-hide-btn p-1 rounded-full flex-shrink-0';
+                hideButton.title = 'Hide this profile';
+                hideButton.setAttribute('aria-label', `Hide profile ${displayTitle}`);
+                hideButton.innerHTML = getEyeOffIconSVG('currentColor');
+                hideButton.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    await hideOrDeleteProfile(key, profileRecord);
+                    renderProfiles();
+                });
+                hideButton.addEventListener('pointerdown', (e) => e.stopPropagation());
+                return hideButton;
+            };
+
+            if (!isHidden && key === selectedProfileKey) {
+                div.appendChild(createHideButton());
+            }
+
+            if (isHidden) {
+                div.classList.add('text-[var(--low-contrast-white)]');
+                const unhideButton = document.createElement('button');
+                unhideButton.className = 'p-1 hover:bg-gray-200 rounded-full';
+                unhideButton.title = 'Show this profile';
+                unhideButton.setAttribute('aria-label', `Show profile ${displayTitle}`);
+                unhideButton.innerHTML = `<svg class="w-6 h-6" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+                unhideButton.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    console.log('renderProfiles: Unhide button clicked for profile', key);
+                    await unhideProfileEntry(key);
+                    renderProfiles();
+                });
+                unhideButton.addEventListener('pointerdown', (e) => e.stopPropagation());
+                div.appendChild(unhideButton);
+            } else {
+                div.classList.add('text-[var(--text-primary)]');
+                if (key === selectedProfileKey) {
+                    div.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
+                }
+            }
+
+            const selectItem = () => {
+                console.log('renderProfiles: Profile item clicked:', profile.title);
+                const clickedItem = div;
+
+                const allItems = clickedItem.parentElement.querySelectorAll('[data-profile-key]');
+                for(const item of allItems) {
+                    item.classList.remove('bg-[#385a92]', 'text-white', 'rounded-[8px]', 'bg-gray-200', 'text-black');
+                    item.setAttribute('aria-selected', 'false');
+                    item.querySelector('.profile-hide-btn')?.remove();
+                    const itemKey = item.dataset.profileKey;
+                    if (itemKey && availableProfiles[itemKey] && availableProfiles[itemKey].visibility === 'hidden') {
+                        item.classList.add('text-[var(--low-contrast-white)]');
+                    } else {
+                        item.classList.add('text-[var(--text-primary)]');
+                    }
+                }
+
+                if (isHidden) {
+                    clickedItem.classList.add('bg-gray-200', 'rounded-[8px]');
+                    clickedItem.classList.remove('text-white');
+
+                } else {
+                    clickedItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
+                    clickedItem.classList.remove('text-[#121212]');
+                    clickedItem.appendChild(createHideButton());
+                }
+
+                clickedItem.setAttribute('aria-selected', 'true');
+                updateSelectedProfileView(clickedItem);
+            };
+
+            const openMenu = () => {
+                selectItem();
+                showProfileContextMenu(key, profileRecord, div);
+            };
+
+            div.setAttribute('aria-haspopup', 'menu');
+            setupPressAndHold(div, selectItem, openMenu, { touchAction: 'pan-y' });
+
+            // Long press is the only affordance now that the overflow button is
+            // gone, and it needs a pointer held down — which a mouse user has no
+            // reason to try. The root suppresses the browser's own menu (see
+            // suppressTouchDefaults), so right-click is free to open ours.
+            div.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                openMenu();
+            });
+
+            container.appendChild(div);
+
+            const kids = childrenByFamily.get(key);
+            if (kids) kids.forEach(child => renderProfileItem(child, depth + 1));
+
+            return div;
+        };
+
+        // Resolve the initial selection BEFORE building any rows -- the
+        // per-row render logic below (hide icon, selected background) keys
+        // off selectedProfileKey, so it has to be set first or the very row
+        // it points at renders as if nothing were selected.
+        let justAutoSelected = false;
+        if (!selectedProfileKey) {
+            // Honor a return-from-editor hint, then the loaded profile, before
+            // falling back to the first visible item.
+            const lastEditedKey = sessionStorage.getItem('lastEditedProfileKey');
+            let initialKey = null;
+            if (lastEditedKey) {
+                sessionStorage.removeItem('lastEditedProfileKey');
+                if (availableProfiles[lastEditedKey] && isProfileVisible(availableProfiles[lastEditedKey])) {
+                    initialKey = lastEditedKey;
+                }
+            }
+            if (!initialKey) {
+                const activeKey = findActiveProfileKey();
+                if (activeKey && availableProfiles[activeKey] && isProfileVisible(availableProfiles[activeKey])) {
+                    initialKey = activeKey;
+                }
+            }
+            selectionIsFallback = !initialKey;
+            if (!initialKey) {
+                const firstVisible = sortedProfiles.find(([, r]) => isProfileVisible(r));
+                initialKey = firstVisible ? firstVisible[0] : null;
+            }
+            if (initialKey) {
+                selectedProfileKey = initialKey;
+                justAutoSelected = true;
+            }
+        }
+
+        // Top-level rows: real profiles not absorbed into a family (as a head
+        // or a child either way), plus one synthetic entry per headless
+        // family -- merged and re-sorted together so a family sits wherever
+        // its base name falls alphabetically, same as any other row.
+        const topLevelEntries = [];
+        for (const [key, rec] of sortedProfiles) {
+            if (nestedChildKeys.has(key)) continue;
+            const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
+            topLevelEntries.push({ type: 'profile', key, rec, sortLabel: title, isDefault: rec.isDefault === true });
+        }
+        for (const [base, info] of syntheticFamilies) {
+            topLevelEntries.push({ type: 'family', base, members: info.members, sortLabel: base, isDefault: info.isDefault });
+        }
+        topLevelEntries.sort((a, b) => a.sortLabel.localeCompare(b.sortLabel));
+
+        const renderTopLevelEntry = (entry) => {
+            if (entry.type === 'family') {
+                renderFamilyHeader(entry.base);
+                entry.members.forEach(member => renderProfileItem(member, 1));
+            } else {
+                renderProfileItem([entry.key, entry.rec], 0);
+            }
+        };
+
+        // Partition: built-in defaults vs user-owned (kv records, includes clones).
+        // Nested children are rendered by their parent's recursive call above,
+        // not as their own top-level row.
+        const defaultsList = topLevelEntries.filter((e) => e.isDefault);
+        const yoursList = topLevelEntries.filter((e) => !e.isDefault);
+
+        if (yoursList.length > 0) {
+            renderSectionHeader('Your Profiles');
+            yoursList.forEach(renderTopLevelEntry);
+        }
+        if (defaultsList.length > 0) {
+            renderSectionHeader('Built-In Profiles');
+            defaultsList.forEach(renderTopLevelEntry);
+        }
+
+        console.log('renderProfiles: Total visible profiles:', visibleProfileCount);
+        if (justAutoSelected) {
+            const selectedEl = container.querySelector(`[data-profile-key="${CSS.escape(selectedProfileKey)}"]`);
+            if (selectedEl) {
+                updateSelectedProfileView(selectedEl);
+                // The list is taller than the pane and sorted alphabetically, so the
+                // pre-selected item is usually out of view on open. Center it at eye
+                // level rather than snapped to whichever edge it scrolled in from.
+                // justAutoSelected only fires once per page-open (selectedProfileKey
+                // is reset in initializeProfileSelector and set by hand on every
+                // later click), so this never yanks the list out from under someone
+                // who has since scrolled or picked a row.
+                //
+                // Scrolled by hand on #profile-list itself rather than via
+                // scrollIntoView: that walks every scrollable ancestor, including
+                // the app-wide #scaling-container (overflow:hidden but still a JS
+                // scroll target), which shifts the whole scaled page and clips the
+                // fixed-height subpage header off-screen.
+                container.scrollTop = selectedEl.offsetTop - container.clientHeight / 2 + selectedEl.clientHeight / 2;
+            }
+        }
+
+        syncProfileListScrollThumb();
+
+        logger.info(`Profile Editor: Rendered ${visibleProfileCount} profiles.`);
+
+    } catch (error) {
+        console.error('renderProfiles: Error rendering profiles:', error);
+        logger.error('Profile Editor: Failed to render profiles.', error);
+        const container = document.getElementById('profile-list');
+        if(container) {
+            container.innerHTML = '<div class="p-3 text-error">Error loading profiles. See console for details.</div>';
+        }
+    }
+}
+
+// Hand-drawn, touch-draggable replacement for #profile-list's native
+// scrollbar thumb (see main.css's #profile-list comment): native thumbs
+// can't be touch-dragged in Android WebView, only swipe-scrolled. Mirrors
+// the pill mechanics in profile_editor.js's updateScrollThumb/initScrollThumb
+// (proportional height/position kept in sync with the container's scroll
+// state) but adds drag-to-scroll, since this is the one list in the app
+// whose scrollbar thumb itself needs to be touch-draggable.
+// syncProfileListScrollThumb is standalone (not a closure inside
+// initProfileListScrollThumb) so renderProfiles can call it directly after
+// rebuilding the list, without re-wiring listeners.
+function syncProfileListScrollThumb() {
+    const container = document.getElementById('profile-list');
+    const thumb = document.getElementById('profile-list-thumb');
+    if (!container || !thumb) return;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0) {
+        thumb.classList.add('hidden');
+        return;
+    }
+    thumb.classList.remove('hidden');
+    const thumbHeight = Math.max(40, container.clientHeight * (container.clientHeight / container.scrollHeight));
+    const travel = container.clientHeight - thumbHeight;
+    const top = travel > 0 ? (container.scrollTop / maxScroll) * travel : 0;
+    thumb.style.height = `${thumbHeight}px`;
+    // offsetTop: the thumb is positioned against #left-panel (the nearest
+    // positioned ancestor now that #profile-list is no longer wrapped), so
+    // the fixed header row above #profile-list must be added back in.
+    thumb.style.top = `${container.offsetTop + top}px`;
+}
+
+function initProfileListScrollThumb() {
+    const container = document.getElementById('profile-list');
+    const thumb = document.getElementById('profile-list-thumb');
+    if (!container || !thumb) return;
+
+    // dataset flag, not a module-level Set: mirrors profile_editor.js's
+    // initScrollThumb guard so repeated calls don't double-attach.
+    if (!container.dataset.scrollThumbInit) {
+        container.dataset.scrollThumbInit = '1';
+        container.addEventListener('scroll', syncProfileListScrollThumb);
+    }
+
+    if (!thumb.dataset.dragInit) {
+        thumb.dataset.dragInit = '1';
+
+        let isDragging = false;
+        let dragStartY = 0;
+        let dragStartScrollTop = 0;
+
+        const startDrag = (e) => {
+            e.preventDefault();
+            isDragging = true;
+            const clientY = e.clientY || e.touches[0].clientY;
+            dragStartY = clientY;
+            dragStartScrollTop = container.scrollTop;
+
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+
+            document.addEventListener('touchmove', drag, { passive: false });
+            document.addEventListener('touchend', stopDrag);
+            // A touch interrupted by the system (e.g. a webview reinterpreting it
+            // as a scroll) fires touchcancel instead of touchend -- without this,
+            // stopDrag never runs and the drag state is stuck.
+            document.addEventListener('touchcancel', stopDrag);
+        };
+
+        const drag = (e) => {
+            if (!isDragging) return;
+
+            if (e.type === 'touchmove') {
+                e.preventDefault();
+            }
+
+            requestAnimationFrame(() => {
+                const maxScroll = container.scrollHeight - container.clientHeight;
+                if (maxScroll <= 0) return;
+                const thumbHeight = Math.max(40, container.clientHeight * (container.clientHeight / container.scrollHeight));
+                const travel = container.clientHeight - thumbHeight;
+                const clientY = e.clientY || e.touches[0].clientY;
+                const deltaY = clientY - dragStartY;
+                const deltaScroll = travel > 0 ? (deltaY / travel) * maxScroll : 0;
+                container.scrollTop = Math.max(0, Math.min(maxScroll, dragStartScrollTop + deltaScroll));
+            });
+        };
+
+        const stopDrag = () => {
+            isDragging = false;
+
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+
+            document.removeEventListener('touchmove', drag);
+            document.removeEventListener('touchend', stopDrag);
+            document.removeEventListener('touchcancel', stopDrag);
+        };
+
+        thumb.addEventListener('mousedown', startDrag);
+        thumb.addEventListener('touchstart', startDrag, { passive: false });
+    }
+
+    syncProfileListScrollThumb();
+}
+
+function initDeleteButton() {
+    console.log('initDeleteButton: Starting initialization');
+    const deleteButton = document.getElementById('delete_profile');
+    console.log('initDeleteButton: deleteButton found:', !!deleteButton);
+    if (!deleteButton) {
+        console.error('initDeleteButton: delete_profile button not found');
+        return;
+    }
+
+    // Remove any existing click listeners to prevent duplicates
+    // Create a new button element to clear all event listeners
+    const newDeleteButton = deleteButton.cloneNode(true);
+    deleteButton.parentNode.replaceChild(newDeleteButton, deleteButton);
+
+    // Use the cloned button (which has no event listeners)
+    const button = newDeleteButton;
+
+    button.addEventListener('click', async () => {
+        console.log('initDeleteButton: Delete button clicked');
+        if (!selectedProfileKey) {
+            console.log('initDeleteButton: No profile selected');
+            showToast("No profile selected to delete.", 3000, 'error');
+            return;
+        }
+
+        const profileRecord = availableProfiles[selectedProfileKey];
+        if (!profileRecord || !profileRecord.profile) {
+            console.log('initDeleteButton: Profile record or data missing');
+            showToast("Cannot delete profile: data missing.", 3000, 'error');
+            return;
+        }
+        const profile = profileRecord.profile;
+        const isDefault = profileRecord.isDefault;
+        const displayTitle = translateProfileTitle(profile.title);
+        const confirmationText = isDefault
+            ? `Are you sure you want to hide '${displayTitle}'?`
+            : `Are you sure you want to permanently delete '${displayTitle}'?`;
+
+        console.log('initDeleteButton: Showing confirmation dialog');
+        if (!confirm(confirmationText)) {
+            console.log('initDeleteButton: Confirmation cancelled');
+            return;
+        }
+
+        console.log('initDeleteButton: Proceeding with delete/hide operation');
+        const keyToActOn = selectedProfileKey; // Preserve key
+
+        if (profileRecord.isDraft) {
+            // A draft never reached the server — deleteOrHideProfile would
+            // 404 trying to DELETE/hide an id that was never POSTed.
+            await deleteProfileDraft(keyToActOn);
+            document.dispatchEvent(new CustomEvent('profiles-updated'));
+        } else {
+            await deleteOrHideProfile(keyToActOn);
+        }
+
+        // Re-rendering is handled by the 'profiles-updated' event.
+        // Now, find the element and re-establish selection to update the UI state.
+        const container = document.getElementById('profile-list');
+        if (container) {
+            const itemToReselect = container.querySelector(`[data-profile-key="${keyToActOn}"]`);
+            if (itemToReselect) {
+                // Clicking it will handle selection style and update the right pane view
+                console.log('initDeleteButton: Re-selecting item after delete/hide');
+                itemToReselect.click();
+            } else {
+                // The item was deleted, not hidden, so clear the view
+                console.log('initDeleteButton: Item was deleted, clearing view');
+                updateSelectedProfileView(null);
+            }
+        }
+    });
+    console.log('initDeleteButton: Event listener attached');
+}
+
+function initViewButton() {
+    console.log('initViewButton: Starting initialization');
+    const viewButton = document.getElementById('view_profile');
+    const page_title = document.getElementById("page_title");
+    console.log('initViewButton: viewButton found:', !!viewButton);
+    console.log('initViewButton: page_title found:', !!page_title);
+
+    if (!viewButton) {
+        console.error('initViewButton: view_profile button not found');
+        return;
+    }
+
+    // Remove any existing click listeners to prevent duplicates
+    // Create a new button element to clear all event listeners
+    const newViewButton = viewButton.cloneNode(true);
+    viewButton.parentNode.replaceChild(newViewButton, viewButton);
+
+    // Use the cloned button (which has no event listeners)
+    const button = newViewButton;
+
+    // Set initial state on load, corresponding to isShowingHidden = false (default bg, blue icon)
+    button.innerHTML = getEyeIconSVG('#385a92'); // Blue icon
+    button.classList.remove("bg-[var(--mimoja-blue)]");
+    button.classList.add("bg-[var(--button-grey)]"); // Use CSS variable for background
+    console.log('initViewButton: Initial state set');
+
+    button.addEventListener('click', () => {
+        console.log('initViewButton: View button clicked, toggling isShowingHidden');
+        isShowingHidden = !isShowingHidden;
+
+        if (isShowingHidden) {
+            // State: SHOWING hidden profiles -> blue background, white icon
+            button.innerHTML = getEyeIconSVG('currentColor');
+            // Use direct style manipulation instead of Tailwind arbitrary values
+            button.style.backgroundColor = 'var(--mimoja-blue)';
+            button.classList.remove("bg-[var(--button-grey)]");
+            if (page_title) {
+                page_title.textContent = "All Profiles";
+            }
+            console.log('initViewButton: Now showing hidden profiles');
+        } else {
+            // State: HIDING hidden profiles -> default background, blue icon
+            button.innerHTML = getEyeIconSVG('#385a92');
+            // Reset to default background
+            button.style.backgroundColor = '';
+            button.classList.add("bg-[var(--button-grey)]");
+            if (page_title) {
+                page_title.textContent = "Profiles";
+            }
+            console.log('initViewButton: Now hiding hidden profiles');
+        }
+
+        // Force a reflow to ensure style changes are applied
+        button.offsetHeight;
+
+        console.log('initViewButton: Calling renderProfiles');
+        renderProfiles();
+    });
+    console.log('initViewButton: Event listener attached');
+}
+
+function initSearchButton() {
+    console.log('initSearchButton: Starting initialization');
+    const searchButton = document.getElementById('search_profile');
+    const deleteButton = document.getElementById('delete_profile');
+    console.log('initSearchButton: searchButton found:', !!searchButton);
+    console.log('initSearchButton: deleteButton found:', !!deleteButton);
+
+    if (!searchButton) {
+        console.error('initSearchButton: search_profile button not found');
+        return;
+    }
+
+    if (!deleteButton) {
+        console.error('initSearchButton: delete_profile button not found');
+        return;
+    }
+
+    // Remove any existing click listeners to prevent duplicates
+    // Create a new button element to clear all event listeners
+    const newSearchButton = searchButton.cloneNode(true);
+    searchButton.parentNode.replaceChild(newSearchButton, searchButton);
+
+    // Use the cloned button (which has no event listeners)
+    const button = newSearchButton;
+
+    // Set initial state on load (default bg, blue icon)
+    button.innerHTML = `<svg class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
+    button.classList.remove("bg-[var(--mimoja-blue)]");
+    button.classList.add("bg-[var(--button-grey)]"); // Use CSS variable for background
+    console.log('initSearchButton: Initial state set');
+
+    let searchInput = null;
+
+    button.addEventListener('click', () => {
+        console.log('initSearchButton: Search button clicked, toggling search mode');
+        isSearching = !isSearching;
+
+        if (isSearching) {
+            // Enter search mode
+            button.innerHTML = `<svg aria-hidden="true" class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
+            // Use direct style manipulation instead of Tailwind arbitrary values
+            button.style.backgroundColor = 'var(--mimoja-blue)';
+            button.classList.remove("bg-[var(--button-grey)]");
+
+            // Create search input field between search_profile and delete_profile buttons
+            if (button.parentNode && deleteButton) {
+                // Create input field
+                searchInput = document.createElement('input');
+                searchInput.type = 'search';
+                searchInput.enterKeyHint = 'search';
+                searchInput.placeholder = 'Search profile names...';
+                searchInput.setAttribute('aria-label', 'Search profile names');
+                searchInput.className = 'w-[400px] h-[82px] mx-[30px] px-4 py-2 rounded-[20px] border border-solid border-[var(--border-color)] text-[var(--text-primary)] bg-[var(--profile-button-background-color)] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue)]';
+                searchInput.style.fontSize = '28px';
+                searchInput.style.fontWeight = 'bold';
+
+                // Find the element between search and delete buttons and insert the search input there
+                const parentElement = button.parentNode;
+                const searchIndex = Array.prototype.indexOf.call(parentElement.children, button);
+                const deleteIndex = Array.prototype.indexOf.call(parentElement.children, deleteButton);
+
+                // Ensure search button comes before delete button in the DOM
+                if (searchIndex < deleteIndex) {
+                    // Insert after the search button but before the delete button
+                    parentElement.insertBefore(searchInput, deleteButton);
+                } else {
+                    // If delete button comes before search, insert after search button
+                    parentElement.insertBefore(searchInput, button.nextSibling);
+                }
+
+                // Focus the input
+                searchInput.focus();
+
+                // Add event listener to handle search input
+                let searchTimeout;
+                searchInput.addEventListener('input', (e) => {
+                    // Clear previous timeout
+                    clearTimeout(searchTimeout);
+
+                    // Set new timeout to debounce search
+                    searchTimeout = setTimeout(() => {
+                        const searchTerm = e.target.value.toLowerCase();
+                        console.log('initSearchButton: Searching for:', searchTerm);
+
+                        // Filter profiles based on search term
+                        filterProfiles(searchTerm);
+                    }, 300); // 300ms delay before triggering search
+                });
+
+                // Enter / keyboard search key: filter, then dismiss the soft
+                // keyboard by blurring. 'search' fires for type=search; keep
+                // Enter as a fallback for keyboards that send it instead.
+                const runSearchAndDismiss = (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    console.log('initSearchButton: Searching for (search key):', searchTerm);
+                    filterProfiles(searchTerm);
+                    searchInput.blur();
+                };
+                searchInput.addEventListener('search', runSearchAndDismiss);
+                searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        runSearchAndDismiss(e);
+                    }
+                });
+
+                // Add event listener to handle Escape key to exit search
+                searchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        exitSearchMode();
+                    }
+                });
+            }
+        } else {
+            // Exit search mode
+            exitSearchMode();
+        }
+    });
+    console.log('initSearchButton: Event listener attached');
+}
+
+function exitSearchMode(originalTitle = null) {
+    const searchButton = document.getElementById('search_profile');
+    const page_title = document.getElementById("page_title");
+    console.log('exitSearchMode: Exiting search mode');
+
+    // Reset the global search state
+    isSearching = false;
+
+    if (searchButton) {
+        // Reset the search button to its original state
+        searchButton.innerHTML = `<svg class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
+        // Reset to default background
+        searchButton.style.backgroundColor = '';
+        searchButton.classList.add("bg-[var(--button-grey)]");
+    }
+
+    // Remove the search input if it exists
+    const searchInput = document.querySelector('#search_profile + input[type="text"]');
+    if (searchInput) {
+        searchInput.remove();
+    }
+
+    if (page_title) {
+        // Restore original title if needed
+        if (page_title.textContent !== 'Profiles') {
+            page_title.textContent = originalTitle || 'Profiles';
+        }
+    }
+
+    // Reset the search state and show all profiles
+    renderProfiles();
+}
+
+// Wrap occurrences of `term` in the title with the same yellow <mark> style as
+// settings search. Escapes HTML and the regex so odd titles/queries can't break.
+function highlightTitle(text, term) {
+    const safe = text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    if (!term) return safe;
+    const escTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return safe.replace(new RegExp(`(${escTerm})`, 'gi'), '<mark class="bg-yellow-300 text-black">$1</mark>');
+}
+
+function filterProfiles(searchTerm) {
+    console.log('filterProfiles: Filtering profiles for term:', searchTerm);
+
+    const container = document.getElementById('profile-list');
+    if (!container) {
+        console.error('filterProfiles: Profile list container not found');
+        return;
+    }
+
+    // Clear the container
+    container.innerHTML = '';
+
+    // Get all available profiles
+    const profileEntries = Object.entries(availableProfiles);
+
+    // Filter profiles based on search term
+    const filteredProfiles = profileEntries.filter(([, profileRecord]) => {
+        if (!profileRecord.profile) return false;
+
+        const profileTitle = profileRecord.profile.title ? profileRecord.profile.title.toLowerCase() : '';
+
+        // A search is a deliberate look for a specific profile by name, hidden
+        // ones included -- unlike the plain list, which still respects the
+        // isShowingHidden toggle. A hidden match renders in the same lighter
+        // text (and with the same unhide button) as the toggled-on list view,
+        // below, so it reads as distinct without needing the toggle first.
+        return profileTitle.includes(searchTerm);
+    });
+
+    // Sort the filtered profiles
+    const sortedProfiles = filteredProfiles.sort(([, a], [, b]) => {
+        if (a.profile && a.profile.title && b.profile && b.profile.title) {
+            return translateProfileTitle(a.profile.title).localeCompare(translateProfileTitle(b.profile.title));
+        }
+        return 0;
+    });
+
+    if (sortedProfiles.length === 0) {
+        console.log('filterProfiles: No profiles match the search term');
+        container.textContent = 'No profiles found.';
+        updateSelectedProfileView(null); // Clear right panel
+        return;
+    }
+
+    // Add filtered profiles to the container
+    for (const [key, profileRecord] of sortedProfiles) {
+        const profile = profileRecord.profile;
+        if (!profile) continue;
+
+        const isHidden = profileRecord.visibility === 'hidden';
+        console.log('filterProfiles: Adding profile to filtered list', profile.title, 'isHidden:', isHidden);
+
+        const displayTitle = translateProfileTitle(profile.title) || 'Untitled Profile';
+
+        const div = document.createElement('div');
+        div.className = 'p-3 text-[30px] cursor-pointer flex justify-between items-center no-select';
+        div.dataset.profileKey = key;
+        div.dataset.profileTitle = displayTitle;
+        div.setAttribute('role', 'option');
+        div.setAttribute('aria-selected', 'false');
+        div.setAttribute('aria-label', displayTitle);
+
+        const leftSide = document.createElement('div');
+        leftSide.className = 'flex items-baseline gap-2 min-w-0';
+        const titleSpan = document.createElement('span');
+        titleSpan.innerHTML = highlightTitle(displayTitle, searchTerm);
+        leftSide.appendChild(titleSpan);
+
+        const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
+        const parentTitle = parentRecord?.profile?.title;
+        if (parentTitle) {
+            const badge = document.createElement('span');
+            badge.className = 'text-[16px] px-2 py-0.5 rounded-full bg-white/15 whitespace-nowrap';
+            badge.textContent = `from ${translateProfileTitle(parentTitle)}`;
+            leftSide.appendChild(badge);
+        }
+        div.appendChild(leftSide);
+
+        if (isHidden) {
+            div.classList.add('text-[var(--low-contrast-white)]');
+            const unhideButton = document.createElement('button');
+            unhideButton.className = 'p-1 hover:bg-gray-200 rounded-full';
+            unhideButton.title = 'Show this profile';
+            unhideButton.setAttribute('aria-label', `Show profile ${displayTitle}`);
+            unhideButton.innerHTML = `<svg class="w-6 h-6" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+            unhideButton.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                console.log('filterProfiles: Unhide button clicked for profile', key);
+                await unhideProfileEntry(key);
+                filterProfiles(searchTerm); // Re-filter after unhiding
+            });
+            div.appendChild(unhideButton);
+        } else {
+            div.classList.add('text-[var(--text-primary)]');
+        }
+
+        div.addEventListener('click', (e) => {
+            console.log('filterProfiles: Profile item clicked:', profile.title);
+            const clickedItem = e.currentTarget;
+
+            const allItems = clickedItem.parentElement.querySelectorAll('[data-profile-key]');
+            for(const item of allItems) {
+                item.classList.remove('bg-[#385a92]', 'text-white', 'rounded-[8px]', 'bg-gray-200', 'text-black');
+                item.setAttribute('aria-selected', 'false');
+                const itemKey = item.dataset.profileKey;
+                if (itemKey && availableProfiles[itemKey] && availableProfiles[itemKey].visibility === 'hidden') {
+                    item.classList.add('text-[var(--low-contrast-white)]');
+                } else {
+                    item.classList.add('text-[var(--text-primary)]');
+                }
+            }
+
+            if (isHidden) {
+                clickedItem.classList.add('bg-gray-200', 'rounded-[8px]');
+                clickedItem.classList.remove('text-white');
+
+            } else {
+                clickedItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
+                clickedItem.classList.remove('text-[#121212]');
+            }
+
+            clickedItem.setAttribute('aria-selected', 'true');
+            // Update the selected profile view first
+            updateSelectedProfileView(clickedItem);
+
+            // Then exit search mode to preserve the selection
+            exitSearchMode();
+        });
+
+        container.appendChild(div);
+    }
+
+    // Clear selection since we're in search mode
+    selectedProfileKey = null;
+
+    console.log('filterProfiles: Added', sortedProfiles.length, 'profiles to filtered list');
+}
+
+
+// Main initialization function that can be called externally
+export async function initializeProfileSelector() {
+    console.log('initializeProfileSelector: Starting initialization');
+
+    const pageRoot =
+        document.querySelector('div[role="dialog"][aria-labelledby="page_title"]')
+        || document.getElementById('profile-editor-grid');
+    if (!pageRoot || initializedProfileRoots.has(pageRoot)) return;
+    initializedProfileRoots.add(pageRoot);
+
+    // Reset the selected profile key to ensure first profile gets selected on page load
+    selectedProfileKey = null;
+    selectionIsFallback = false;
+
+    translatePage();
+    console.log('initializeProfileSelector: i18n translated');
+
+    // Suppress browser-default selection/long-press/drag/callout across the whole
+    // profile-selector page. Delegated listeners on the root also cover items
+    // added later by renderProfiles() / filterProfiles().
+    suppressBrowserActions(pageRoot);
+
+    // Fetching the profiles is the long pole and needs nothing from the DOM, so
+    // start it before touching the chart. This used to run second, behind an
+    // unconditional 50ms setTimeout and a chart init the list does not depend
+    // on -- roughly 80ms of dead time before the request was even issued here,
+    // and far worse on a tablet where chart init is CPU-bound.
+    const profilePromise = initProfileManager();
+
+    // The router injects the page HTML and awaits a requestAnimationFrame before
+    // calling us (router.js), so the element is already in the DOM -- the old
+    // retry ladder was guarding a race that no longer exists.
+    if (document.getElementById('plotly-chart')) {
+        initChart();
+    } else {
+        console.warn('Chart element not found; skipping chart init');
+    }
+
+    // availableProfiles is module state in profileManager.js and isn't cleared
+    // until the fetch above actually resolves (see loadAvailableProfiles), so
+    // on a return visit within the same session it still holds last visit's
+    // data right now. Paint immediately from that instead of waiting on the
+    // network round trip -- this is what was making the chart take 1-2s to
+    // appear on every nav in/out. Reconciled below once the real fetch lands.
+    if (Object.keys(availableProfiles).length > 0) {
+        renderProfiles();
+    }
+
+    const profileLoadStatus = await profilePromise;
+    console.log('initializeProfileSelector: Profile manager initialized, status:', profileLoadStatus);
+
+    if (profileLoadStatus?.profilesFrom === 'API') {
+        logger.info('Profiles loaded successfully from API.');
+    } else if (profileLoadStatus?.profilesFrom === 'IDB_CACHE') {
+        showToast('Offline: Displaying cached profiles.', 3000, 'warning');
+    } else {
+        showToast('Error: Could not load any profiles.', 3000, 'error');
+    }
+
+    console.log('initializeProfileSelector: Rendering profiles...');
+    renderProfiles();
+
+    // findActiveProfileKey only answers once the main page has bound the active
+    // profile, and that runs off loadInitialData, which waits on the DE1
+    // connecting. Tap the profile name inside that window and the list falls
+    // back to its first row: the preview graph draws a profile the machine
+    // isn't running, and CONFIRM would send it. The workflow knows what is
+    // loaded, so ask it and redo the selection through the normal path.
+    if (selectionIsFallback) {
+        try {
+            const workflow = await getWorkflow();
+            const key = resolveProfileKeyByTitle(availableProfiles, workflow?.profile?.title, translateProfileTitle);
+            if (key && key !== selectedProfileKey) {
+                setActiveProfile(key);
+                selectedProfileKey = null;
+                renderProfiles();
+            }
+        } catch (e) {
+            logger.warn('Could not resolve the loaded profile from the workflow:', e.message);
+        }
+    }
+
+    // Wire up add profile button
+    const originalAddProfileButton = document.getElementById('add_profile');
+    if (originalAddProfileButton) {
+        console.log('initializeProfileSelector: Setting up add profile button');
+        // Remove any existing click listeners to prevent duplicates
+        const newAddProfileButton = originalAddProfileButton.cloneNode(true);
+        originalAddProfileButton.parentNode.replaceChild(newAddProfileButton, originalAddProfileButton);
+
+        newAddProfileButton.addEventListener('click', () => {
+            window.__pendingEditProfile = {
+                id: null,
+                profile: {
+                    title: 'New Profile',
+                    version: '2',
+                    beverage_type: 'espresso',
+                    target_weight: 0,
+                    tank_temperature: 0,
+                    target_volume: 0,
+                    target_volume_count_start: 0,
+                    author: '',
+                    notes: '',
+                    steps: [
+                        {
+                            name: 'Preinfusion',
+                            pump: 'flow',
+                            transition: 'fast',
+                            flow: 2.0,
+                            temperature: 93,
+                            sensor: 'coffee',
+                            seconds: 10,
+                            weight: 0,
+                            volume: 0,
+                            exit: { type: 'pressure', condition: 'over', value: 4.0 },
+                            limiter: { value: 4.0, range: 0.6 },
+                        },
+                        {
+                            name: 'Ramp',
+                            pump: 'flow',
+                            transition: 'fast',
+                            flow: 6.0,
+                            temperature: 93,
+                            sensor: 'coffee',
+                            seconds: 20,
+                            weight: 0,
+                            volume: 0,
+                            exit: { type: 'pressure', condition: 'over', value: 9.0 },
+                            limiter: { value: 9.0, range: 0.6 },
+                        },
+                        {
+                            name: 'Extraction',
+                            pump: 'pressure',
+                            transition: 'fast',
+                            pressure: 9.0,
+                            temperature: 93,
+                            sensor: 'coffee',
+                            seconds: 40,
+                            weight: 37,
+                            volume: 0,
+                            exit: null,
+                            limiter: null,
+                        },
+                    ],
+                },
+            };
+            loadPage('src/profiles/profile_editor.html');
+        });
+    }
+
+    ensureProfilesUpdatedListener();
+
+    console.log('initializeProfileSelector: Initializing resizable panels');
+    initResizablePanels('separator');
+    initProfileListScrollThumb();
+    console.log('initializeProfileSelector: Setting up confirm button');
+    const confirmBtn = document.getElementById('confirm-profile-btn');
+    if (confirmBtn) {
+        // Remove any existing click listeners to prevent duplicates
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.addEventListener('click', handleConfirm);
+        applyConfirmButtonLabel(newConfirmBtn);
+    }
+
+    console.log('initializeProfileSelector: Setting up cancel button');
+    const cancelBtn = document.getElementById('cancel-profile-btn');
+    if (cancelBtn) {
+        // Remove any existing click listeners to prevent duplicates
+        const newCancelBtn = cancelBtn.cloneNode(true);
+        cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+        newCancelBtn.addEventListener('click', handleCancel);
+    }
+    console.log('initializeProfileSelector: Initializing delete button');
+    initDeleteButton();
+    console.log('initializeProfileSelector: Initializing view button');
+    initViewButton();
+    console.log('initializeProfileSelector: Initializing search button');
+    initSearchButton();
+    console.log('initializeProfileSelector: Initializing fullscreen handler');
+    initFullscreenHandler();
+
+
+    const wireEditTrigger = (id) => {
+        const raw = document.getElementById(id);
+        if (!raw) {
+            console.warn(`[EditBtn] #${id} not found in DOM`);
+            return;
+        }
+        const clone = raw.cloneNode(true);
+        raw.parentNode.replaceChild(clone, raw);
+        clone.addEventListener('click', () => {
+            if (!selectedProfileKey) {
+                showToast('Select a profile first', 3000, 'error');
+                return;
+            }
+            const profileRecord = availableProfiles[selectedProfileKey];
+            if (!profileRecord) return;
+            window.__pendingEditProfile = profileRecord;
+            loadPage('src/profiles/profile_editor.html');
+        });
+    };
+    wireEditTrigger('edit_profile');
+    wireEditTrigger('edit-profile-name-btn');
+
+    // Wire reset button
+    // Reset used to jump exactly one hop up profileRecord.parentId, no matter
+    // how many saves separated the current record from the one that hop
+    // landed on. Older saves are never actually deleted (see saveProfile's
+    // hide+replace overwrite) -- they sit hidden in the lineage, restorable --
+    // so ask which one first instead of guessing.
+    let pendingResetTarget = null;
+
+    const resetBtnRaw = document.getElementById('reset_btn');
+    const resetBtn = resetBtnRaw ? (() => {
+        const clone = resetBtnRaw.cloneNode(true);
+        resetBtnRaw.parentNode.replaceChild(clone, resetBtnRaw);
+        return clone;
+    })() : null;
+    if (resetBtn) {
+        resetBtn.addEventListener('click', async () => {
+            if (!selectedProfileKey) {
+                showToast('Select a profile first', 3000, 'error');
+                return;
+            }
+            const profileRecord = availableProfiles[selectedProfileKey];
+            if (!profileRecord) return;
+
+            if (!profileRecord.parentId) {
+                showToast('This is an original profile — nothing to reset.', 3000, 'info');
+                return;
+            }
+
+            let lineage;
+            try {
+                lineage = await getProfileLineage(selectedProfileKey);
+            } catch (e) {
+                showToast('Could not load version history', 3000, 'error');
+                return;
+            }
+            // /lineage returns the whole chain -- parents AND children -- so
+            // without this Reset could offer a *later* fork as something to
+            // "revert" to. Strictly older only: it's a revert, never a jump
+            // forward.
+            const currentCreatedAt = new Date(profileRecord.createdAt);
+            const versions = (lineage || [])
+                .filter(r => r.id !== selectedProfileKey && r.profile && new Date(r.createdAt) < currentCreatedAt)
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            if (!versions.length) {
+                showToast('No previous versions to reset to.', 2500, 'info');
+                return;
+            }
+
+            // Always shown, even with a single entry -- one consistent picker
+            // rather than two different popups depending on chain length.
+            const chosen = await promptVersionRestore(versions, profileRecord.profile);
+            if (!chosen) return;
+            pendingResetTarget = chosen;
+
+            const title = translateProfileTitle(profileRecord.profile?.title) || 'this profile';
+            const msgEl = document.getElementById('reset-profile-msg');
+            if (msgEl) msgEl.textContent = `"${title}" is a saved copy. Resetting will delete it and restore the selected version. This cannot be undone.`;
+
+            const modal = document.getElementById('reset-profile-modal');
+            if (modal) modal.showModal();
+        });
+    }
+
+    const resetCancelBtnRaw = document.getElementById('reset-profile-cancel');
+    const resetCancelBtn = resetCancelBtnRaw ? (() => {
+        const clone = resetCancelBtnRaw.cloneNode(true);
+        resetCancelBtnRaw.parentNode.replaceChild(clone, resetCancelBtnRaw);
+        return clone;
+    })() : null;
+    if (resetCancelBtn) {
+        resetCancelBtn.addEventListener('click', () => {
+            pendingResetTarget = null;
+            document.getElementById('reset-profile-modal')?.close();
+        });
+    }
+
+    const resetConfirmBtnRaw = document.getElementById('reset-profile-confirm');
+    const resetConfirmBtn = resetConfirmBtnRaw ? (() => {
+        const clone = resetConfirmBtnRaw.cloneNode(true);
+        resetConfirmBtnRaw.parentNode.replaceChild(clone, resetConfirmBtnRaw);
+        return clone;
+    })() : null;
+    if (resetConfirmBtn) {
+        resetConfirmBtn.addEventListener('click', async () => {
+            document.getElementById('reset-profile-modal')?.close();
+            const target = pendingResetTarget;
+            pendingResetTarget = null;
+            if (!selectedProfileKey || !target) return;
+
+            try {
+                await deleteProfile(selectedProfileKey);
+                delete availableProfiles[selectedProfileKey];
+                // The chosen version may be an older, hidden save (saveProfile
+                // hides the predecessor on every overwrite) -- surface it again.
+                if (target.visibility !== 'visible') {
+                    await updateProfileVisibility(target.id, 'visible');
+                    target.visibility = 'visible';
+                }
+                availableProfiles[target.id] = target;
+                selectedProfileKey = availableProfiles[target.id] ? target.id : null;
+                renderProfiles();
+                // updateSelectedProfileView expects the rendered DOM element, not the record
+                const nextItem = selectedProfileKey
+                    ? document.querySelector(`#profile-list [data-profile-key="${CSS.escape(selectedProfileKey)}"]`)
+                    : null;
+                updateSelectedProfileView(nextItem);
+                showToast('Profile reset.', 2500, 'success');
+            } catch (e) {
+                console.error('[ResetProfile] delete failed:', e);
+                showToast(`Failed to reset profile: ${e.message}`, 4000, 'error');
+            }
+        });
+    }
+
+    console.log('initializeProfileSelector: Initialization complete');
+}
+
+// Call initialization when DOM is ready for traditional page loads
+document.addEventListener('DOMContentLoaded', initializeProfileSelector);
+
+// Also call initialization when dynamic content is loaded via router
+document.addEventListener('dynamic-content-loaded', (event) => {
+    // Check if this event is for profile selector
+    if (event.detail.pageUrl && (event.detail.pageUrl.includes('profile_selector.html') || event.detail.pageUrl.endsWith('profile_selector.html'))) {
+        initializeProfileSelector();
+    }
+});

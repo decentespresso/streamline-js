@@ -1,0 +1,1538 @@
+[
+  {
+    "id": "profile:731c8d53d844ff793b6f",
+    "profile": {
+      "version": "2",
+      "title": "Soup 58",
+      "notes": "Dynamic bloom into pressure extraction. Based on the 'easy blooming' profile structure from Luca and Stephane and modified to primarily target high extraction grinders at high flow rates, typically ending around 3-4.5ml/s. Dial with ratio once grind is giving an ending flowrate in the range. Includes a significant temperature drop that reduces harshness (although the actual temperature drop is much less than programmed). By Joe D.\\n\\nDownloaded from Visualizer",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "temp comp",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 5
+          },
+          "volume": 100,
+          "seconds": 2,
+          "weight": 0,
+          "temperature": 86.5,
+          "sensor": "coffee",
+          "flow": 2,
+          "limiter": {
+            "value": 0,
+            "range": 3
+          }
+        },
+        {
+          "name": "puck wetting",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 5
+          },
+          "volume": 200,
+          "seconds": 60,
+          "weight": 20,
+          "temperature": 81.5,
+          "sensor": "water",
+          "flow": 2,
+          "limiter": {
+            "value": 0,
+            "range": 3
+          }
+        },
+        {
+          "name": "4 mlps",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 10,
+          "sensor": "coffee",
+          "flow": 3,
+          "limiter": {
+            "value": 2,
+            "range": 5
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 90,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "b621ffe7e6832d28e650f243728352fd650dda1be094730004493d203599c9a7",
+    "compoundHash": "771d2dd841924fe9b47a1aada3747f6cc5296077f250d11947a14d8aa6403376",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.018766",
+    "updatedAt": "2026-01-12T12:54:26.018766",
+    "metadata": {
+      "source": "bundled",
+      "filename": "rohan-soup.json"
+    }
+  },
+  {
+    "id": "profile:1e2f9a1c3dd103f57b07",
+    "profile": {
+      "version": "2",
+      "title": "Rao Allongé 3",
+      "notes": "An amazing long espresso for light roasts, this is the biggest fruit bomb of any brewing method we know.  5:1 ratio, 35-40 seconds, coarse espresso grind. If close to the right pressure, make 0.5g dose adjustments to get to an 8-9 bar peak. The very high flow rate means small grind adjustments cause big pressure changes. An advanced technique, allongé averages 24% extraction.",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "hold at 4.5 ml/s",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 92,
+          "sensor": "coffee",
+          "flow": 4.5,
+          "limiter": {
+            "value": 8.6,
+            "range": 0.6
+          }
+        }
+      ],
+      "target_volume": 180,
+      "target_weight": 100,
+      "target_volume_count_start": 0,
+      "tank_temperature": 0
+    },
+    "metadataHash": "d821a5ac32e12bb4e5cf0cb4d4f715c64d23aa195fa45b3a50a9ca7396bae1a2",
+    "compoundHash": "ebcfc37f61b32d10736a2b71640241ebde0fccf21e92801161cd109aaa2c11cf",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.018296",
+    "updatedAt": "2026-01-12T12:54:26.018296",
+    "metadata": {
+      "source": "bundled",
+      "filename": "Rao_Allongé_3.json"
+    }
+  },
+  {
+    "id": "profile:c9c08bc5264d1bfbbf87",
+    "profile": {
+      "version": "2",
+      "title": "PSPH",
+      "notes": "Dynamic bloom into pressure extraction. Based on the 'easy blooming' profile structure from Luca and Stephane and modified to primarily target high extraction grinders at high flow rates, typically ending around 3-4.5ml/s. Dial with ratio once grind is giving an ending flowrate in the range. Includes a significant temperature drop that reduces harshness (although the actual temperature drop is much less than programmed). By Joe D.\\n\\nDownloaded from Visualizer",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "temp comp",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 5
+          },
+          "volume": 100,
+          "seconds": 2,
+          "weight": 0,
+          "temperature": 86.5,
+          "sensor": "coffee",
+          "flow": 4,
+          "limiter": {
+            "value": 0,
+            "range": 3
+          }
+        },
+        {
+          "name": "puck wetting",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 5
+          },
+          "volume": 100,
+          "seconds": 20,
+          "weight": 4,
+          "temperature": 81.5,
+          "sensor": "water",
+          "flow": 4,
+          "limiter": {
+            "value": 0,
+            "range": 3
+          }
+        },
+        {
+          "name": "6 mlps",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 120,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 61.5,
+          "sensor": "coffee",
+          "flow": 7,
+          "limiter": {
+            "value": 2,
+            "range": 5
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 45,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "099e4a65a3ddc1daa85d292777ceebb3f6b45efc9688db8dcea5b2c74192c369",
+    "compoundHash": "954d9029229beab39b2622c65e5085282a276d688d586112195e8dd73899942b",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.018150",
+    "updatedAt": "2026-01-12T12:54:26.018150",
+    "metadata": {
+      "source": "bundled",
+      "filename": "psph.json"
+    }
+  },
+  {
+    "id": "profile:c2bfa7235bba32125f6f",
+    "profile": {
+      "version": "2",
+      "title": "GHC/manual pressure control",
+      "notes": "For use with machines that have a group head controller (GHC).  Hold your finger on the GHC for the pressure you want.",
+      "author": "Decent",
+      "beverage_type": "manual",
+      "steps": [
+        {
+          "name": "forced rise without limit",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 3,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 0,
+          "limiter": null
+        },
+        {
+          "name": "rise and hold",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 57,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 0,
+          "limiter": null
+        },
+        {
+          "name": "decline",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 0,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 0,
+          "limiter": null
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 0,
+      "target_volume_count_start": 0,
+      "tank_temperature": 0
+    },
+    "metadataHash": "52ed5d10a9e61d48dd4b4b5867a53a5483acbdfd0e62437b7a6c989755568dc5",
+    "compoundHash": "f2cbb99a3f3701c178cdd4e96a2a5f8a1a33fa23ecf1ece62502b787a3b115be",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.018007",
+    "updatedAt": "2026-01-12T12:54:26.018007",
+    "metadata": {
+      "source": "bundled",
+      "filename": "manual_pressure.json"
+    }
+  },
+  {
+    "id": "profile:ca3086783cd9569e128c",
+    "profile": {
+      "version": "2",
+      "title": "GHC/manual flow control",
+      "notes": "For use with machines that have a group head controller (GHC).  Hold your finger on the GHC for the flow you want.",
+      "author": "Decent",
+      "beverage_type": "manual",
+      "steps": [
+        {
+          "name": "hold",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 0,
+          "limiter": {
+            "value": 9,
+            "range": 0.9
+          }
+        },
+        {
+          "name": "decline",
+          "pump": "flow",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 0,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 0,
+          "limiter": {
+            "value": 9,
+            "range": 0.9
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 0,
+      "target_volume_count_start": 0,
+      "tank_temperature": 0
+    },
+    "metadataHash": "7e674e359d0477cd17dde02bb37ec46790b1799281c5628608a9bc460bc4ebee",
+    "compoundHash": "bee1fee1bb28c6825c0558dec4d95dc853faff7deaf6b395161b6c4e51578d7c",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.017362",
+    "updatedAt": "2026-01-12T12:54:26.017362",
+    "metadata": {
+      "source": "bundled",
+      "filename": "manual_flow.json"
+    }
+  },
+  {
+    "id": "profile:39d0edbfef1484caf152",
+    "profile": {
+      "version": "2",
+      "title": "I Can't Believe It's Not Filter",
+      "notes": "Dynamic bloom into pressure extraction. Based on the 'easy blooming' profile structure from Luca and Stephane and modified to primarily target high extraction grinders at high flow rates, typically ending around 3-4.5ml/s. Dial with ratio once grind is giving an ending flowrate in the range. Includes a significant temperature drop that reduces harshness (although the actual temperature drop is much less than programmed). By Joe D.\\n\\nDownloaded from Visualizer",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "saturation",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 5
+          },
+          "volume": 50,
+          "seconds": 20,
+          "weight": 10,
+          "temperature": 96,
+          "sensor": "water",
+          "flow": 1,
+          "limiter": {
+            "value": 0,
+            "range": 3
+          }
+        },
+        {
+          "name": "bloom",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 1,
+          "weight": 0,
+          "temperature": 96,
+          "sensor": "water",
+          "flow": 0,
+          "limiter": {
+            "value": 0,
+            "range": 5
+          }
+        },
+        {
+          "name": "percolation",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 127,
+          "weight": 0,
+          "temperature": 96,
+          "sensor": "water",
+          "flow": 1,
+          "limiter": {
+            "value": 0,
+            "range": 5
+          }
+        },
+        {
+          "name": "percolation",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 127,
+          "weight": 0,
+          "temperature": 96,
+          "sensor": "water",
+          "flow": 1,
+          "limiter": {
+            "value": 0,
+            "range": 5
+          }
+        },
+        {
+          "name": "percolation",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 127,
+          "weight": 0,
+          "temperature": 96,
+          "sensor": "water",
+          "flow": 1,
+          "limiter": {
+            "value": 0,
+            "range": 5
+          }
+        },
+        {
+          "name": "percolation",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 127,
+          "weight": 0,
+          "temperature": 96,
+          "sensor": "water",
+          "flow": 1,
+          "limiter": {
+            "value": 0,
+            "range": 5
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 225,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "d83f596ab437651ab41b15098419a74afd293b8cdaa1f89cfd3f87e0a20b979b",
+    "compoundHash": "e4d6961dc6eceb4a15558875a9db48b19b8ecf77555437f97eee4137dec7df50",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.017205",
+    "updatedAt": "2026-01-12T12:54:26.017205",
+    "metadata": {
+      "source": "bundled",
+      "filename": "icbinf.json"
+    }
+  },
+  {
+    "id": "profile:8641f24a939ba6df163f",
+    "profile": {
+      "version": "2",
+      "title": "Gentle and sweet1",
+      "notes": "This is a very easy espresso to successfully make and is suggested if you are having difficulty making good drinks.  The pressure rises to only 6 bar and then slowly descends to 4 bar.  The resulting espresso should be free of channeling, have low acidity and quite pleasant to drink straight or with milk.",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "preinfusion temp boost",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 4
+          },
+          "volume": 0,
+          "seconds": 2,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 8,
+          "limiter": null
+        },
+        {
+          "name": "preinfusion",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 4
+          },
+          "volume": 0,
+          "seconds": 18,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 8,
+          "limiter": null
+        },
+        {
+          "name": "forced rise without limit",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 3,
+          "weight": 0,
+          "temperature": 78.5,
+          "sensor": "coffee",
+          "pressure": 6,
+          "limiter": null
+        },
+        {
+          "name": "rise and hold",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 13,
+          "weight": 0,
+          "temperature": 78.5,
+          "sensor": "coffee",
+          "pressure": 6,
+          "limiter": {
+            "value": 4,
+            "range": 1
+          }
+        },
+        {
+          "name": "decline",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 0,
+          "seconds": 30,
+          "weight": 0,
+          "temperature": 67,
+          "sensor": "coffee",
+          "pressure": 4,
+          "limiter": {
+            "value": 4,
+            "range": 1
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 36,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "afd6adf6380c5cbeb71b1d5b964e4906f46b4ba9d930cfb16ef869423005ad69",
+    "compoundHash": "0d07f2a55b234abbc23fa18b462a03aa7be36c92b73c2aa04b332952e9a039b3",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.017042",
+    "updatedAt": "2026-01-12T12:54:26.017042",
+    "metadata": {
+      "source": "bundled",
+      "filename": "Gentle_and_sweet1.json"
+    }
+  },
+  {
+    "id": "profile:0389447f62b7185b3461",
+    "profile": {
+      "version": "2",
+      "title": "Default1",
+      "notes": "This profile is gentle on the coffee puck and not too demanding on the barista.  Produces a very acceptable espresso in a wide variety of settings.",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "preinfusion temp boost",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 4
+          },
+          "volume": 0,
+          "seconds": 2,
+          "weight": 0,
+          "temperature": 90,
+          "sensor": "coffee",
+          "flow": 8,
+          "limiter": null
+        },
+        {
+          "name": "preinfusion",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 4
+          },
+          "volume": 0,
+          "seconds": 18,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 8,
+          "limiter": null
+        },
+        {
+          "name": "forced rise without limit",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 3,
+          "weight": 0,
+          "temperature": 75,
+          "sensor": "coffee",
+          "pressure": 8.6,
+          "limiter": null
+        },
+        {
+          "name": "rise and hold",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 1,
+          "weight": 0,
+          "temperature": 75,
+          "sensor": "coffee",
+          "pressure": 8.6,
+          "limiter": null
+        },
+        {
+          "name": "forced rise without limit",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 3,
+          "weight": 0,
+          "temperature": 54,
+          "sensor": "coffee",
+          "pressure": 8.6,
+          "limiter": null
+        },
+        {
+          "name": "decline",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 0,
+          "seconds": 32,
+          "weight": 0,
+          "temperature": 54,
+          "sensor": "coffee",
+          "pressure": 6,
+          "limiter": null
+        }
+      ],
+      "target_volume": 36,
+      "target_weight": 36,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "8a55445a6b8133a00a180a7ba2450a82a6f258ceba63f3001138c7862d3860a8",
+    "compoundHash": "1c082e02548746ee35602248ebda97113f8980328bf0fda7d164ef02718778a9",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.016346",
+    "updatedAt": "2026-01-12T12:54:26.016346",
+    "metadata": {
+      "source": "bundled",
+      "filename": "Default1.json"
+    }
+  },
+  {
+    "id": "profile:59036f8846b1ed3b4255",
+    "profile": {
+      "version": "2",
+      "title": "D-Flow / default",
+      "notes": "A simple to use profiling system By Damian Brakel\\n        D-Flow's Default profile is provided as an example profile for you to get started in creating your own",
+      "author": "Damian",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "Filling",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 1.5
+          },
+          "volume": 100,
+          "seconds": 25,
+          "weight": 5,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 3,
+          "limiter": {
+            "value": 0,
+            "range": 0.2
+          }
+        },
+        {
+          "name": "Infusing",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 100,
+          "seconds": 60,
+          "weight": 4,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 3,
+          "limiter": {
+            "value": 0,
+            "range": 0.2
+          }
+        },
+        {
+          "name": "Pouring",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 127,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 1.7,
+          "limiter": {
+            "value": 8.5,
+            "range": 0.2
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 50,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "6bfbb2bd9541b69e77e37902cc2f29929ec9b368d0fbec0a5d3bdb38f9cb3331",
+    "compoundHash": "9e0688d9bee39dd80eb125f0cb4f51d4aa8e84972e0d1b105a52ea29f8e940d3",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.016199",
+    "updatedAt": "2026-01-12T12:54:26.016199",
+    "metadata": {
+      "source": "bundled",
+      "filename": "D-Flow____default.json"
+    }
+  },
+  {
+    "id": "profile:16954d5fcc3b2991f89e",
+    "profile": {
+      "version": "2",
+      "title": "Cremina lever machine",
+      "notes": "Aim for a 50 second shot time to have a thick espresso in the style of the much-loved Cremina manual lever machine. By Denis from KafaTek.\\n\\nDownloaded from Visualizer",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "preinfusion start",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 100,
+          "seconds": 2,
+          "weight": 0,
+          "temperature": 91.5,
+          "sensor": "coffee",
+          "pressure": 1.1,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "preinfusion",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 3
+          },
+          "volume": 100,
+          "seconds": 3,
+          "weight": 0,
+          "temperature": 91.5,
+          "sensor": "coffee",
+          "pressure": 1.1,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "soak",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 100,
+          "seconds": 10,
+          "weight": 0,
+          "temperature": 91.5,
+          "sensor": "coffee",
+          "pressure": 1.1,
+          "limiter": null
+        },
+        {
+          "name": "ramp",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 100,
+          "seconds": 10,
+          "weight": 0,
+          "temperature": 91.5,
+          "sensor": "coffee",
+          "pressure": 9,
+          "limiter": null
+        },
+        {
+          "name": "ramp-down",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 100,
+          "seconds": 50,
+          "weight": 0,
+          "temperature": 92,
+          "sensor": "coffee",
+          "pressure": 3,
+          "limiter": null
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 0,
+      "target_volume_count_start": 0,
+      "tank_temperature": 0
+    },
+    "metadataHash": "885617b6c1c07e328de3af188c024231238d980c5a18529827e399f1a4c2603b",
+    "compoundHash": "262900119bf44e07e6146c51923fce85c1135d8244fadbd9ca1f7e9aa4f940a2",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.016056",
+    "updatedAt": "2026-01-12T12:54:26.016056",
+    "metadata": {
+      "source": "bundled",
+      "filename": "cremina.json"
+    }
+  },
+  {
+    "id": "profile:d497504d1363b7e568d0",
+    "profile": {
+      "version": "2",
+      "title": "Cleaning/Forward Flush x5 2",
+      "notes": "A convenient way to 5 times flush and clean your group head.  (1) Put a blind basket in your portafilter  (2) Put 3g (1/2 teaspoon) of espresso machine detergent in the blind basket  (3) Run this profile  (4) When it is done, remove the portafilter off Flush the DE1 until the water goes clear  (5) Put the portafilter back without detergent and run this profile again  (6) Finally, run FLUSH for 20 seconds.",
+      "author": "Decent",
+      "beverage_type": "cleaning",
+      "steps": [
+        {
+          "name": "Pressure rise 1",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 20,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": 9.999999999999993,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pause 1",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": 0,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pressure rise 2",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": 9.999999999999993,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pause 2",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": -3.885780586188048e-16,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pressure rise 3",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": 9.999999999999993,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pause 3",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": -5.717648576819556e-15,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pressure rise 4",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": 9.999999999999993,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pause 4",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": -5.717648576819556e-15,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pressure rise 5",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 500,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "coffee",
+          "pressure": 9.999999999999993,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 0,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "9474d0935fbe2f194dee49e002ceb99e1898aa0df5a715ed1d36feb432420588",
+    "compoundHash": "b08bcfd1931bfb38e0370c7d5f9466d0fc0ba6f7aced92e19f880b48ce5726c7",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.015850",
+    "updatedAt": "2026-01-12T12:54:26.015850",
+    "metadata": {
+      "source": "bundled",
+      "filename": "Cleaning__Forward_Flush_x5_2.json"
+    }
+  },
+  {
+    "id": "profile:b73ce54592d667d00b31",
+    "profile": {
+      "version": "2",
+      "title": "Adaptive v2",
+      "notes": "This profile aims to unite the best practices in espresso extraction that we have learned so far with the Decent. It unites Brakel's Londonium, Rao's Blooming and Gagné's Adaptive profiles. The flow rate during extraction will automatically adjust itself from the flow rate actually happening during the Pressurize step and then gently increase it from there.  A 15g dose is typical.  Aim for a flow rate around 1.5 ml/s at the Pressurize step. 15g in, 33g out, in 32 seconds is a typical recipe for a medium roast.  Grind fine enough to keep dripping during preinfusion to around 4g. If you have a bluetooth scale, you can keep track of how much dripping into the cup there is before the ramp stage.  4 grams of total dripping, within 1 gram, seems to give the best tasting results. Try adusting your grind and dose to get that amount of dripping, and see if you like how it tastes.",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "Prefill",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 100,
+          "seconds": 5,
+          "weight": 0,
+          "temperature": 93,
+          "sensor": "coffee",
+          "flow": 8,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Fill",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 3
+          },
+          "volume": 100,
+          "seconds": 12,
+          "weight": 0,
+          "temperature": 93,
+          "sensor": "coffee",
+          "flow": 8,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Compressing",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": {
+            "type": "flow",
+            "condition": "under",
+            "value": 3
+          },
+          "volume": 100,
+          "seconds": 12,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 3,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Dripping",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 6,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 0.1,
+          "limiter": {
+            "value": 0,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Pressurize",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 8.8
+          },
+          "volume": 100,
+          "seconds": 6,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "pressure": 11,
+          "limiter": {
+            "value": 3.5,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Extraction start",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 0
+          },
+          "volume": 0,
+          "seconds": 0,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 1.5,
+          "limiter": {
+            "value": 9.5,
+            "range": 0.6
+          }
+        },
+        {
+          "name": "Extraction",
+          "pump": "flow",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 100,
+          "seconds": 60,
+          "weight": 0,
+          "temperature": 88,
+          "sensor": "coffee",
+          "flow": 3.5,
+          "limiter": {
+            "value": 9.5,
+            "range": 0.6
+          }
+        }
+      ],
+      "target_volume": 36,
+      "target_weight": 36,
+      "target_volume_count_start": 3,
+      "tank_temperature": 0
+    },
+    "metadataHash": "29af3dd284d53cbad1181431410dde3af95dda1d3836b4e226a64056d0567707",
+    "compoundHash": "f609b7c36f841c80770e0e8d276194a9003ea1dd0684ddc0bd7fc19def154e40",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.014833",
+    "updatedAt": "2026-01-12T12:54:26.014833",
+    "metadata": {
+      "source": "bundled",
+      "filename": "best_practice.json"
+    }
+  },
+  {
+    "id": "profile:81362675c1acb7a0c13b",
+    "profile": {
+      "version": null,
+      "title": "Baseline ULC",
+      "notes": "Please check the dialing-in tips of this profile in Decent Discord, Decent or Visualizer by longpvo.\\n\\nDownloaded from Visualizer",
+      "author": "longpvo",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "Fill (fast)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 1.5
+          },
+          "volume": 0,
+          "seconds": 30,
+          "weight": 0,
+          "temperature": 83.5,
+          "sensor": "water",
+          "flow": 12,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        },
+        {
+          "name": "Soak (zero flow)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 0.5,
+          "weight": 20,
+          "temperature": 63.5,
+          "sensor": "coffee",
+          "flow": 0,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        },
+        {
+          "name": "Percolation (flat)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 90,
+          "weight": 0,
+          "temperature": 63.5,
+          "sensor": "coffee",
+          "flow": 12,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 50,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "c6793834f3fd96880fad0e2cf07071c6ae381731a0473f876cfec3c55f8694c3",
+    "compoundHash": "b1c692a3b4cd7d6c99adb1e22d455df39348d45e19b152ab87bdf70a973dd1d1",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.014660",
+    "updatedAt": "2026-01-12T12:54:26.014660",
+    "metadata": {
+      "source": "bundled",
+      "filename": "baseline_ulc.json"
+    }
+  },
+  {
+    "id": "profile:d30f5400ae52899d07b3",
+    "profile": {
+      "version": "2",
+      "title": "Visualizer/Baseline LC",
+      "notes": "Baseline • Low Contact • 4 Bar 1. The extraction ratio is 20g:50g–60g, taste the shot and assess the mouthfeel and acidity balance of the shot: - adjust your final desire shot weight accordingly to your dose - dial a base ratio to enjoyable perceived acidity according to your current water buffer capacity and how your grinder/burr behaves - if the shot is too heavy, increase the yield (it should be more juicy and light) - if the shot is too light, decrease the yield (it should be more denser and heavy) 2. Fast Fill: - prioritize filling the available headspace quickly with a 2.5 bar pressure-target cutoff (pressure-drop exit is 1.5 bar or 2 seconds contact maximum) - consider the basket volume and puck volume relationship (more headspace means a longer fill time while the puck is losing solubles) 3. Zero Flow Soak: - the goal is to push water through the puck and evenly saturate it quickly, then wait (the duration in which pressure drops from peak to exit determines the contact time, the profile has time-out clutch if there is too much resistance from the puck) - a fast puck generally outflows more and decline from initial peak pressure sooner and vice versa - higher packing density from finer grind and more puck compaction takes longer to fully saturate - ideally the goal of zero flow soak is to saturate the puck fully in the shortest time (the longer it \"dwells\" the more it accentuates fuller notes and at the same time the puck will have lost solubles and back-pressure so it will fall apart drastically upon percolation) - if you would like to reduce the acidity of your shot while keeping everything else the same, you can extend contact time by decreasing the soak exit pressure or increasing the time-out at this point 4. Declining Pressure and Temperature: - as the percolation progresses, the pressure declines as flow rate increases upto 4.5–6 mL/s - the profile is programmed to saturate the puck during fill and progressive soak at a fixed flat temperature agnostic of the thermal loss from puck absorption - once saturation is completed, temperature is programmed to track the equalized temperature of the puck and the water above it at the shower screen. Temperature decreases towards the end of percolation to reduce extraction efficiency - the nature of temperature decline is based on ambient conditions and your workflow (cold vs hot preparation) - recommended temperature targets for different roast and solubility levels: - Extremely Light–Light: 86°C→66°C to 82°C→62°C - Medium Light–Medium Dark: 82°C→62°C to 78°C→58°C - Dark–Extremely Dark: 78°C→58°C to 74°C→54°C By longpvo.\\n\\nDownloaded from Visualizer",
+      "author": "longpvo",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "Fill (fast)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 2.5
+          },
+          "volume": 0,
+          "seconds": 10,
+          "weight": 0,
+          "temperature": 85,
+          "sensor": "water",
+          "flow": 12,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        },
+        {
+          "name": "Soak (zero flow)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "under",
+            "value": 1.5
+          },
+          "volume": 0,
+          "seconds": 2,
+          "weight": 10,
+          "temperature": 65,
+          "sensor": "coffee",
+          "flow": 0,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        },
+        {
+          "name": "Percolation (flat)",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 90,
+          "weight": 0,
+          "temperature": 65,
+          "sensor": "coffee",
+          "pressure": 4,
+          "limiter": {
+            "value": 2.5,
+            "range": 3.5
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 54,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "f18be86dd7bf9a727522bf0ae5153917a38b06a2d93543758ce86339ab65dd5b",
+    "compoundHash": "d90cdd28c31fbb39830c7859a344fa57837e0db5a9a7f71ce36219e15d562c78",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.013915",
+    "updatedAt": "2026-01-12T12:54:26.013915",
+    "metadata": {
+      "source": "bundled",
+      "filename": "baseline_lc.json"
+    }
+  },
+  {
+    "id": "profile:0601a8e28d2f93a97858",
+    "profile": {
+      "version": "2",
+      "title": "Espresso/Baseline HC",
+      "notes": "Reference shot was 19.6g in, 36g out. Might decrease step 2 timeout from 6 to 4 or 2, lower ratio if too acidic at that point.\\n\\nDownloaded from Visualizer",
+      "author": "longpvo",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "Fill (fast)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 5
+          },
+          "volume": 0,
+          "seconds": 15,
+          "weight": 0,
+          "temperature": 83.5,
+          "sensor": "water",
+          "flow": 12,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        },
+        {
+          "name": "Soak (zero flow)",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "under",
+            "value": 3
+          },
+          "volume": 0,
+          "seconds": 6,
+          "weight": 20,
+          "temperature": 63.5,
+          "sensor": "coffee",
+          "flow": 0,
+          "limiter": {
+            "value": 0,
+            "range": 0
+          }
+        },
+        {
+          "name": "Percolation (flat)",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 0,
+          "seconds": 90,
+          "weight": 0,
+          "temperature": 63.5,
+          "sensor": "coffee",
+          "pressure": 8,
+          "limiter": {
+            "value": 0.75,
+            "range": 1.5
+          }
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 35,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "97b8739d834917ab592837b6a764a670f804b7f9fbeb77faaec5559629e25ace",
+    "compoundHash": "bcbd0285dd38bab55da0e361c3be07329e615ab2b692342d90cbfb0e870fb740",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.013666",
+    "updatedAt": "2026-01-12T12:54:26.013666",
+    "metadata": {
+      "source": "bundled",
+      "filename": "baseline_hc.json"
+    }
+  },
+  {
+    "id": "profile:b2c1ffcbed17038ae145",
+    "profile": {
+      "version": null,
+      "title": "Advanced spring lever",
+      "notes": "An advanced spring lever profile by John Weiss that addresses a problem with simple spring lever profiles, by using both pressure and flow control. The last two steps keep pressure/flow under control as the puck erodes, if the shot has not finished by the end of step 3. Please consider this as a starting point for tweaking.\\n\\nDownloaded from Visualizer",
+      "author": "Decent",
+      "beverage_type": "espresso",
+      "steps": [
+        {
+          "name": "infuse",
+          "pump": "flow",
+          "transition": "fast",
+          "exit": {
+            "type": "pressure",
+            "condition": "over",
+            "value": 3
+          },
+          "volume": 100,
+          "seconds": 20,
+          "weight": 0,
+          "temperature": 90,
+          "sensor": "coffee",
+          "flow": 6,
+          "limiter": null
+        },
+        {
+          "name": "rise and hold",
+          "pump": "pressure",
+          "transition": "fast",
+          "exit": null,
+          "volume": 100,
+          "seconds": 10,
+          "weight": 0,
+          "temperature": 90,
+          "sensor": "coffee",
+          "pressure": 9,
+          "limiter": null
+        },
+        {
+          "name": "decline",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": {
+            "type": "pressure",
+            "condition": "under",
+            "value": 4
+          },
+          "volume": 100,
+          "seconds": 20,
+          "weight": 0,
+          "temperature": 90,
+          "sensor": "coffee",
+          "pressure": 4,
+          "limiter": null
+        },
+        {
+          "name": "pressure limit",
+          "pump": "pressure",
+          "transition": "smooth",
+          "exit": {
+            "type": "flow",
+            "condition": "over",
+            "value": 1
+          },
+          "volume": 100,
+          "seconds": 10,
+          "weight": 0,
+          "temperature": 90,
+          "sensor": "coffee",
+          "pressure": 4,
+          "limiter": null
+        },
+        {
+          "name": "flow limit",
+          "pump": "flow",
+          "transition": "smooth",
+          "exit": null,
+          "volume": 100,
+          "seconds": 30,
+          "weight": 0,
+          "temperature": 90,
+          "sensor": "coffee",
+          "flow": 1,
+          "limiter": null
+        }
+      ],
+      "target_volume": 0,
+      "target_weight": 36,
+      "target_volume_count_start": 2,
+      "tank_temperature": 0
+    },
+    "metadataHash": "6924c2493b3cdc8d8d1b7079e8e7d1044529662697e66f939be9b4bfb9b23007",
+    "compoundHash": "cc5f848197f92c27cfeac91912a232b8259c238a44ef33a37ef72d4b48a7780d",
+    "parentId": null,
+    "visibility": "visible",
+    "isDefault": true,
+    "createdAt": "2026-01-12T12:54:26.012404",
+    "updatedAt": "2026-01-12T12:54:26.012404",
+    "metadata": {
+      "source": "bundled",
+      "filename": "advanced_spring_lever.json"
+    }
+  }
+]

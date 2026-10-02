@@ -1,0 +1,116 @@
+<div id="scaled-content">
+<div class="bg-base-200 overflow-hidden flex-grow flex flex-col w-[1920px] h-full" role="main" aria-label="Profile Editor">
+
+    <!-- Header -->
+    <div id="subpage-header" class="flex justify-between items-center p-6 bg-[var(--bg-tertiary)] h-[150px]">
+        <div class="flex items-center gap-4 flex-1">
+            <span id="editor-title-display" class="text-[30px] font-semibold text-[var(--text-primary)] cursor-pointer select-none underline decoration-dashed" style="text-decoration-color: var(--low-contrast-white); text-underline-offset: 6px;">Untitled Profile</span>
+            <input id="editor-title-input" type="text" class="text-[30px] font-semibold text-[var(--text-primary)] bg-transparent border-b-2 border-[var(--mimoja-blue)] outline-none hidden w-[400px]" />
+        </div>
+        <div class="flex items-center gap-[30px]">
+            <button id="editor-close-btn" class="flex justify-center items-center min-h-0 w-[171px] h-[82.5px] whitespace-nowrap bg-transparent text-[var(--text-primary)] font-bold text-[24px]" data-i18n-key="Close" data-fit-text aria-label="Close">CLOSE</button>
+            <button id="editor-save-as-btn" class="flex justify-center items-center min-h-0 w-[240px] h-[82.5px] whitespace-nowrap bg-transparent text-[var(--button-primary-bg)] border-[1.5px] border-[var(--button-primary-bg)] font-bold text-[24px] rounded-[67.5px]" data-i18n-key="Save As New" data-fit-text aria-label="Save As New">SAVE AS NEW</button>
+            <button id="editor-save-btn" class="flex justify-center items-center bg-[var(--button-primary-bg)] text-white min-h-0 w-[240px] h-[82.5px] whitespace-nowrap font-bold text-[24px] rounded-[67.5px]" data-i18n-key="Save" data-fit-text aria-label="Save">SAVE</button>
+        </div>
+    </div>
+
+    <!-- Tab bar -->
+    <!-- py is 30, not 37.5: the design stacks header 150 + 30 + tab bar 105 +
+         30, putting the tab panels' top edge at 315. At 37.5 the panels start
+         at 330 and every tab's card loses 15px of height. -->
+    <div class="flex items-center justify-between px-[37.5px] py-[30px] bg-[var(--bg-tertiary)]">
+        <div class="flex items-center gap-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] rounded-[60px] p-[18px] w-[834.75px] h-[105px]">
+            <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="0" data-i18n-key="CARDS" data-fit-text>CARDS</button>
+            <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="2" data-i18n-key="SCRIPT" data-fit-text>SCRIPT</button>
+            <button class="editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap" data-tab="1" data-i18n-key="SETTINGS" data-fit-text>SETTINGS</button>
+        </div>
+        <div id="editor-paging-controls" class="flex items-center gap-[22.5px]">
+            <button id="editor-page-prev-btn" type="button" class="flex items-center justify-center w-[120px] h-[72px] rounded-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] cursor-pointer" aria-label="Previous cards"></button>
+            <button id="editor-page-next-btn" type="button" class="flex items-center justify-center w-[120px] h-[72px] rounded-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-graph-grid)] cursor-pointer" aria-label="Next cards"></button>
+        </div>
+    </div>
+
+    <!-- Content area -->
+    <div class="flex-1 overflow-hidden bg-[var(--bg-tertiary)]">
+
+        <!-- Tab 0: Steps -->
+        <div id="editor-tab-panel-0" class="editor-tab-panel h-full">
+            <div id="editor-steps-container" class="overflow-x-auto overflow-y-auto h-full">
+                <!-- Step cards rendered by JS -->
+            </div>
+        </div>
+
+        <!-- Tab 1: Settings (Figma node 2662-1507; 2560px canvas at 0.75) -->
+        <div id="editor-tab-panel-1" class="editor-tab-panel h-full hidden overflow-hidden pb-[31.5px]">
+            <div class="flex h-full gap-[15px] ml-[37.5px] mr-[37.5px]">
+                <!-- Custom scrollbar (settings-scrollbar.js): native ::-webkit-scrollbar-thumb
+                     height doesn't override Chromium's proportional thumb length, and this
+                     card's content rarely overflows by much, so a native thumb reads as an
+                     almost-full-height bar. #editor-settings-form-card-thumb is a JS-driven
+                     decorative pill (position/height set on scroll) matching the fixed pill
+                     every other pane in this file draws; the wrap+relative+overflow-hidden
+                     keeps it clipped to the card's rounded corners without scrolling away
+                     with the content itself. -->
+                <div id="editor-settings-form-card-wrap" class="w-[1070.25px] shrink-0 relative rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] overflow-hidden">
+                    <div id="editor-settings-form-card" class="w-full h-full bg-[var(--profile-button-background-color)] overflow-y-auto overflow-x-hidden">
+                        <!-- Settings fields rendered by JS -->
+                    </div>
+                    <div id="editor-settings-form-card-thumb" class="absolute right-[3px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] pointer-events-none hidden" aria-hidden="true"></div>
+                </div>
+                <div class="flex-1 min-w-0 relative bg-[var(--profile-button-background-color)] rounded-[15px] border-[1.5px] border-[var(--border-graph-grid)] flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between px-[49.5px] pt-[37.5px] shrink-0">
+                        <p class="text-[30px] font-bold text-[var(--text-primary)]" data-i18n-key="Description">Description</p>
+                        <div class="w-[48px] h-[48px] rounded-full bg-[var(--button-primary-bg)] flex items-center justify-center text-[24px] font-bold text-white shrink-0 select-none">?</div>
+                    </div>
+                    <div class="h-0 border-t-[0.75px] border-[var(--border-graph-grid)] mx-[49.5px] mt-[36px] shrink-0"></div>
+                    <!-- Custom scrollbar (see main.css's #editor-settings-notes-col comment
+                         and editorScrollThumbs in profile_editor.js): native thumb sizing
+                         doesn't track content length reliably here, so the native scrollbar
+                         is hidden and #editor-settings-notes-col-thumb is drawn by hand. -->
+                    <div class="flex-1 min-h-0 relative overflow-hidden">
+                        <div id="editor-settings-notes-col" class="w-full h-full overflow-y-auto overflow-x-hidden px-[49.5px] pt-[36px] pb-[37.5px] flex flex-col">
+                            <!-- Notes content rendered by JS -->
+                        </div>
+                        <div id="editor-settings-notes-col-thumb" class="absolute right-[3px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] pointer-events-none hidden" aria-hidden="true"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 2: Script (Figma node 2662-803; 2560px canvas at 0.75) -->
+        <!-- Like the CARDS row, the card stops 31.5px short of the content
+             area's bottom edge, leaving a skirt of page ground below it. -->
+        <div id="editor-tab-panel-2" class="editor-tab-panel h-full hidden overflow-hidden pb-[31.5px]">
+            <div class="flex h-full bg-[var(--profile-button-background-color)] rounded-[15px] ml-[37.5px] mr-[39px] border-[1.5px] border-[var(--border-graph-grid)] overflow-hidden">
+                <!-- Left: Steps Overview. Fixed 912px (Figma 1216) so the
+                     divider between the two halves sits where the design puts
+                     it rather than following the step text's own width. -->
+                <div class="w-[912px] shrink-0 flex flex-col gap-[45px] pl-[45px] pt-[45px] border-r-[1.5px] border-[var(--border-graph-grid)] overflow-hidden">
+                    <p class="text-[30px] font-semibold text-[var(--text-primary)] shrink-0" data-i18n-key="Steps Overview">Steps Overview</p>
+                    <!-- Only this half scrolls; the graph is fixed. The 36px
+                         right padding puts the scrollbar where the design draws
+                         its thumb, clear of the 756px text column. pt-[10px]
+                         gives the first line's pill/chip hover box (py-[10px]
+                         -my-[10px] in profile_editor.js) room to sit above its
+                         text instead of getting clipped by this scroll edge. -->
+                    <!-- Custom scrollbar (see main.css's #script-steps-col comment and
+                         editorScrollThumbs in profile_editor.js): native thumb sizing
+                         doesn't track content length reliably here, so the native
+                         scrollbar is hidden and #script-steps-col-thumb is drawn by hand. -->
+                    <div class="flex-1 min-h-0 relative overflow-hidden">
+                        <div id="script-steps-col" class="w-full h-full overflow-y-auto overflow-x-hidden flex flex-col gap-[45px] pr-[36px] pt-[10px] pb-[45px]"></div>
+                        <div id="script-steps-col-thumb" class="absolute right-[3px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] pointer-events-none hidden" aria-hidden="true"></div>
+                    </div>
+                </div>
+                <!-- Right: Graph Preview -->
+                <div class="flex-1 min-w-0 flex flex-col gap-[37.5px] pt-[45px] overflow-hidden">
+                    <p class="text-[30px] font-semibold text-[var(--text-primary)] pl-[37.5px] shrink-0" data-i18n-key="Graph Preview">Graph Preview</p>
+                    <div id="script-graph" class="w-full h-[376.5px] shrink-0"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+</div>
