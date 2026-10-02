@@ -575,6 +575,35 @@ export function withSavedBrewTemp(profile, metadata) {
     return { ...profile, steps: profile.steps.map(step => ({ ...step, temperature: temp })) };
 }
 
+// Steam duration/flow aren't profile fields (they live on the workflow, not
+// profile.steps), so unlike dose/yield/grind they can't ride along in an
+// updateWorkflow call -- they need their own setter calls, which also carry the
+// heater on/off side effect for duration (see setTargetSteamDuration). Only push
+// when this profile actually has a saved value; with no record, leave whatever
+// the machine is currently set to alone. Every way into a profile switch calls
+// this -- the favourite buttons, the selector's Confirm and its context-menu
+// assign -- so a saved steam setting is not lost depending on which one is used.
+export async function applySavedSteamSettings(metadata) {
+    const savedSteamDuration = metadata?.targetSteamDuration;
+    const savedSteamFlow = metadata?.targetSteamFlow;
+    if (savedSteamDuration == null && savedSteamFlow == null) return;
+    try {
+        // Sequential, not Promise.all: both PUT the same workflow record's
+        // steamSettings sub-object, and duration's own write already does a
+        // read-modify-write of targetTemperature (steamHeaterFor) -- running them
+        // concurrently risks one write clobbering the other depending on Decaid's
+        // merge order. One extra await here is once per profile switch.
+        if (savedSteamDuration != null) await setTargetSteamDuration(savedSteamDuration);
+        if (savedSteamFlow != null) await setTargetSteamFlow(savedSteamFlow);
+        updateSteamDisplay({
+            ...(savedSteamDuration != null && { targetSteamDuration: savedSteamDuration }),
+            ...(savedSteamFlow != null && { targetSteamFlow: savedSteamFlow }),
+        });
+    } catch (e) {
+        logger.warn('Failed to apply saved steam settings for profile:', e);
+    }
+}
+
 // A grind setting belongs to the grinder and the beans, and a dose to the
 // basket -- neither is really a property of the profile. So remember the last
 // one the user set, whichever profile they set it on, and use it when nothing
@@ -909,33 +938,7 @@ async function handleProfileClick(index) {
                 if (grindEl) grindEl.textContent = '0';
             }
 
-            // Steam duration/flow aren't profile fields (they live on the
-            // workflow, not profile.steps), so unlike dose/yield/grind they
-            // can't ride along in the updateWorkflow call above — they need
-            // their own setter calls, which also carry the heater on/off side
-            // effect for duration (see setTargetSteamDuration). Only push when
-            // this profile actually has a saved value; with no record, leave
-            // whatever the machine is currently set to alone.
-            const savedSteamDuration = meta.targetSteamDuration;
-            const savedSteamFlow = meta.targetSteamFlow;
-            if (savedSteamDuration != null || savedSteamFlow != null) {
-                try {
-                    // Sequential, not Promise.all: both PUT the same workflow
-                    // record's steamSettings sub-object, and duration's own
-                    // write already does a read-modify-write of targetTemperature
-                    // (steamHeaterFor) — running them concurrently risks one
-                    // write clobbering the other depending on Decaid's merge
-                    // order. One extra await here is once per profile switch.
-                    if (savedSteamDuration != null) await setTargetSteamDuration(savedSteamDuration);
-                    if (savedSteamFlow != null) await setTargetSteamFlow(savedSteamFlow);
-                    updateSteamDisplay({
-                        ...(savedSteamDuration != null && { targetSteamDuration: savedSteamDuration }),
-                        ...(savedSteamFlow != null && { targetSteamFlow: savedSteamFlow }),
-                    });
-                } catch (e) {
-                    logger.warn(`Failed to apply saved steam settings for profile (callId: ${callId}):`, e);
-                }
-            }
+            await applySavedSteamSettings(meta);
 
             activeProfileId = profileKey;
 

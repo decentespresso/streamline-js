@@ -1,4 +1,4 @@
-import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight } from './profileManager.js';
+import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings } from './profileManager.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
@@ -333,6 +333,11 @@ async function handleConfirm() {
             // so the user lands on a page that already reflects what's on Rea
             // instead of waiting for the next WS snapshot to repaint.
             applyWorkflowToMainPageUI(sentworkflow);
+            // Steam rides its own setters, not the workflow context, so the
+            // paint above cannot carry it -- same call the favourite buttons
+            // make (profileManager applyProfileToMachine). Without it a profile
+            // switched through this page kept the previous profile's steam.
+            await applySavedSteamSettings(meta);
             if (!assignWasRejected) {
                 showToast(`Profile Set`, 3000, 'success');
             }
@@ -456,11 +461,20 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
             const pr = availableProfiles[key];
             if (pr?.profile) {
                 const meta = pr.metadata || {};
-                const dose     = meta.targetDoseWeight ?? (pr.profile.dose_weight || 18);
+                // Same chain as handleConfirm and the favourite buttons: the
+                // user's override, then the profile's own dose even when it is 0,
+                // and only then the last dose they set anywhere.
+                const profileDose = parseFloat(pr.profile.dose_weight);
+                const dose     = meta.targetDoseWeight ?? (Number.isFinite(profileDose) ? profileDose : null)
+                    ?? lastTargetDoseWeight() ?? 18;
                 const yieldVal = meta.targetYield ?? parseFloat(pr.profile.target_weight);
-                const grind    = meta.grinderSetting ?? null;
+                const grind    = meta.grinderSetting ?? lastGrinderSetting();
                 try {
-                    await updateWorkflow({ profile: pr.profile, context: { targetDoseWeight: dose, targetYield: isNaN(yieldVal) ? 0 : yieldVal, grinderSetting: grind } });
+                    // Assigning from here switches the machine to the profile, so it
+                    // owes the same saved overrides as the other two ways in: the
+                    // brew temp folded onto the profile, and steam pushed after.
+                    await updateWorkflow({ profile: withSavedBrewTemp(pr.profile, meta), context: { targetDoseWeight: dose, targetYield: isNaN(yieldVal) ? 0 : yieldVal, grinderSetting: grind } });
+                    await applySavedSteamSettings(meta);
                     setActiveProfile(key);
                     updateProfileName(pr.profile.title);
                 } catch (_) {}

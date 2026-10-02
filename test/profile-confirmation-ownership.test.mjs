@@ -13,7 +13,7 @@ function loadHarness(dependencies) {
             availableProfiles, logger, alert, showToast, sessionStorage,
             assignProfile, getTranslation, updateWorkflow, setActiveProfile,
             applyWorkflowToMainPageUI, loadPage, withSavedBrewTemp,
-            lastGrinderSetting, lastTargetDoseWeight
+            lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings
         } = dependencies;
         let selectedProfileKey = null;
         const FAV_COUNT = 5;
@@ -48,6 +48,7 @@ test('profile confirmation pins its selection and rejects overlap', async () => 
         // Saved brew-temp folding has its own coverage in
         // brew-temp-override.test.mjs; here it just has to be callable.
         withSavedBrewTemp: (profile) => profile,
+        applySavedSteamSettings: async () => {},
         lastGrinderSetting: () => null,
         lastTargetDoseWeight: () => null,
         assignProfile: async () => 'unchanged',
@@ -99,6 +100,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
         showToast() {},
         sessionStorage: { getItem: () => null, removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
+        applySavedSteamSettings: async () => {},
         lastGrinderSetting: () => null,
         lastTargetDoseWeight: () => null,
         assignProfile: async () => 'unchanged',
@@ -121,6 +123,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
         showToast() {},
         sessionStorage: { getItem: () => '2', removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
+        applySavedSteamSettings: async () => {},
         lastGrinderSetting: () => null,
         lastTargetDoseWeight: () => null,
         assignProfile: async () => 'unchanged',
@@ -140,6 +143,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
         showToast() {},
         sessionStorage: { getItem: () => '9', removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
+        applySavedSteamSettings: async () => {},
         lastGrinderSetting: () => null,
         lastTargetDoseWeight: () => null,
         assignProfile: async () => 'unchanged',
@@ -159,6 +163,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
 // that states no dose off 0. Yield is never carried; it comes from the recipe.
 test('a profile with no saved grind/dose falls back to the last ones set', async () => {
     const sent = [];
+    const steamApplied = [];
     const base = (meta, profile = { title: 'A', target_weight: '36', dose_weight: 18 }) => ({
         availableProfiles: {
             a: { profile, metadata: meta }
@@ -167,6 +172,7 @@ test('a profile with no saved grind/dose falls back to the last ones set', async
         alert() {}, showToast() {},
         sessionStorage: { getItem: () => null, removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
+        applySavedSteamSettings: async (meta) => { steamApplied.push(meta); },
         lastGrinderSetting: () => '3.5',
         lastTargetDoseWeight: () => 20,
         assignProfile: async () => 'unchanged',
@@ -192,4 +198,19 @@ test('a profile with no saved grind/dose falls back to the last ones set', async
     await saved.handleConfirm();
     assert.equal(sent[2].grinderSetting, '1.2', "this profile's own grind still wins");
     assert.equal(sent[2].targetDoseWeight, 15, "the user's saved dose outranks the recipe");
+
+    // A recipe that states zero states a number: the tiles must read what the
+    // machine is actually set to, not the last dose from another profile.
+    const zero = loadHarness(base({}, { title: 'A', target_weight: '0', dose_weight: 0 }));
+    zero.select('a');
+    await zero.handleConfirm();
+    assert.equal(sent[3].targetDoseWeight, 0, 'a dose of 0 in the recipe is sent as 0');
+    assert.equal(sent[3].targetYield, 0, 'a target weight of 0 is sent as 0');
+
+    // Steam rides its own setters rather than the workflow context, so confirming
+    // here has to hand this profile's metadata to the same applier the favourite
+    // buttons use -- otherwise a saved steam setting only survives one of the two
+    // ways into a profile switch.
+    assert.deepEqual(steamApplied, [{}, {}, { grinderSetting: '1.2', targetDoseWeight: 15 }, {}],
+        'every confirm offers the profile metadata to the steam applier');
 });

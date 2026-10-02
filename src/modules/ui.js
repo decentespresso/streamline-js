@@ -3147,7 +3147,10 @@ export function updateGrindDisplay(grinderData) {
 
 export function updateDoseInDisplay(doseInValue) {
     const doseInValueEl = document.getElementById('dose-in-value');
-    if (doseInValueEl && doseInValue) {
+    // != null, not truthiness: a profile whose own dose really is 0 must read 0.
+    // Dropping the write left the previous profile's number on the tile while the
+    // machine was set to zero.
+    if (doseInValueEl && doseInValue != null && doseInValue !== '') {
         doseInValueEl.textContent = `${doseInValue}g`;
     }
 }
