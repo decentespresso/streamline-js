@@ -369,7 +369,7 @@ function renderProfileNotes(notesElement, rawNotes, expanded = false) {
     const isLong = safe.length > NOTES_TRUNCATE_LENGTH;
     const body = isLong && !expanded ? `${safe.slice(0, NOTES_TRUNCATE_LENGTH).trim()}&hellip;` : safe;
     const toggleLabel = expanded ? 'READ LESS' : 'READ MORE';
-    const toggle = isLong ? ` <button type="button" class="font-bold text-[var(--mimoja-blue)]" data-notes-toggle>${toggleLabel}</button>` : '';
+    const toggle = isLong ? ` <button type="button" class="font-bold text-[var(--mimoja-blue-v2)]" data-notes-toggle>${toggleLabel}</button>` : '';
     notesElement.innerHTML = `<p>${body}${toggle}</p>`;
     notesElement.querySelector('[data-notes-toggle]')?.addEventListener('click', () => {
         renderProfileNotes(notesElement, rawNotes, !expanded);
