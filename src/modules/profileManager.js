@@ -621,6 +621,11 @@ export async function applySavedSteamSettings(metadata) {
 // basket.
 export const DEFAULT_DOSE_WEIGHT = 18;
 
+// What the grind tile reads after 'Use Profile Defaults'. There is no grind in a
+// profile, so a reset has no recipe number to go back to -- it blanks the tile to
+// zero, and pins that so coming back to the profile still reads zero.
+export const RESET_GRINDER_SETTING = '0';
+
 const LAST_GRIND_KEY = 'lastGrinderSetting';
 const LAST_DOSE_KEY = 'lastTargetDoseWeight';
 
@@ -783,7 +788,21 @@ export async function resetActiveProfileToDefaults() {
     // Tiles come from what Rea echoed back, so they show the machine's numbers.
     applyWorkflowToMainPageUI(sentWorkflow, { updateName: false });
     const grindEl = document.getElementById('grind-value');
-    if (grindEl) grindEl.textContent = '0';
+    if (grindEl) grindEl.textContent = RESET_GRINDER_SETTING;
+
+    // Pin what the reset landed on as this profile's own numbers, exactly as if
+    // the user had typed them -- but only for the two fields the profile schema
+    // cannot answer for. Dose and grind are not profile fields, so with nothing
+    // saved the next switch back here would fall through to the last dose and
+    // grind set on some other profile and quietly undo the reset. Yield and brew
+    // temperature need no pin: they come from the recipe, which is what the reset
+    // put on the machine. Not remembered as the last values set either -- a reset
+    // is this profile's business and must not follow the user onto others.
+    try {
+        await mutateProfileOverrides(profileId, { targetDoseWeight, grinderSetting: RESET_GRINDER_SETTING });
+    } catch (error) {
+        logger.warn(`Reset applied but its numbers were not pinned for ${profileId}:`, error);
+    }
     logger.info(`Reset profile ${activeProfileId} to its default numbers.`);
     return true;
 }
