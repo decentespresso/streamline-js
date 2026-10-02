@@ -138,7 +138,7 @@ export function initScaling() {
             // stay loose enough to cover an A7 Lite whose height is eaten by browser
             // chrome (1340x736 needs 1.138). localStorage 'maxStretch': 1.0 = never
             // squash (letterbox instead), higher = fill more aggressively.
-            const MAX_STRETCH = parseFloat(localStorage.getItem('maxStretch') || '1.15');
+            const MAX_STRETCH = parseFloat(localStorage.getItem('maxStretch') || '1.0');
             const stretch = Math.max(sx, sy) / Math.min(sx, sy);
             if (stretch > MAX_STRETCH) {
                 const k = MAX_STRETCH / stretch;
