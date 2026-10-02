@@ -3,7 +3,7 @@
 // skin in the background — a mismatch means "reload to apply".
 //
 // BUMP THIS when cutting a release, in the same step as pushing the git tag.
-export const APP_VERSION = '0.2.6';
+export const APP_VERSION = '0.2.7';
 
 // Our skin id as registered with Streamline-Bridge (matches manifest.json / reaMetadata.skinId).
 export const SKIN_ID = 'streamline.js';
