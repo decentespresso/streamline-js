@@ -704,15 +704,27 @@ export async function loadProfileForWake(profileId) {
         logger.warn(`Wake profile ${profileId} not found — skipping.`);
         return false;
     }
-    // No dose in the profile schema (see DEFAULT_DOSE_WEIGHT), so waking onto one
-    // keeps the last dose the user set. Yield is a profile field, so it comes
-    // from the recipe -- coerced, since target_weight can be a legacy TCL string.
-    const targetDoseWeight = lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
-    const parsedYield = parseFloat(profile.target_weight);
+    // Waking onto a profile is a profile switch, so it owes the same saved
+    // overrides as the three interactive paths. Dose and grind are not profile
+    // fields (see DEFAULT_DOSE_WEIGHT), so behind this profile's own override sits
+    // the last number the user set anywhere; yield IS a profile field, so the
+    // override answers first and then the recipe -- coerced, since target_weight
+    // can be a legacy TCL string.
+    const meta = availableProfiles[profileId]?.metadata || {};
+    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
+    const grinderSetting = meta.grinderSetting ?? lastGrinderSetting();
+    const parsedYield = parseFloat(meta.targetYield ?? profile.target_weight);
     const targetYield = isNaN(parsedYield) ? 0 : parsedYield;
+    // Same fold as applyProfileToMachine: a non-autonomous machine stops on
+    // profile.target_weight, so a yield override has to reach the sent profile,
+    // and a saved brew temp has to survive the wake.
+    const profileToSend = withSavedBrewTemp(
+        targetYield > 0 ? { ...profile, target_weight: targetYield } : profile, meta);
     try {
-        await updateWorkflow({ profile, context: { targetDoseWeight, targetYield, grinderSetting: null } });
+        await updateWorkflow({ profile: profileToSend, context: { targetDoseWeight, targetYield, grinderSetting } });
         setActiveProfile(profileId);
+        // Steam rides its own setters, not the workflow context.
+        await applySavedSteamSettings(meta);
         // Don't rely on the racy, unawaited loadInitialData() call app.js fires
         // alongside this one to catch #profile-name up — its GET /workflow can
         // resolve before this PUT commits and paint the pre-sleep title.
