@@ -58,7 +58,7 @@ function suppressBrowserActions(root) {
 }
 
 function getEyeIconSVG(strokeColor) {
-    return `<svg aria-hidden="true" class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return `<svg aria-hidden="true" class="w-[49.5px] h-[49.5px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 // Quick-hide affordance on the selected row (Figma: inline eye-off icon).
@@ -886,6 +886,8 @@ function renderProfiles() {
             }
         }
 
+        syncProfileListScrollThumb();
+
         logger.info(`Profile Editor: Rendered ${visibleProfileCount} profiles.`);
 
     } catch (error) {
@@ -896,6 +898,110 @@ function renderProfiles() {
             container.innerHTML = '<div class="p-3 text-error">Error loading profiles. See console for details.</div>';
         }
     }
+}
+
+// Hand-drawn, touch-draggable replacement for #profile-list's native
+// scrollbar thumb (see main.css's #profile-list comment): native thumbs
+// can't be touch-dragged in Android WebView, only swipe-scrolled. Mirrors
+// the pill mechanics in profile_editor.js's updateScrollThumb/initScrollThumb
+// (proportional height/position kept in sync with the container's scroll
+// state) but adds drag-to-scroll, since this is the one list in the app
+// whose scrollbar thumb itself needs to be touch-draggable.
+// syncProfileListScrollThumb is standalone (not a closure inside
+// initProfileListScrollThumb) so renderProfiles can call it directly after
+// rebuilding the list, without re-wiring listeners.
+function syncProfileListScrollThumb() {
+    const container = document.getElementById('profile-list');
+    const thumb = document.getElementById('profile-list-thumb');
+    if (!container || !thumb) return;
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0) {
+        thumb.classList.add('hidden');
+        return;
+    }
+    thumb.classList.remove('hidden');
+    const thumbHeight = Math.max(40, container.clientHeight * (container.clientHeight / container.scrollHeight));
+    const travel = container.clientHeight - thumbHeight;
+    const top = travel > 0 ? (container.scrollTop / maxScroll) * travel : 0;
+    thumb.style.height = `${thumbHeight}px`;
+    // offsetTop: the thumb is positioned against #left-panel (the nearest
+    // positioned ancestor now that #profile-list is no longer wrapped), so
+    // the fixed header row above #profile-list must be added back in.
+    thumb.style.top = `${container.offsetTop + top}px`;
+}
+
+function initProfileListScrollThumb() {
+    const container = document.getElementById('profile-list');
+    const thumb = document.getElementById('profile-list-thumb');
+    if (!container || !thumb) return;
+
+    // dataset flag, not a module-level Set: mirrors profile_editor.js's
+    // initScrollThumb guard so repeated calls don't double-attach.
+    if (!container.dataset.scrollThumbInit) {
+        container.dataset.scrollThumbInit = '1';
+        container.addEventListener('scroll', syncProfileListScrollThumb);
+    }
+
+    if (!thumb.dataset.dragInit) {
+        thumb.dataset.dragInit = '1';
+
+        let isDragging = false;
+        let dragStartY = 0;
+        let dragStartScrollTop = 0;
+
+        const startDrag = (e) => {
+            e.preventDefault();
+            isDragging = true;
+            const clientY = e.clientY || e.touches[0].clientY;
+            dragStartY = clientY;
+            dragStartScrollTop = container.scrollTop;
+
+            document.addEventListener('mousemove', drag);
+            document.addEventListener('mouseup', stopDrag);
+
+            document.addEventListener('touchmove', drag, { passive: false });
+            document.addEventListener('touchend', stopDrag);
+            // A touch interrupted by the system (e.g. a webview reinterpreting it
+            // as a scroll) fires touchcancel instead of touchend -- without this,
+            // stopDrag never runs and the drag state is stuck.
+            document.addEventListener('touchcancel', stopDrag);
+        };
+
+        const drag = (e) => {
+            if (!isDragging) return;
+
+            if (e.type === 'touchmove') {
+                e.preventDefault();
+            }
+
+            requestAnimationFrame(() => {
+                const maxScroll = container.scrollHeight - container.clientHeight;
+                if (maxScroll <= 0) return;
+                const thumbHeight = Math.max(40, container.clientHeight * (container.clientHeight / container.scrollHeight));
+                const travel = container.clientHeight - thumbHeight;
+                const clientY = e.clientY || e.touches[0].clientY;
+                const deltaY = clientY - dragStartY;
+                const deltaScroll = travel > 0 ? (deltaY / travel) * maxScroll : 0;
+                container.scrollTop = Math.max(0, Math.min(maxScroll, dragStartScrollTop + deltaScroll));
+            });
+        };
+
+        const stopDrag = () => {
+            isDragging = false;
+
+            document.removeEventListener('mousemove', drag);
+            document.removeEventListener('mouseup', stopDrag);
+
+            document.removeEventListener('touchmove', drag);
+            document.removeEventListener('touchend', stopDrag);
+            document.removeEventListener('touchcancel', stopDrag);
+        };
+
+        thumb.addEventListener('mousedown', startDrag);
+        thumb.addEventListener('touchstart', startDrag, { passive: false });
+    }
+
+    syncProfileListScrollThumb();
 }
 
 function initDeleteButton() {
@@ -1491,6 +1597,7 @@ export async function initializeProfileSelector() {
 
     console.log('initializeProfileSelector: Initializing resizable panels');
     initResizablePanels('separator');
+    initProfileListScrollThumb();
     console.log('initializeProfileSelector: Setting up confirm button');
     const confirmBtn = document.getElementById('confirm-profile-btn');
     if (confirmBtn) {

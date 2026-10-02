@@ -13,7 +13,7 @@
     </div>
 
     <div class="grid h-full overflow-hidden" style="grid-template-columns: minmax(0, 5fr) auto minmax(0, 7fr);" id="profile-editor-grid">
-        <div id="left-panel" class="flex flex-col border-r border-base-300 bg-[var(--box-color)]" aria-label="Profile Management">
+        <div id="left-panel" class="relative flex flex-col border-r border-base-300 bg-[var(--box-color)]" aria-label="Profile Management">
             <div class="flex justify-between items-center px-[37.5px] border-b border-base-300 h-[121.5px]">
                 <div class="flex items-center gap-[30px]">
                     <button id="add_profile" class="w-[82.5px] h-[82.5px] border-[1.5px] border-[var(--border-color)] bg-[var(--profile-button-background-color)] rounded-[15px] flex items-center justify-center" aria-label="Add New Profile">
@@ -42,6 +42,17 @@
             </div>
             <div id="profile-list" class="relative p-3 space-y-1.5 text-[30px] text-[var(--text-primary)] overflow-y-auto min-h-0 flex-grow" role="listbox" aria-label="Available Profiles">
             </div>
+            <!-- Touch-draggable scroll thumb (profile_selector.js initProfileListScrollThumb):
+                 #profile-list's native ::-webkit-scrollbar thumb (see main.css) can't be
+                 touch-dragged in Android WebView, only swipe-scrolled. This hand-drawn pill
+                 mirrors native scroll position AND accepts its own drag, matching the pill
+                 mechanics in profile_editor.html but with added drag-to-scroll. Positioned
+                 absolute against #left-panel (not wrapped around #profile-list itself --
+                 #profile-list must stay a DIRECT flex child of #left-panel for the
+                 `#profile-list { flex: 1 1 0; min-height: 0; height: auto }` rule in
+                 main.css to size it correctly). Lives in the 40px margin-right gutter
+                 #profile-list already reserves for the (now-hidden) native scrollbar. -->
+            <div id="profile-list-thumb" class="absolute right-[1px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] hidden" style="touch-action: none;" aria-hidden="true"></div>
         </div>
         <div id="separator" class="cursor-col-resize w-px bg-transparent hover:bg-blue-500 transition-colors z-10" style="position: relative;" aria-hidden="true"></div>
         <div id="right-panel" class="flex flex-col bg-[var(--profile-button-background-color)]" role="main" aria-label="Profile Details">

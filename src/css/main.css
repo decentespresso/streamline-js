@@ -694,37 +694,26 @@ body {
   background-color: rgba(255, 255, 255, 0.62);
 }
 
-/* Profile selector's list scrollbar (Figma node 2662-1377): the same
-   bare-pill mechanics as the profile editor's vertical scroll bars above --
-   floating thumb directly on the page ground, no trough -- but proportional
-   thumb height since the list's length varies with the profile count
-   instead of the editor's fixed-height panes. */
+/* Profile selector's list scrollbar (Figma node 2662-1377): a hand-drawn,
+   touch-draggable pill (#profile-list-thumb, wired in profile_selector.js's
+   initProfileListScrollThumb) instead of the native ::-webkit-scrollbar-thumb
+   -- native scrollbar thumbs can't be touch-dragged in Android WebView, only
+   swipe-scrolled. Proportional thumb height since the list's length varies
+   with the profile count instead of the editor's fixed-height panes. */
 #profile-list {
-  scrollbar-gutter: stable;
   /* Figma's Scroll Bar (node 2662-1356, x945 w60) sits 53px shy of the panel's
      own right edge (Rectangle 273, node 2662-1355, x0 w1058) -- 53 * 0.75,
-     the file's canvas-to-shell ratio, is the 40px here. The scrollbar gutter
-     sits at the border edge regardless of padding, so this has to be margin:
-     it shrinks #profile-list's own box, leaving #left-panel's background
-     showing between the thumb and its border-r. */
+     the file's canvas-to-shell ratio, is the 40px here. This is margin, not
+     padding, so #left-panel's background shows between the thumb and its
+     border-r, and the thumb (absolutely positioned against #left-panel,
+     a sibling of #profile-list, not a wrapper -- #profile-list must stay
+     a direct flex child for the flex/min-height rule below to size it)
+     lands in the reserved gutter instead of overlapping row content. */
   margin-right: 40px;
-}
-@supports not selector(::-webkit-scrollbar) {
-  #profile-list {
-    scrollbar-color: var(--secondary-button-bg) transparent;
-  }
+  scrollbar-width: none;
 }
 #profile-list::-webkit-scrollbar {
-  width: 45px;
-}
-#profile-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-#profile-list::-webkit-scrollbar-thumb {
-  background-color: var(--secondary-button-bg);
-  border-radius: 9999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
+  display: none;
 }
 
 /* Profile editor CARDS icons — SVGs rendered as a CSS mask so the glyph picks
