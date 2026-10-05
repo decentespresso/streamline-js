@@ -1166,17 +1166,21 @@ function renderStepCards() {
                 mCell.appendChild(controlLine(labelSlot(getTranslation(label)), stepper));
             });
         } else {
-            // One line per field, same order as expanded — a comma-joined
-            // digest hid which limit a number belonged to, and dropped the
-            // unset ones entirely so the row's shape changed with its values.
-            MAX_FIELDS.forEach(({ key, unit, lim, label }) => {
-                const v = step[key] || 0;
+            // One labelled line per limit that is set, same order as expanded.
+            // Zero (Off) limits are hidden until the card is tapped open; if
+            // none are set, a single "Maximum Off" line keeps the row from
+            // collapsing to nothing.
+            const active = MAX_FIELDS.filter(({ key }) => (step[key] || 0) > 0);
+            active.forEach(({ key, unit, lim, label }) => {
                 mCell.appendChild(collapsedRow(
                     getTranslation(label),
-                    v > 0 ? `${roundTo(v, lim.step)} ${unit}` : getTranslation('Off'),
+                    `${roundTo(step[key], lim.step)} ${unit}`,
                     { accent: false },
                 ));
             });
+            if (active.length === 0) {
+                mCell.appendChild(collapsedRow(getTranslation('Maximum'), getTranslation('Off'), { accent: false }));
+            }
         }
 
         // ── Move on if row ──────────────────────────────────────────────────
