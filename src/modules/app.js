@@ -1115,7 +1115,13 @@ async function handleWeightClick() {
         }
         logger.info('Scale connection initiated via WebSocket, waiting for weight data...');
         let attempts = 0;
-        const maxAttempts = 15;
+        // Explicit scans connect the preferred scale only AFTER the full ~15 s
+        // discovery window (+ settle + connect), so a fixed 15 s budget toasts
+        // ~1 s before it lands. Wait out the scan, then allow a connect grace.
+        const minAttempts = 15;
+        const graceAttempts = 4;
+        const hardCap = 40; // ponytail: stuck `scanning: true` must not hang Retry
+        let idleSince = null;
         const poll = setInterval(async () => {
             attempts++;
 
@@ -1134,7 +1140,10 @@ async function handleWeightClick() {
                 return;
             }
 
-            if (attempts > maxAttempts) {
+            if (isScaleScanning) idleSince = null;
+            else if (idleSince === null) idleSince = attempts;
+
+            if (attempts > hardCap || (attempts > minAttempts && attempts - idleSince >= graceAttempts)) {
                 clearInterval(poll);
                 ui.showToast('Scale Not Found', 3000, 'error');
                 isConnectingScale = false;
