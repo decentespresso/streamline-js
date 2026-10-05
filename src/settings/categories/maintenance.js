@@ -108,7 +108,7 @@ function descaling() {
         action: 'descale',
         description: 'Run a descaling cycle to remove mineral buildup',
         confirmation: 'Prepare to descale',
-        extra: `<a href="https://decentespresso.com/docs/de1_descaling_instruction" class="font-semibold text-[#385a92] underline text-[24px]" data-i18n-key="Descaling Instruction">Descaling Instruction</a>`,
+        extra: `<a href="https://decentespresso.com/docs/de1_descaling_instructions" class="font-semibold text-[#385a92] underline text-[24px]" data-i18n-key="Descaling Instruction">Descaling Instruction</a>`,
     });
 }
 
