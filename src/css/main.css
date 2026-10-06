@@ -391,21 +391,14 @@ body {
 }
 
 /* Touch devices fake a persistent :hover on whatever row a drag last crossed,
-   so dragging across the settings nav can leave several rows looking
-   selected at once. Only apply the hover tint on inputs that support a real
-   hover (mouse/trackpad); the JS-driven active-row class is what marks the
-   open category everywhere else.
-   :not(.bg-[#2c4a7a]) excludes the row the tap just selected: the same tap
-   that sets the active bg-[#2c4a7a]/text-white classes also satisfies :hover
-   on touch, and this rule's higher specificity (class+pseudo vs. one class)
-   would otherwise strip the highlight right back off the row being selected. */
-@media (hover: none) {
-    .settings-nav-btn:hover:not(.bg-\[\#2c4a7a\]),
-    .settings-subnav-btn:hover:not(.bg-\[\#2c4a7a\]) {
-        background-color: transparent;
-        color: inherit;
-    }
-}
+   so dragging across the settings nav used to leave several rows looking
+   selected at once (issue #88). This is handled in tailwind.config.js now:
+   hoverOnlyWhenSupported wraps the nav rows' own hover:text-white /
+   hover:bg-[#2c4a7a] utilities in @media (hover: hover), so no sticky hover
+   reaches them. Do not re-add a neutralising @media (hover: none) override
+   here: the previous one had to restate the resting colour and used
+   `color: inherit`, which resolved to the body colour (#E8E8E8 in dark mode)
+   and left the dragged row's text looking as white as the open row's. */
 
 @keyframes button-flash {
     0% { background-color: var(--plus-minus-flash-on-color2); }
