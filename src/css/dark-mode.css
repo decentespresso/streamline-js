@@ -118,7 +118,7 @@
 
 /* Themed scrollbars app-wide in dark mode */
 [data-theme="dark"] {
-    scrollbar-color: #4a4a52 transparent; /* thumb, track — Firefox + Chromium 121+; inherits to descendants */
+    scrollbar-color: #707485 transparent; /* thumb, track — Firefox + Chromium 121+; inherits to descendants */
 }
 [data-theme="dark"] ::-webkit-scrollbar {
     width: 10px;
@@ -128,9 +128,9 @@
     background: transparent;
 }
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
-    background-color: #4a4a52;
+    background-color: #707485;
     border-radius: 8px;
 }
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-    background-color: #5a5a64;
+    background-color: #8a8fa3;
 }

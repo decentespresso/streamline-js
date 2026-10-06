@@ -252,9 +252,16 @@ const TAB_COUNT = 3;
 // Stepper ± button — shared by every ± control in the editor (the grid's
 // createGridStepper and the settings tab's createSpinner), so there is
 // exactly one ± button style in the file.
-const STEPPER_BTN_CLASS = 'bg-[var(--button-grey)] rounded-[15px] w-[72px] h-[72px] flex items-center justify-center shrink-0 cursor-pointer select-none';
+// Icon colour is --stepper-icon, dimmed to --stepper-icon-disabled when the value
+// sits at its min/max (setStepperLimit) — the button stays tappable, it just
+// reads as spent.
+const STEPPER_BTN_CLASS = 'bg-[var(--stepper-btn-bg)] rounded-[15px] w-[72px] h-[72px] flex items-center justify-center shrink-0 cursor-pointer select-none';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function setStepperLimit(btn, atLimit) {
+    btn.firstChild.style.backgroundColor = atLimit ? 'var(--stepper-icon-disabled)' : 'var(--stepper-icon)';
+}
 
 function deepCopy(obj) {
     return JSON.parse(JSON.stringify(obj));
@@ -289,7 +296,7 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
     const minusBtn = document.createElement('button');
     minusBtn.type = 'button';
     minusBtn.className = STEPPER_BTN_CLASS;
-    minusBtn.appendChild(maskIcon(ICON_MINUS, 37.5, 'var(--text-primary)'));
+    minusBtn.appendChild(maskIcon(ICON_MINUS, 37.5, 'var(--stepper-icon)'));
     minusBtn.setAttribute('aria-label', 'Decrease');
 
     const display = document.createElement('span');
@@ -301,12 +308,14 @@ function createSpinner(initialValue, step, unit, onChange, opts = {}) {
     const plusBtn = document.createElement('button');
     plusBtn.type = 'button';
     plusBtn.className = STEPPER_BTN_CLASS;
-    plusBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--text-primary)'));
+    plusBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--stepper-icon)'));
     plusBtn.setAttribute('aria-label', 'Increase');
 
     function updateDisplay() {
         const formatted = roundTo(value, step);
         display.textContent = unit ? `${formatted} ${unit}` : `${formatted}`;
+        setStepperLimit(minusBtn, min != null && value <= min);
+        setStepperLimit(plusBtn, max != null && value >= max);
     }
 
     // Every createSpinner field in this editor (target weight/volume, tank
@@ -450,6 +459,8 @@ function createGridStepper({ value, lim, numpad, unit = null, offWhenZero = fals
     function render() {
         valueLine.textContent = fmt(current);
         restyle();
+        setStepperLimit(minusBtn, current <= lim.min);
+        setStepperLimit(plusBtn, current >= lim.max);
     }
 
     function commit(val) {
@@ -466,7 +477,7 @@ function createGridStepper({ value, lim, numpad, unit = null, offWhenZero = fals
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = STEPPER_BTN_CLASS;
-        btn.appendChild(maskIcon(svgPath, 37.5, 'var(--text-primary)'));
+        btn.appendChild(maskIcon(svgPath, 37.5, 'var(--stepper-icon)'));
         btn.setAttribute('aria-label', ariaLabel);
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -501,7 +512,7 @@ function createCycleChip({ states, index, labelFor, onChange }) {
     let i = index;
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'w-[114px] h-[72px] rounded-[15px] border-[1.5px] border-[var(--border-primary)] text-[var(--button-primary-bg)] font-bold text-[19.5px] leading-tight flex items-center justify-center text-center shrink-0 cursor-pointer select-none';
+    chip.className = 'w-[114px] h-[72px] rounded-[15px] bg-[var(--button-primary-bg)] border-[1.5px] border-[var(--button-primary-bg)] text-[var(--button-primary-text)] font-bold text-[19.5px] leading-tight flex items-center justify-center text-center shrink-0 cursor-pointer select-none';
     chip.style.whiteSpace = 'normal';
 
     function render() { chip.textContent = labelFor(states[i], i); }
@@ -758,16 +769,17 @@ function recallExitValue(step, type) {
 // A collapsed card mirrors the expanded one line for line — same labels, same
 // order — so expanding a card changes only how a value is edited, never what
 // the card says. `accent` follows the expanded row's own left slot: a label
-// backed by a cycling chip reads in the action blue (Group, Flow Quickly,
-// Pressure is over), a plain caption reads as body text (Limit to, Weight,
-// Time, Volume). The gutter already names the row, so a line never repeats it.
+// backed by a cycling chip reads bold (Group, Flow Quickly, Pressure is over),
+// a plain caption reads regular (Limit to, Weight, Time, Volume). Both use
+// --text-primary: the action blue is ~2.6:1 on the dark card, and the style
+// guide has no blue text token. The gutter already names the row, so a line
+// never repeats it. min-h matches the expanded control line (72px) so both
+// states put each line at the same height — the Pump gutter label relies on it.
 function collapsedRow(labelText, valueText, { accent = true } = {}) {
     const row = document.createElement('div');
-    row.className = 'flex items-center justify-center gap-[7.5px] flex-wrap px-[16px]';
+    row.className = 'flex items-center justify-center gap-[7.5px] flex-wrap px-[16px] min-h-[72px]';
     const label = document.createElement('span');
-    label.className = accent
-        ? 'font-bold text-[24px] text-[var(--button-primary-bg)]'
-        : 'text-[24px] text-[var(--text-primary)]';
+    label.className = `text-[24px] text-[var(--text-primary)]${accent ? ' font-bold' : ''}`;
     label.textContent = labelText;
     const value = document.createElement('span');
     value.className = 'font-bold text-[25.5px] text-[var(--text-primary)]';
@@ -834,12 +846,10 @@ function renderStepCards() {
     // line (Volume) here, so its share is scaled up from 289 by the same
     // ratio a third 72px control line + 15px gap adds to a two-line row
     // (~1.46x) rather than reusing Pump's two-line figure verbatim.
-    // Pump and Maximum share one share: Maximum carries a third line (Volume)
-    // the design's two-line row didn't, and letting the two rows size apart
-    // put a visible step in the hairline between neighbouring cards. Equal
-    // shares keep that rule straight across the row, and 422 is the taller of
-    // the two requirements (three 72px lines + two 15px gaps + padding).
-    container.style.gridTemplateRows = `minmax(45px, auto) 157fr 422fr 422fr 140fr minmax(57px, auto)`;
+    // Maximum is content-sized (auto): it hugs the tallest card in the row, so
+    // it is three lines tall while a card is expanded and shrinks to fit when
+    // every card shows fewer. The slack goes to the proportional rows.
+    container.style.gridTemplateRows = `minmax(45px, auto) 157fr 422fr auto 140fr minmax(57px, auto)`;
     container.style.columnGap = `${CARD_GAP}px`;
     // Cards stop short of the content area's bottom edge: the design's card row
     // is 1138 tall in a 1600 frame starting at y=420, leaving a 42px skirt
@@ -899,8 +909,18 @@ function renderStepCards() {
 
     mkLabel(R.HEADER, '');
     mkLabel(R.TEMP,   getTranslation('Temp')).id = 'editor-row-temp';
-    mkLabel(R.PUMP,   getTranslation('Pump')).id = 'editor-row-pump';
-    mkLabel(R.MAX,    getTranslation('Maximum')).id = 'editor-row-max';
+    const pumpLabel = mkLabel(R.PUMP, getTranslation('Pump'));
+    pumpLabel.id = 'editor-row-pump';
+    // The card cell centers two 72px lines + a 15px gap, so its first line (the
+    // chip row) sits 43.5px above centre. 87px of bottom padding lifts the
+    // label's centre by the same amount, putting it level with that chip.
+    pumpLabel.style.paddingBottom = '87px';
+    const maxLabel = mkLabel(R.MAX, getTranslation('Maximum'));
+    maxLabel.id = 'editor-row-max';
+    // Maximum's cell is top-aligned, so its first 72px line is centred
+    // 1.5 + 15 + 36 = 52.5px from the row top; a 30px label starts 37.5px down.
+    maxLabel.style.alignItems = 'flex-start';
+    maxLabel.style.paddingTop = '37.5px';
     mkLabel(R.EXIT,   getTranslation('Move on if')).id = 'editor-row-exit';
     mkLabel(R.FOOTER, '');
 
@@ -931,8 +951,11 @@ function renderStepCards() {
         };
 
         // ── Header row ──────────────────────────────────────────────────────
+        // Expanded: chevrons pinned to the card's content edges (Figma's 520px
+        // justify-between row, 390 here) with the number + name between them;
+        // collapsed has no chevrons, so the label just centres.
         const hCell = cardAttr(mkCell(R.HEADER, col,
-            `flex items-center justify-center gap-[8px] ${CARD_BG} border-t-[1.5px] border-[var(--border-graph-grid)] ${SIDE} rounded-t-[15px] px-[30px] pt-[30px] pb-[15px] overflow-hidden ${expanded ? '' : 'cursor-pointer'}`));
+            `flex items-center ${expanded ? 'justify-between' : 'justify-center gap-[8px]'} ${CARD_BG} border-t-[1.5px] border-[var(--border-graph-grid)] ${SIDE} rounded-t-[15px] px-[30px] pt-[30px] pb-[15px] overflow-hidden ${expanded ? '' : 'cursor-pointer'}`));
         onExpandClick(hCell);
 
         if (expanded) {
@@ -956,12 +979,8 @@ function renderStepCards() {
             const nameInput = document.createElement('input');
             nameInput.type = 'text';
             nameInput.value = step.name || '';
-            nameInput.className = 'text-[24px] font-bold text-[var(--button-primary-bg)] bg-transparent outline-none underline decoration-dashed min-w-0 max-w-full';
-            nameInput.style.textDecorationColor = 'var(--low-contrast-white)';
-            nameInput.style.textUnderlineOffset = '4px';
+            nameInput.className = 'text-[24px] font-bold text-[var(--text-primary)] bg-transparent outline-none min-w-0 max-w-full';
             nameInput.addEventListener('click', (e) => e.stopPropagation());
-            nameInput.addEventListener('focus', () => { nameInput.style.textDecorationColor = 'var(--mimoja-blue)'; });
-            nameInput.addEventListener('blur',  () => { nameInput.style.textDecorationColor = 'var(--low-contrast-white)'; });
             const syncSize = () => { nameInput.size = Math.max(4, nameInput.value.length + 1); };
             syncSize();
             nameInput.addEventListener('input', syncSize);
@@ -997,7 +1016,7 @@ function renderStepCards() {
             numSpan.className = 'font-semibold text-[var(--text-primary)]';
             numSpan.textContent = `${index + 1}. `;
             const nameSpan = document.createElement('span');
-            nameSpan.className = 'font-bold text-[var(--button-primary-bg)]';
+            nameSpan.className = 'font-bold text-[var(--text-primary)]';
             nameSpan.textContent = step.name || '';
             label.appendChild(numSpan);
             label.appendChild(nameSpan);
@@ -1141,7 +1160,7 @@ function renderStepCards() {
         // All three are live on the machine — whichever trips first ends the
         // step — so all three stay editable from here, not just weight/time.
         const mCell = cardAttr(mkCell(R.MAX, col,
-            `flex flex-col items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+            `flex flex-col items-center justify-start ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
         onExpandClick(mCell);
 
         const MAX_FIELDS = [
@@ -1181,6 +1200,7 @@ function renderStepCards() {
             if (active.length === 0) {
                 mCell.appendChild(collapsedRow(getTranslation('Maximum'), getTranslation('Off'), { accent: false }));
             }
+
         }
 
         // ── Move on if row ──────────────────────────────────────────────────
@@ -1269,9 +1289,9 @@ function renderStepCards() {
 
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'w-[67.5px] h-[67.5px] flex items-center justify-center cursor-pointer';
+        deleteBtn.className = 'w-[67.5px] h-[67.5px] rounded-[15px] bg-[var(--footer-btn-bg)] border-[1.5px] border-[var(--footer-btn-border)] flex items-center justify-center cursor-pointer';
         deleteBtn.setAttribute('aria-label', 'Delete step');
-        deleteBtn.appendChild(maskIcon(ICON_TRASH, 37.5, 'var(--button-primary-bg)'));
+        deleteBtn.appendChild(maskIcon(ICON_TRASH, 37.5, 'var(--footer-btn-icon)'));
         deleteBtn.addEventListener('click', async (e) => {
             // stopPropagation so tapping trash on a collapsed card deletes the
             // step instead of expanding the card first.
@@ -1284,9 +1304,9 @@ function renderStepCards() {
 
         const insertBtn = document.createElement('button');
         insertBtn.type = 'button';
-        insertBtn.className = 'w-[67.5px] h-[67.5px] flex items-center justify-center cursor-pointer';
+        insertBtn.className = 'w-[67.5px] h-[67.5px] rounded-[15px] bg-[var(--footer-btn-bg)] border-[1.5px] border-[var(--footer-btn-border)] flex items-center justify-center cursor-pointer';
         insertBtn.setAttribute('aria-label', 'Insert step after');
-        insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--button-primary-bg)'));
+        insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--footer-btn-icon)'));
         insertBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             insertStepAfter(index);
@@ -1396,7 +1416,7 @@ function renderFlowCalibrationFields(col) {
         // 180px fits "Flow" / "calibration" on two whole-word lines at the
         // same 24px size as everything else -- a one-row exception to the
         // shared gutter, not a change to it.
-        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[180px] shrink-0';
+        label.className = 'text-[24px] font-semibold text-[var(--settings-label-color)] w-[180px] shrink-0';
         label.textContent = getTranslation('Flow calibration');
         headerRow.appendChild(label);
 
@@ -1524,7 +1544,7 @@ function settingsSectionRow(labelText, boxes) {
     const row = document.createElement('div');
     row.className = 'flex gap-[15px] items-center pl-[15px]';
     const label = document.createElement('p');
-    label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0';
+    label.className = 'text-[24px] font-semibold text-[var(--settings-label-color)] w-[127.5px] shrink-0';
     label.textContent = labelText;
     row.appendChild(label);
     const boxRow = document.createElement('div');
@@ -1549,7 +1569,7 @@ function createStepCycler(steps, current, onChange) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = STEPPER_BTN_CLASS;
-        const icon = maskIcon(ICON_ARROW, 37.5, 'var(--text-primary)');
+        const icon = maskIcon(ICON_ARROW, 37.5, 'var(--stepper-icon)');
         if (rotate) icon.style.transform = 'rotate(180deg)';
         btn.appendChild(icon);
         return btn;
@@ -1557,7 +1577,7 @@ function createStepCycler(steps, current, onChange) {
 
     const prevBtn = makeArrowBtn(true);
     const display = document.createElement('p');
-    display.className = 'font-bold text-[24px] text-center text-[var(--text-primary)] w-[200px] whitespace-nowrap overflow-hidden text-ellipsis';
+    display.className = 'font-bold text-[24px] text-center text-[var(--text-primary)] w-[150px] whitespace-nowrap overflow-hidden text-ellipsis';
     const nextBtn = makeArrowBtn(false);
 
     function update() {
@@ -1721,7 +1741,7 @@ function renderSettingsTab() {
         section.className = 'flex gap-[15px] items-center pl-[15px]';
 
         const label = document.createElement('p');
-        label.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0';
+        label.className = 'text-[24px] font-semibold text-[var(--settings-label-color)] w-[127.5px] shrink-0';
         label.textContent = getTranslation('Beverage Type');
         section.appendChild(label);
 
@@ -1859,7 +1879,7 @@ function renderSettingsTab() {
         const uploadRow = document.createElement('div');
         uploadRow.className = 'flex items-center gap-[15px] pl-[15px]';
         const uploadLabel = document.createElement('div');
-        uploadLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 break-words';
+        uploadLabel.className = 'text-[24px] font-semibold text-[var(--settings-label-color)] w-[127.5px] shrink-0 break-words';
         uploadLabel.textContent = getTranslation('Upload Local File');
         uploadRow.appendChild(uploadLabel);
         uploadRow.appendChild(uploadBtn);
@@ -1955,7 +1975,7 @@ function renderSettingsTab() {
         const shareFieldRow = document.createElement('div');
         shareFieldRow.className = 'flex items-start gap-[15px] pl-[15px]';
         const shareLabel = document.createElement('div');
-        shareLabel.className = 'text-[24px] font-semibold text-[var(--button-primary-bg)] w-[127.5px] shrink-0 break-words';
+        shareLabel.className = 'text-[24px] font-semibold text-[var(--settings-label-color)] w-[127.5px] shrink-0 break-words';
         shareLabel.textContent = getTranslation('Import from Visualizer');
         shareFieldRow.appendChild(shareLabel);
         shareFieldRow.appendChild(shareSection);

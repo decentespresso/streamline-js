@@ -196,6 +196,14 @@ body {
     --preset-label-selected-color: #777777;
     --green: #65Ac8a;
     --button-grey: #EDEDED;
+    --stepper-btn-bg: #EDEDED;
+    --settings-label-color: #385a92; /* left-gutter section labels: Action blue in light */
+    /* Card footer trash / add-step: light is the inactive button (white, grey stroke, blue icon); dark is the active blue fill */
+    --footer-btn-bg: #ffffff;
+    --footer-btn-border: #c9c9c9;
+    --footer-btn-icon: #385a92;
+    --stepper-icon: #121212;
+    --stepper-icon-disabled: #c8cacc;
 
     /* Plus Minus Flash Colors (Light Mode) */
     --plus-minus-flash-on-color: #b8b8b8;
@@ -260,7 +268,14 @@ body {
     --box-color: #17191e;
     --profileselectorbg:#17191e;
     --button-grey: #2a2d36;
-    --secondary-button-bg: #2a3a5a;
+    --stepper-btn-bg: #101217;
+    --settings-label-color: #e8e8e8; /* Text/Primary.Active — the dark blue is ~2.6:1 as text */
+    --footer-btn-bg: #415996;
+    --footer-btn-border: #415996;
+    --footer-btn-icon: #e8e8e8;
+    --stepper-icon: #959595;
+    --stepper-icon-disabled: #2e3138;
+    --secondary-button-bg: #707485; /* scrollbar thumbs only; style guide Text/Tertiary, ~3.8:1 on the dark card */
     /* Plus Minus Flash Colors (Dark Mode) */
     --plus-minus-flash-on-color: #4a4f5e;
     --plus-minus-flash-on-color2: #3a3e4a;
