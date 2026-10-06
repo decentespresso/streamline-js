@@ -1,5 +1,5 @@
 import { loadPage } from './router.js';
-import { showToast, flashPlusMinusButton } from './ui.js';
+import { showToast, flashPlusMinusButton, flashIconButton } from './ui.js';
 import { openModal, resetNumpadModal } from './numpad-modal.js';
 import { openNotesModal } from './notes-modal.js';
 import { getTranslation, fitTextToWidth } from './i18n.js';
@@ -1296,6 +1296,7 @@ function renderStepCards() {
             // stopPropagation so tapping trash on a collapsed card deletes the
             // step instead of expanding the card first.
             e.stopPropagation();
+            flashIconButton(deleteBtn);
             if (!await confirmDeleteStep(index)) return;
             removeStepAt(index);
             if (editorState.editingStep === index) editorState.editingStep = null;
@@ -1309,9 +1310,13 @@ function renderStepCards() {
         insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--footer-btn-icon)'));
         insertBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            insertStepAfter(index);
-            editorState.editingStep = index + 1;
-            renderStepCards();
+            flashIconButton(insertBtn);
+            // The re-render replaces this button, so let the flash show first.
+            setTimeout(() => {
+                insertStepAfter(index);
+                editorState.editingStep = index + 1;
+                renderStepCards();
+            }, 150);
         });
 
         fCell.appendChild(deleteBtn);
@@ -1423,9 +1428,18 @@ function renderFlowCalibrationFields(col) {
         const toggleRow = document.createElement('label');
         toggleRow.className = 'flex items-center gap-[15px] text-[20px] text-[var(--text-primary)]'
             + (profileId ? ' cursor-pointer' : ' opacity-40');
+        // The app's standard switch (same markup/tokens as settings.js's toggles):
+        // 100x50 track, --toggle-off-* when off, Action blue + white knob when on.
+        const switchEl = document.createElement('span');
+        switchEl.className = 'relative flex items-center flex-shrink-0 w-[100px] h-[50px]';
         const toggle = document.createElement('input');
         toggle.type = 'checkbox';
-        toggle.className = 'w-[26px] h-[26px] accent-[var(--mimoja-blue)]';
+        toggle.className = 'sr-only peer';
+        const switchTrack = document.createElement('span');
+        switchTrack.className = 'absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[#385a92] peer-checked:border-[#385a92]';
+        const switchKnob = document.createElement('span');
+        switchKnob.className = 'absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white';
+        switchEl.append(toggle, switchTrack, switchKnob);
         toggle.checked = enabled;
         toggle.disabled = !profileId;
         toggle.addEventListener('change', async () => {
@@ -1441,7 +1455,7 @@ function renderFlowCalibrationFields(col) {
         });
         const toggleText = document.createElement('span');
         toggleText.textContent = getTranslation('Use this profile\u2019s own flow calibration');
-        toggleRow.appendChild(toggle);
+        toggleRow.appendChild(switchEl);
         toggleRow.appendChild(toggleText);
         headerRow.appendChild(toggleRow);
 
@@ -1474,12 +1488,12 @@ function renderFlowCalibrationFields(col) {
             wrapper.appendChild(boxRowLine);
         }
 
-        if (profileId) {
+        // Nothing when off: the toggle's own label already says this profile
+        // isn't using its own calibration, and the global values live in settings.
+        if (profileId && enabled) {
             const hint = document.createElement('p');
             hint.className = 'text-[18px] text-[var(--text-primary)] opacity-60 leading-[1.3]';
-            hint.textContent = enabled
-                ? getTranslation('Applied while this profile is loaded. Other profiles go back to the global value.')
-                : `${getTranslation('Using the global value')}: ${roundTo(baseline.weightFlowMultiplier, 0.1)} / ${roundTo(baseline.volumeFlowMultiplier, 0.05)} s`;
+            hint.textContent = getTranslation('Applied while this profile is loaded. Other profiles go back to the global value.');
             wrapper.appendChild(hint);
         }
     }

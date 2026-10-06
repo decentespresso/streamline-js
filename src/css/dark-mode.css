@@ -106,14 +106,49 @@
 }
 
 [data-theme="dark"] #sleep-button, [data-theme="dark"] .settings-button {
-    background-color: #101117;
-    color: white;
+    background-color: #101117; /* Buttons/Background.Secondary */
+    color: var(--text-primary);
 }
 
 [data-theme="dark"] #confirm-profile-btn,
 [data-theme="dark"] #editor-save-btn {
-    background-color: #385a92;
-    color: white;
+    background-color: var(--button-primary-bg); /* Buttons/Background.Active */
+    color: var(--button-primary-text);
+}
+
+/* Profile selector — dark palette conformance. Light mode keeps its own look:
+   blue text / hardcoded blue strokes read fine on white but sit at ~2.6:1 on
+   the dark cards, and daisyUI's base-300 / #e5e7eb dividers are near-white. */
+[data-theme="dark"] #subpage-header:has(#confirm-profile-btn),
+[data-theme="dark"] #left-panel,
+[data-theme="dark"] #left-panel > div,
+[data-theme="dark"] #profile-chart-wrap {
+    border-color: var(--border-primary);
+}
+[data-theme="dark"] #add_profile,
+[data-theme="dark"] #view_profile,
+[data-theme="dark"] #search_profile,
+[data-theme="dark"] #delete_profile,
+[data-theme="dark"] #reset_btn,
+[data-theme="dark"] #edit_profile {
+    border-color: var(--border-primary);
+}
+[data-theme="dark"] #reset_btn,
+[data-theme="dark"] #edit_profile,
+[data-theme="dark"] #selected_profile_name,
+[data-theme="dark"] #reset-profile-cancel,
+[data-theme="dark"] [data-notes-toggle] {
+    color: var(--text-primary);
+}
+[data-theme="dark"] #reset-profile-cancel { border-color: var(--border-primary); }
+[data-theme="dark"] [data-notes-toggle] { text-decoration: underline; }
+[data-theme="dark"] #add_profile svg path,
+[data-theme="dark"] #view_profile svg path,
+[data-theme="dark"] #search_profile svg path,
+[data-theme="dark"] #delete_profile svg path,
+[data-theme="dark"] #edit-profile-name-btn svg path,
+[data-theme="dark"] #profile-list button svg path {
+    stroke: var(--text-primary);
 }
 
 /* Themed scrollbars app-wide in dark mode */

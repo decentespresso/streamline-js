@@ -178,6 +178,15 @@ let grindStep = 0.1;
 // apart than this.
 const STEAM_RESUME_GRACE_MS = 2000;
 
+// Tap feedback for icon buttons: flashes the active blue (see .icon-flash in
+// main.css). Restarts cleanly on rapid taps.
+export function flashIconButton(button) {
+    button.classList.remove('icon-flash');
+    void button.offsetWidth;
+    button.classList.add('icon-flash');
+    setTimeout(() => button.classList.remove('icon-flash'), 350);
+}
+
 export function flashPlusMinusButton(button) {
     // Add the flash animation class
     button.classList.add('flash-animation');

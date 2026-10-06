@@ -2,7 +2,7 @@ import { init as initProfileManager, unhideProfile,availableProfiles, assignProf
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
-import { initResizablePanels, showToast, initFullscreenHandler, updateProfileName, setupPressAndHold } from './ui.js';
+import { initResizablePanels, showToast, initFullscreenHandler, updateProfileName, setupPressAndHold, flashIconButton } from './ui.js';
 import { sendProfile, getWorkflow, updateWorkflow, deleteProfile, updateProfileVisibility, getProfileLineage } from './api.js';
 import { initChart, plotProfile } from './chart.js';
 import { translatePage, getTranslation } from './i18n.js';
@@ -29,6 +29,7 @@ function ensureProfilesUpdatedListener() {
 let selectedProfileKey = null;
 let isShowingHidden = false; // State to track if hidden profiles should be shown
 let isSearching = false; // State to track if search mode is active
+let searchOutsideHandler = null; // document click listener that dismisses the search bar
 const FAV_COUNT = 5;
 
 // Suppress browser-default text selection, context menu, tap-highlight, drag, and
@@ -62,8 +63,8 @@ function getEyeIconSVG(strokeColor) {
 }
 
 // Quick-hide affordance on the selected row (Figma: inline eye-off icon).
-function getEyeOffIconSVG(strokeColor) {
-    return `<svg aria-hidden="true" class="w-[30px] h-[30px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L57 57" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/></svg>`;
+function getEyeOffIconSVG(strokeColor, sizeClass = 'w-[30px] h-[30px]') {
+    return `<svg aria-hidden="true" class="${sizeClass}" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L57 57" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/></svg>`;
 }
 
 // Shared by the row context menu's "Hide" item and the selected-row inline
@@ -670,8 +671,8 @@ function renderProfiles() {
                 connector.className = 'absolute top-0 bottom-1/2 pointer-events-none';
                 connector.style.left = `${12 + indent - 20}px`;
                 connector.style.width = '20px';
-                connector.style.borderLeft = '2px solid black';
-                connector.style.borderBottom = '2px solid black';
+                connector.style.borderLeft = '2px solid var(--border-primary)';
+                connector.style.borderBottom = '2px solid var(--border-primary)';
                 div.appendChild(connector);
             }
 
@@ -716,7 +717,7 @@ function renderProfiles() {
             if (isHidden) {
                 div.classList.add('text-[var(--low-contrast-white)]');
                 const unhideButton = document.createElement('button');
-                unhideButton.className = 'p-1 hover:bg-gray-200 rounded-full';
+                unhideButton.className = 'p-1 hover:bg-[var(--button-grey)] rounded-full';
                 unhideButton.title = 'Show this profile';
                 unhideButton.setAttribute('aria-label', `Show profile ${displayTitle}`);
                 unhideButton.innerHTML = `<svg class="w-6 h-6" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -732,7 +733,7 @@ function renderProfiles() {
             } else {
                 div.classList.add('text-[var(--text-primary)]');
                 if (key === selectedProfileKey) {
-                    div.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
+                    div.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
                 }
             }
 
@@ -742,7 +743,7 @@ function renderProfiles() {
 
                 const allItems = clickedItem.parentElement.querySelectorAll('[data-profile-key]');
                 for(const item of allItems) {
-                    item.classList.remove('bg-[#385a92]', 'text-white', 'rounded-[8px]', 'bg-gray-200', 'text-black');
+                    item.classList.remove('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]', 'bg-[var(--button-grey)]', 'text-black');
                     item.setAttribute('aria-selected', 'false');
                     item.querySelector('.profile-hide-btn')?.remove();
                     const itemKey = item.dataset.profileKey;
@@ -754,11 +755,11 @@ function renderProfiles() {
                 }
 
                 if (isHidden) {
-                    clickedItem.classList.add('bg-gray-200', 'rounded-[8px]');
-                    clickedItem.classList.remove('text-white');
+                    clickedItem.classList.add('bg-[var(--button-grey)]', 'rounded-[8px]');
+                    clickedItem.classList.remove('text-[var(--button-primary-text)]');
 
                 } else {
-                    clickedItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
+                    clickedItem.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
                     clickedItem.classList.remove('text-[#121212]');
                     clickedItem.appendChild(createHideButton());
                 }
@@ -1100,7 +1101,12 @@ function initViewButton() {
     const button = newViewButton;
 
     // Set initial state on load, corresponding to isShowingHidden = false (default bg, blue icon)
-    button.innerHTML = getEyeIconSVG('#385a92'); // Blue icon
+    // Icon shows what the list is doing: crossed eye while hidden profiles are
+    // hidden, open eye (on the active blue) while they are listed.
+    const BIG_ICON = 'w-[49.5px] h-[49.5px]';
+    button.innerHTML = getEyeOffIconSVG('#385a92', BIG_ICON);
+    button.setAttribute('aria-label', 'Show hidden profiles');
+    button.title = 'Show hidden profiles';
     button.classList.remove("bg-[var(--mimoja-blue)]");
     button.classList.add("bg-[var(--button-grey)]"); // Use CSS variable for background
     console.log('initViewButton: Initial state set');
@@ -1112,8 +1118,10 @@ function initViewButton() {
         if (isShowingHidden) {
             // State: SHOWING hidden profiles -> blue background, white icon
             button.innerHTML = getEyeIconSVG('currentColor');
+            button.setAttribute('aria-label', 'Hide hidden profiles');
+            button.title = 'Hide hidden profiles';
             // Use direct style manipulation instead of Tailwind arbitrary values
-            button.style.backgroundColor = 'var(--mimoja-blue)';
+            button.style.backgroundColor = 'var(--button-primary-bg)';
             button.classList.remove("bg-[var(--button-grey)]");
             if (page_title) {
                 page_title.textContent = "All Profiles";
@@ -1121,7 +1129,9 @@ function initViewButton() {
             console.log('initViewButton: Now showing hidden profiles');
         } else {
             // State: HIDING hidden profiles -> default background, blue icon
-            button.innerHTML = getEyeIconSVG('#385a92');
+            button.innerHTML = getEyeOffIconSVG('#385a92', BIG_ICON);
+            button.setAttribute('aria-label', 'Show hidden profiles');
+            button.title = 'Show hidden profiles';
             // Reset to default background
             button.style.backgroundColor = '';
             button.classList.add("bg-[var(--button-grey)]");
@@ -1138,6 +1148,22 @@ function initViewButton() {
         renderProfiles();
     });
     console.log('initViewButton: Event listener attached');
+}
+
+// Tap feedback for the toolbar's icon buttons. One delegated listener on the
+// toolbar (the buttons themselves get cloned by their init functions, which
+// would drop per-button listeners); see .icon-flash in main.css.
+function initIconFlash() {
+    const toolbar = document.querySelector('#left-panel > div');
+    if (!toolbar || toolbar.dataset.iconFlash) return;
+    toolbar.dataset.iconFlash = '1';
+    toolbar.addEventListener('click', (e) => {
+        // composedPath: the view/search handlers swap their icon first, which
+        // detaches e.target from the button it was clicked in.
+        const btn = e.composedPath().find(el => el.matches?.('#add_profile, #view_profile, #search_profile, #delete_profile'));
+        if (!btn) return;
+        flashIconButton(btn);
+    });
 }
 
 function initSearchButton() {
@@ -1181,7 +1207,7 @@ function initSearchButton() {
             // Enter search mode
             button.innerHTML = `<svg aria-hidden="true" class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
             // Use direct style manipulation instead of Tailwind arbitrary values
-            button.style.backgroundColor = 'var(--mimoja-blue)';
+            button.style.backgroundColor = 'var(--button-primary-bg)';
             button.classList.remove("bg-[var(--button-grey)]");
 
             // Create search input field between search_profile and delete_profile buttons
@@ -1192,23 +1218,29 @@ function initSearchButton() {
                 searchInput.enterKeyHint = 'search';
                 searchInput.placeholder = 'Search profile names...';
                 searchInput.setAttribute('aria-label', 'Search profile names');
-                searchInput.className = 'w-[400px] h-[82px] mx-[30px] px-4 py-2 rounded-[20px] border border-solid border-[var(--border-color)] text-[var(--text-primary)] bg-[var(--profile-button-background-color)] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue)]';
+                searchInput.id = 'profile-search-input';
+                searchInput.className = 'absolute z-10 h-[82.5px] px-4 rounded-[15px] border-[1.5px] border-solid border-[var(--border-primary)] text-[var(--text-primary)] bg-[var(--profile-button-background-color)] focus:outline-none focus:border-[var(--button-primary-bg)]';
                 searchInput.style.fontSize = '28px';
                 searchInput.style.fontWeight = 'bold';
 
-                // Find the element between search and delete buttons and insert the search input there
-                const parentElement = button.parentNode;
-                const searchIndex = Array.prototype.indexOf.call(parentElement.children, button);
-                const deleteIndex = Array.prototype.indexOf.call(parentElement.children, deleteButton);
-
-                // Ensure search button comes before delete button in the DOM
-                if (searchIndex < deleteIndex) {
-                    // Insert after the search button but before the delete button
-                    parentElement.insertBefore(searchInput, deleteButton);
-                } else {
-                    // If delete button comes before search, insert after search button
-                    parentElement.insertBefore(searchInput, button.nextSibling);
-                }
+                // Overlay the toolbar from just right of the search button to its
+                // right padding edge, covering the delete button instead of
+                // pushing it aside; tapping anywhere else dismisses it.
+                const toolbar = document.querySelector('#left-panel > div');
+                toolbar.classList.add('relative');
+                searchInput.style.left = `${button.offsetLeft + button.offsetWidth + 30}px`;
+                searchInput.style.right = '37.5px';
+                searchInput.style.top = '50%';
+                searchInput.style.transform = 'translateY(-50%)';
+                toolbar.appendChild(searchInput);
+                // composedPath, not target.closest: opening the bar swaps the
+                // search button's icon, which detaches the clicked <path> before
+                // this listener runs, so closest() can no longer reach the button.
+                searchOutsideHandler = (e) => {
+                    if (e.composedPath().some(el => el.id === 'profile-search-input' || el.id === 'search_profile')) return;
+                    exitSearchMode();
+                };
+                document.addEventListener('click', searchOutsideHandler);
 
                 // Focus the input
                 searchInput.focus();
@@ -1278,9 +1310,10 @@ function exitSearchMode(originalTitle = null) {
     }
 
     // Remove the search input if it exists
-    const searchInput = document.querySelector('#search_profile + input[type="text"]');
-    if (searchInput) {
-        searchInput.remove();
+    document.getElementById('profile-search-input')?.remove();
+    if (searchOutsideHandler) {
+        document.removeEventListener('click', searchOutsideHandler);
+        searchOutsideHandler = null;
     }
 
     if (page_title) {
@@ -1384,7 +1417,7 @@ function filterProfiles(searchTerm) {
         if (isHidden) {
             div.classList.add('text-[var(--low-contrast-white)]');
             const unhideButton = document.createElement('button');
-            unhideButton.className = 'p-1 hover:bg-gray-200 rounded-full';
+            unhideButton.className = 'p-1 hover:bg-[var(--button-grey)] rounded-full';
             unhideButton.title = 'Show this profile';
             unhideButton.setAttribute('aria-label', `Show profile ${displayTitle}`);
             unhideButton.innerHTML = `<svg class="w-6 h-6" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -1406,7 +1439,7 @@ function filterProfiles(searchTerm) {
 
             const allItems = clickedItem.parentElement.querySelectorAll('[data-profile-key]');
             for(const item of allItems) {
-                item.classList.remove('bg-[#385a92]', 'text-white', 'rounded-[8px]', 'bg-gray-200', 'text-black');
+                item.classList.remove('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]', 'bg-[var(--button-grey)]', 'text-black');
                 item.setAttribute('aria-selected', 'false');
                 const itemKey = item.dataset.profileKey;
                 if (itemKey && availableProfiles[itemKey] && availableProfiles[itemKey].visibility === 'hidden') {
@@ -1417,11 +1450,11 @@ function filterProfiles(searchTerm) {
             }
 
             if (isHidden) {
-                clickedItem.classList.add('bg-gray-200', 'rounded-[8px]');
-                clickedItem.classList.remove('text-white');
+                clickedItem.classList.add('bg-[var(--button-grey)]', 'rounded-[8px]');
+                clickedItem.classList.remove('text-[var(--button-primary-text)]');
 
             } else {
-                clickedItem.classList.add('bg-[#385a92]', 'text-white', 'rounded-[8px]');
+                clickedItem.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
                 clickedItem.classList.remove('text-[#121212]');
             }
 
@@ -1622,6 +1655,7 @@ export async function initializeProfileSelector() {
     initViewButton();
     console.log('initializeProfileSelector: Initializing search button');
     initSearchButton();
+    initIconFlash();
     console.log('initializeProfileSelector: Initializing fullscreen handler');
     initFullscreenHandler();
 

@@ -615,7 +615,7 @@ async function pollForUploadConfirmation(shotId, timeout = 30000) {
 
 // Records the estimate only — handleData does the painting.
 function handleTimeToReadyData(data) {
-    ttrHeating = readTimeToReadyFrame(data, Date.now());
+    ttrHeating = readTimeToReadyFrame(data, Date.now(), ttrHeating);
 }
 
 // The screensaver is a pure function of the machine's CONFIRMED state.

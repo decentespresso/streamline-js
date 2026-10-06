@@ -262,16 +262,17 @@ body {
        and --mimoja-blue-v2 (#415996) to stay legible on a dark card. */
     --bg-tertiary: #101217;
     --bg-secondary: #1b1e26;
-    --border-primary: #454b5c;
+    --border-primary: #3d4255; /* style guide Dark Mode/Border/Primary */
     --border-graph-grid: #333844;
     --tab-text-inactive: #8a9ac9;
     --box-color: #17191e;
     --profileselectorbg:#17191e;
-    --button-grey: #2a2d36;
+    --button-grey: #292c38; /* style guide Buttons/Primary.Background.Inactive */
     --stepper-btn-bg: #101217;
     --settings-label-color: #e8e8e8; /* Text/Primary.Active — the dark blue is ~2.6:1 as text */
-    --footer-btn-bg: #415996;
-    --footer-btn-border: #415996;
+    /* same inactive-button look as the profile selector's icon buttons */
+    --footer-btn-bg: #292c38;
+    --footer-btn-border: #3d4255;
     --footer-btn-icon: #e8e8e8;
     --stepper-icon: #959595;
     --stepper-icon-disabled: #2e3138;
@@ -409,6 +410,23 @@ body {
 
 .flash-animation {
     animation: button-flash 0.28s linear forwards; /* 'forwards' keeps the end state */
+}
+
+/* Profile selector icon buttons: a tap flashes the active blue (style guide
+   Buttons/Background.Active) with selected-button text on the icon, then eases
+   back to the button's own fill — no end keyframe, so it returns to whatever
+   background the button had (including search's inline active state). */
+@keyframes icon-flash {
+    0%, 45% { background-color: var(--button-primary-bg); }
+}
+.icon-flash {
+    animation: icon-flash 0.35s ease-out;
+}
+.icon-flash svg path {
+    stroke: var(--button-primary-text) !important;
+}
+.icon-flash .pe-icon-mask {
+    background-color: var(--button-primary-text) !important;
 }
 
 /* Brightness Slider Styling */

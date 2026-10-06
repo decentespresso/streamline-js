@@ -4,6 +4,7 @@ import {
     readTimeToReadyFrame,
     heatingSecondsLeft,
     TTR_STALE_MS,
+    TTR_OVERRUN_MS,
     TTR_CAP_S,
 } from '../src/modules/heating-countdown.js';
 
@@ -16,7 +17,7 @@ test('a heating frame becomes an absolute deadline', () => {
     );
 });
 
-test('non-heating and zero-remaining frames carry no estimate', () => {
+test('non-heating and zero-remaining frames carry no estimate of their own', () => {
     for (const frame of [
         { status: 'reached', remainingTimeMs: 0 },
         { status: 'heating', remainingTimeMs: 0 },
@@ -24,6 +25,31 @@ test('non-heating and zero-remaining frames carry no estimate', () => {
         undefined,
     ]) {
         assert.equal(readTimeToReadyFrame(frame, NOW), null);
+    }
+});
+
+test('an unusable frame keeps the estimate instead of flipping to plain "Heating"', () => {
+    const est = readTimeToReadyFrame({ status: 'heating', remainingTimeMs: 42_000 }, NOW);
+
+    // The ttr socket mixes these in while the DE1 snapshot still says heating.
+    let held = est;
+    for (const [elapsed, frame] of [
+        [1_000, { status: 'reached', remainingTimeMs: 0 }],
+        [2_000, { status: 'heating', remainingTimeMs: 0 }],
+        [3_000, { status: 'idle' }],
+    ]) {
+        held = readTimeToReadyFrame(frame, NOW + elapsed, held);
+        assert.equal(held.deadline, est.deadline);           // same deadline
+        assert.equal(held.at, NOW + elapsed);                // socket is alive
+        assert.equal(heatingSecondsLeft(held, NOW + elapsed), 42 - elapsed / 1000);
+    }
+});
+
+test('frames keep a live socket from expiring past the stale window', () => {
+    let held = readTimeToReadyFrame({ status: 'heating', remainingTimeMs: 300_000 }, NOW);
+    for (let elapsed = 1_000; elapsed <= 20_000; elapsed += 1_000) {
+        held = readTimeToReadyFrame({ status: 'idle' }, NOW + elapsed, held);
+        assert.ok(heatingSecondsLeft(held, NOW + elapsed) > 0, `expired at ${elapsed}ms`);
     }
 });
 
@@ -49,8 +75,21 @@ test('a stale estimate is dropped rather than counted down', () => {
     assert.equal(heatingSecondsLeft(est, NOW + TTR_STALE_MS + 1), 0);
 });
 
-test('no estimate, or one whose deadline has passed, reads as 0 (plain "Heating")', () => {
+test('a just-passed deadline holds at 1s, an overrun one reads as 0 (plain "Heating")', () => {
     assert.equal(heatingSecondsLeft(null, NOW), 0);
-    const est = readTimeToReadyFrame({ status: 'heating', remainingTimeMs: 1_000 }, NOW);
-    assert.equal(heatingSecondsLeft(est, NOW + 4_000), 0);
+
+    // Socket stays alive (so staleness is not what ends the countdown) but stops
+    // producing numbers: the machine is heating longer than it predicted.
+    const alive = (elapsed, held) => readTimeToReadyFrame({ status: 'idle' }, NOW + elapsed, held);
+    let held = readTimeToReadyFrame({ status: 'heating', remainingTimeMs: 1_000 }, NOW);
+
+    held = alive(4_000, held);
+    assert.equal(heatingSecondsLeft(held, NOW + 4_000), 1);
+
+    const lastGood = 1_000 + TTR_OVERRUN_MS;
+    held = alive(lastGood, held);
+    assert.equal(heatingSecondsLeft(held, NOW + lastGood), 1);
+
+    held = alive(lastGood + 1, held);
+    assert.equal(heatingSecondsLeft(held, NOW + lastGood + 1), 0);
 });
