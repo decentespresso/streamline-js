@@ -911,6 +911,13 @@ function renderProfiles() {
 // syncProfileListScrollThumb is standalone (not a closure inside
 // initProfileListScrollThumb) so renderProfiles can call it directly after
 // rebuilding the list, without re-wiring listeners.
+// Fixed pill, same 119.25px the editor panes use, so the thumb doesn't swell
+// when a search leaves only a few rows (capped for very short lists).
+const PROFILE_THUMB_HEIGHT = 119.25;
+function profileListThumbHeight(container) {
+    return Math.min(PROFILE_THUMB_HEIGHT, container.clientHeight);
+}
+
 function syncProfileListScrollThumb() {
     const container = document.getElementById('profile-list');
     const thumb = document.getElementById('profile-list-thumb');
@@ -921,7 +928,7 @@ function syncProfileListScrollThumb() {
         return;
     }
     thumb.classList.remove('hidden');
-    const thumbHeight = Math.max(40, container.clientHeight * (container.clientHeight / container.scrollHeight));
+    const thumbHeight = profileListThumbHeight(container);
     const travel = container.clientHeight - thumbHeight;
     const top = travel > 0 ? (container.scrollTop / maxScroll) * travel : 0;
     thumb.style.height = `${thumbHeight}px`;
@@ -978,7 +985,7 @@ function initProfileListScrollThumb() {
             requestAnimationFrame(() => {
                 const maxScroll = container.scrollHeight - container.clientHeight;
                 if (maxScroll <= 0) return;
-                const thumbHeight = Math.max(40, container.clientHeight * (container.clientHeight / container.scrollHeight));
+                const thumbHeight = profileListThumbHeight(container);
                 const travel = container.clientHeight - thumbHeight;
                 const clientY = e.clientY || e.touches[0].clientY;
                 const deltaY = clientY - dragStartY;
@@ -1144,8 +1151,15 @@ function initViewButton() {
         // Force a reflow to ensure style changes are applied
         button.offsetHeight;
 
-        console.log('initViewButton: Calling renderProfiles');
-        renderProfiles();
+        // Re-run an active search under the new scope instead of dropping it.
+        const searchInput = document.getElementById('profile-search-input');
+        if (isSearching && searchInput?.value) {
+            console.log('initViewButton: Re-filtering active search');
+            filterProfiles(searchInput.value.toLowerCase());
+        } else {
+            console.log('initViewButton: Calling renderProfiles');
+            renderProfiles();
+        }
     });
     console.log('initViewButton: Event listener attached');
 }
@@ -1236,8 +1250,19 @@ function initSearchButton() {
                 // composedPath, not target.closest: opening the bar swaps the
                 // search button's icon, which detaches the clicked <path> before
                 // this listener runs, so closest() can no longer reach the button.
+                // The profile list is exempt so a result can be picked with search
+                // still open; tapping the search button, Escape, or anywhere else
+                // on the page leaves search.
                 searchOutsideHandler = (e) => {
-                    if (e.composedPath().some(el => el.id === 'profile-search-input' || el.id === 'search_profile')) return;
+                    // Page unmounted (or re-mounted) with search open: the input
+                    // is gone, so drop this listener instead of acting on stale DOM.
+                    if (!document.getElementById('profile-search-input')) {
+                        document.removeEventListener('click', searchOutsideHandler);
+                        searchOutsideHandler = null;
+                        isSearching = false;
+                        return;
+                    }
+                    if (e.composedPath().some(el => el.id === 'profile-search-input' || el.id === 'search_profile' || el.id === 'profile-list')) return;
                     exitSearchMode();
                 };
                 document.addEventListener('click', searchOutsideHandler);
@@ -1357,11 +1382,10 @@ function filterProfiles(searchTerm) {
 
         const profileTitle = profileRecord.profile.title ? profileRecord.profile.title.toLowerCase() : '';
 
-        // A search is a deliberate look for a specific profile by name, hidden
-        // ones included -- unlike the plain list, which still respects the
-        // isShowingHidden toggle. A hidden match renders in the same lighter
-        // text (and with the same unhide button) as the toggled-on list view,
-        // below, so it reads as distinct without needing the toggle first.
+        // Search follows the eye toggle like the plain list: hidden profiles
+        // only match while "All Profiles" is on, and then render in the same
+        // lighter text (with the unhide button) as that list view, below.
+        if (!isShowingHidden && profileRecord.visibility === 'hidden') return false;
         return profileTitle.includes(searchTerm);
     });
 
@@ -1377,6 +1401,7 @@ function filterProfiles(searchTerm) {
         console.log('filterProfiles: No profiles match the search term');
         container.textContent = 'No profiles found.';
         updateSelectedProfileView(null); // Clear right panel
+        syncProfileListScrollThumb();
         return;
     }
 
@@ -1459,11 +1484,9 @@ function filterProfiles(searchTerm) {
             }
 
             clickedItem.setAttribute('aria-selected', 'true');
-            // Update the selected profile view first
             updateSelectedProfileView(clickedItem);
-
-            // Then exit search mode to preserve the selection
-            exitSearchMode();
+            // Search stays open after picking a result: leave it with the
+            // search button, Escape, or a tap outside the list.
         });
 
         container.appendChild(div);
@@ -1473,11 +1496,19 @@ function filterProfiles(searchTerm) {
     selectedProfileKey = null;
 
     console.log('filterProfiles: Added', sortedProfiles.length, 'profiles to filtered list');
+    syncProfileListScrollThumb();
 }
 
 
 // Main initialization function that can be called externally
 export async function initializeProfileSelector() {
+    // Module state outlives the page: clear any search left over from a
+    // previous mount so its document listener can't fire against the new DOM.
+    if (searchOutsideHandler) {
+        document.removeEventListener('click', searchOutsideHandler);
+        searchOutsideHandler = null;
+    }
+    isSearching = false;
     console.log('initializeProfileSelector: Starting initialization');
 
     const pageRoot =

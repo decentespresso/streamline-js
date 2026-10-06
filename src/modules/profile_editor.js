@@ -1308,11 +1308,17 @@ function renderStepCards() {
         insertBtn.className = 'w-[67.5px] h-[67.5px] rounded-[15px] bg-[var(--footer-btn-bg)] border-[1.5px] border-[var(--footer-btn-border)] flex items-center justify-center cursor-pointer';
         insertBtn.setAttribute('aria-label', 'Insert step after');
         insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--footer-btn-icon)'));
+        let insertPending = false;
         insertBtn.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (insertPending) return; // a double-tap must not insert twice
+            insertPending = true;
             flashIconButton(insertBtn);
             // The re-render replaces this button, so let the flash show first.
             setTimeout(() => {
+                // Cards were re-rendered (or the editor closed) meanwhile, so
+                // `index` is stale: drop the insert rather than misplace it.
+                if (!insertBtn.isConnected) return;
                 insertStepAfter(index);
                 editorState.editingStep = index + 1;
                 renderStepCards();
