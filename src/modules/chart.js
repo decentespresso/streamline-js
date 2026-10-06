@@ -266,6 +266,9 @@ const lightLayout = {
 
 const darkLayout = { ...baseLayout };
 
+// Profile selector preview only (plotProfile); l/t/b differ from baseLayout, r is shared.
+const PROFILE_PREVIEW_MARGIN = { l: 99, t: 39, b: 58 };
+
 const labelColors = {
     light: {
         pressure: '#17c29a',
@@ -1389,6 +1392,10 @@ export function plotProfile(profile) {
     const layout = JSON.parse(JSON.stringify(theme === 'dark' ? darkLayout : lightLayout));
     layout.annotations = [];
     layout.shapes = []; // Clear shapes for profile plot
+    // The selector's preview has its own margins (Figma 2662-1343 at 0.75:
+    // plot 99px in from the left, 39px below the top, 58px above the bottom),
+    // distinct from the live chart's baseLayout margins.
+    layout.margin = { ...layout.margin, ...PROFILE_PREVIEW_MARGIN };
     // Same dashed step markers the live chart draws (addStepMarker), so a
     // profile previewed in the selector is read the same way as one being
     // pulled.

@@ -35,9 +35,10 @@
     min-height: 0;
 }
 
-/* profile_selector's fixed panel heights (list 850, chart 675, notes 275) add up to
-   the design canvas exactly; grow the list and the graph so the pair still reaches
-   the bottom when the canvas is taller. Notes keeps its 275. */
+/* profile_selector's panel heights (Figma 2662-1343 at 0.75: chart 558 between its
+   hairlines, notes 370.5) add up to the design canvas exactly; the chart takes
+   whatever the fixed notes pane leaves, so it is 558 on the 1200 canvas and grows
+   with it when the canvas is taller. Notes keeps its 370.5. */
 #profile-list,
 #profile-chart-wrap {
     height: auto;

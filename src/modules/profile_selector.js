@@ -1342,10 +1342,9 @@ function exitSearchMode(originalTitle = null) {
     }
 
     if (page_title) {
-        // Restore original title if needed
-        if (page_title.textContent !== 'Profiles') {
-            page_title.textContent = originalTitle || 'Profiles';
-        }
+        // Title follows the eye toggle, not a fixed "Profiles": leaving search
+        // while hidden profiles are listed must keep "All Profiles".
+        page_title.textContent = originalTitle || (isShowingHidden ? 'All Profiles' : 'Profiles');
     }
 
     // Reset the search state and show all profiles
