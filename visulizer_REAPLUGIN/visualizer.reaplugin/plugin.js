@@ -193,7 +193,20 @@ function createPlugin(host) {
       visualizerShot.flow.by_weight.push(scale?.weightFlow ?? 0);
       visualizerShot.temperature.mix.push(machine.mixTemperature);
       visualizerShot.temperature.basket.push(machine.groupTemperature);
-      visualizerShot.temperature.goal.push(machine.targetMixTemperature);
+      // `goal` is the PROFILE's target temperature, which is what Visualizer
+      // draws as the goal line -- so it must be targetGroupTemperature (the
+      // frame's temperature, flat for the whole step). targetMixTemperature is
+      // the DE1's live mix servo setpoint: the firmware moves it above and
+      // below the frame target to cancel the heat the group and basket absorb,
+      // so uploading it as `goal` drew a goal line that wandered several °C
+      // around a flat profile target and looked identical whether the step's
+      // `sensor` was coffee or water. Older bridges that don't report the
+      // field (0/absent) keep the previous series rather than a blank line.
+      visualizerShot.temperature.goal.push(
+        Number.isFinite(machine.targetGroupTemperature) && machine.targetGroupTemperature > 0
+          ? machine.targetGroupTemperature
+          : machine.targetMixTemperature
+      );
       visualizerShot.state_change.push(machine.state.substate);
 
       if (i > 0) {
