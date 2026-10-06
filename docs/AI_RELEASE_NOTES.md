@@ -35,7 +35,12 @@ The release whitelist is:
 - `skin-manifest.json`
 - `src/`
 
-Everything else is excluded from the skin artifact by construction.
+Everything else is excluded from the skin artifact by construction — but only
+because staging clears `dist` before it copies. `mkdir -p dist` on its own keeps
+whatever the checkout already has under `dist/`, so a committed `dist/` file
+ships at the zip's root and on the `dist` branch without appearing in the
+whitelist. A stale `dist/app.css` reached every release up to v0.2.8 that way.
+Do not commit files under `dist/`, and keep the `rm -rf dist` ahead of the copy.
 
 ### GitHub Pages
 
@@ -143,7 +148,7 @@ git status --short
 Inspect `.github/workflows/release.yml` directly and confirm:
 
 - triggers and permissions are still intended;
-- the whitelist is complete and minimal;
+- the whitelist is complete and minimal, and `dist` is cleared before staging;
 - manifest rewriting cannot corrupt JSON;
 - the main/dist ID split is preserved;
 - reserved-filename validation covers staged files;

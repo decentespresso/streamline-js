@@ -30,6 +30,13 @@ jobs:
       - name: Stage whitelist into ./dist
         run: |
           set -euo pipefail
+          # Start from an empty dist. `mkdir -p` alone kept whatever the
+          # checkout already had under dist/, so a committed dist/ file rode
+          # into the zip at its root and onto the dist branch — a stale
+          # dist/app.css shipped in every release up to v0.2.8 that way,
+          # unreferenced by index.html. Clearing it first is what makes the
+          # "excluded by construction" claim below actually true.
+          rm -rf dist
           mkdir -p dist
           # Whitelist — ONLY these paths become part of the skin.
           # Everything else in the repo (shots/, .DS_Store, AI agent dirs,
