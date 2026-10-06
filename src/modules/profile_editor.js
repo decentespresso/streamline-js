@@ -1046,14 +1046,14 @@ function renderStepCards() {
             const sensorChip = createCycleChip({
                 states: sensorStates,
                 index: (step.sensor || 'coffee') === 'water' ? 1 : 0,
-                labelFor: (s) => getTranslation(s === 'water' ? 'Mix' : 'Group'),
+                labelFor: (s) => getTranslation(s === 'water' ? 'Water' : 'Coffee'),
                 onChange: (s) => { editorState.profile.steps[index].sensor = s; },
             });
 
             tCell.appendChild(controlLine(sensorChip, tempStepper));
         } else {
             tCell.appendChild(collapsedRow(
-                getTranslation((step.sensor || 'coffee') === 'water' ? 'Mix' : 'Group'),
+                getTranslation((step.sensor || 'coffee') === 'water' ? 'Water' : 'Coffee'),
                 `${step.temperature ?? 93}°C`,
             ));
         }
@@ -2245,10 +2245,10 @@ function renderScriptLine(line, step, index) {
             const sensorChip = createScriptChip({
                 states: ['coffee', 'water'],
                 index: (step.sensor || 'coffee') === 'water' ? 1 : 0,
-                // Group/Mix, the same two words the CARDS sensor chip uses —
+                // Coffee/Water, the same two words the CARDS sensor chip uses —
                 // the design's raw "coffee" is the stored field value, not a
                 // label this app shows anywhere else.
-                labelFor: (s) => getTranslation(s === 'water' ? 'Mix' : 'Group'),
+                labelFor: (s) => getTranslation(s === 'water' ? 'Water' : 'Coffee'),
                 onChange: (s) => { editorState.profile.steps[index].sensor = s; },
             });
             const lim = FIELD_LIMITS.temperature;

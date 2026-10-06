@@ -714,8 +714,8 @@ function expandedTopTraces() {
 
 function expandedTempTraces() {
     const traces = [
-        { ...chartData.groupTemperature, name: `${getTranslation('Group')} °C`, line: { color: '#ff97a1', width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
-        { ...expandedMixTemp, name: `${getTranslation('Mix')} °C`, type: 'scatter', mode: 'lines', line: { color: '#d9822b', width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
+        { ...chartData.groupTemperature, name: `${getTranslation('Coffee')} °C`, line: { color: '#ff97a1', width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
+        { ...expandedMixTemp, name: `${getTranslation('Water')} °C`, type: 'scatter', mode: 'lines', line: { color: '#d9822b', width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
         { ...chartData.targetTemperature, name: getTranslation('Group Target °C'), line: { color: '#f0b8bd', dash: 'dot', width: 2 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' }
     ];
     if (expandedTargetMixTemp.y.length) {
