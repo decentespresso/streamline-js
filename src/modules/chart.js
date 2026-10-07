@@ -139,7 +139,7 @@ const baseChartData = {
         name: 'Target Pressure',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#bde2d5', dash: 'dot' },
+        line: { color: '#A0E0D1', dash: 'dot' },
         hoverinfo: 'name'
     },
     targetFlow: {
@@ -148,7 +148,7 @@ const baseChartData = {
         name: 'Target Flow',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#cdd9f5', dash: 'dot' },
+        line: { color: '#BED9FF', dash: 'dot' },
         hoverinfo: 'name'
     },
     groupTemperature: {
@@ -166,7 +166,7 @@ const baseChartData = {
         name: 'Target °C',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#F9ebec', dash: 'dot' },
+        line: { color: '#FFD1D5', dash: 'dot' },
         hoverinfo: 'name'
     },
     weight: {
@@ -175,7 +175,7 @@ const baseChartData = {
         name: 'Weight',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#D8BDA8' }, // light mode
+        line: { color: '#E9D3C3' }, // light mode
         hoverinfo: 'name'
     }
 };
@@ -214,19 +214,23 @@ let expandedTempMax = -Infinity;
 let expandedLastGroupTemp = 90;
 
 const baseLayout = {
-    plot_bgcolor: '#0d0e14',
-    paper_bgcolor: '#0d0e14',
+    // Transparent, not a color: this layout is shared by the main page's shot
+    // chart and the profile selector's preview, and those sit on different
+    // grounds (--profileselectorbg vs the main page's own). The old #0d0e14
+    // was neither, so the plot read as a near-black hole punched in the panel.
+    plot_bgcolor: 'transparent',
+    paper_bgcolor: 'transparent',
     font: { color: '#606579', size: 20 },
     shapes: [], // Initialize shapes array for vertical lines
     xaxis: {
-        gridcolor: '#3D4255',
+        gridcolor: '#1E202B',
         linecolor: '#606579',
         tickcolor: '#606579',
         dtick: 1,
         fixedrange: true
     },
     yaxis: {
-        gridcolor: '#3D4255',
+        gridcolor: '#1E202B',
         linecolor: '#606579',
         tickcolor: '#606579',
         range: [0, 10],
@@ -252,13 +256,13 @@ const lightLayout = {
     font: { color: '#959595', size: 20 },
     xaxis: {
         ...baseLayout.xaxis,
-        gridcolor: '#E0E0E0',
+        gridcolor: '#E8E8E8',
         linecolor: '#959595',
         tickcolor: '#959595'
     },
     yaxis: {
         ...baseLayout.yaxis,
-        gridcolor: '#E0E0E0',
+        gridcolor: '#E8E8E8',
         linecolor: '#959595',
         tickcolor: '#959595'
     }
@@ -268,21 +272,6 @@ const darkLayout = { ...baseLayout };
 
 // Profile selector preview only (plotProfile); l/t/b differ from baseLayout, r is shared.
 const PROFILE_PREVIEW_MARGIN = { l: 99, t: 39, b: 58 };
-
-const labelColors = {
-    light: {
-        pressure: '#17c29a',
-        flow: '#0358cf',
-        groupTemperature: '#ff97a1',
-        weight: '#C7A58D'
-    },
-    dark: {
-        pressure: '#17c29a',
-        flow: '#0358cf',
-        groupTemperature: '#AE6D73',
-        weight: '#695f57'
-    }
-};
 
 const LABEL_FONT_SIZE = 16;
 const LABEL_FONT_CSS = `${LABEL_FONT_SIZE}px Inter, sans-serif`;
@@ -371,7 +360,6 @@ function rangeMaxForLabels(dataMax, rangeMin = 0) {
 }
 
 function getAnnotations() {
-    const theme = currentTheme;
     const annotations = [];
 
     for (const traceName in chartData) {
@@ -390,7 +378,9 @@ function getAnnotations() {
             yanchor: 'middle',
             xshift: LABEL_X_GAP,
             font: {
-                color: (labelColors[theme] && labelColors[theme][traceName]) ? labelColors[theme][traceName] : trace.line.color,
+                // The line's own color, always: a per-theme override table
+                // here only ever drifted from the trace it labels.
+                color: trace.line.color,
                 size: LABEL_FONT_SIZE
             }
         });
@@ -634,8 +624,12 @@ function rebuildExpandedFromChartData(mixSeries = null, mixTargetSeries = null) 
 function expandedAxisColors(theme) {
     const dark = theme === 'dark';
     return {
-        paper: dark ? '#0d0e14' : '#ffffff',
-        grid: dark ? '#3D4255' : '#E0E0E0',
+        // Transparent so the charts sit on the overlay's own --bgmain-color
+        // rather than the #0d0e14 they used to paint over it. font stays
+        // brighter than Text/Graph.Axis on purpose: the expanded view is
+        // read at arm's length and the style guide has no spec for it.
+        paper: 'transparent',
+        grid: dark ? '#1E202B' : '#E8E8E8',
         line: dark ? '#606579' : '#959595',
         font: dark ? '#9aa0b3' : '#606579',
     };
@@ -704,19 +698,24 @@ function expandedLayout(theme, topRange, tempRange, xRange) {
 
 function expandedTopTraces() {
     return [
-        { ...chartData.pressure, name: getTranslation('Pressure (bar)'), line: { color: '#17c29a', width: 3 }, hoverinfo: 'skip' },
-        { ...chartData.flow, name: getTranslation('Flow (ml/s)'), line: { color: '#0358cf', width: 3 }, hoverinfo: 'skip' },
-        { ...chartData.weight, name: getTranslation('GFlow (g/s)'), line: { color: '#C7A58D', width: 3 }, hoverinfo: 'skip' },
-        { ...chartData.targetPressure, name: getTranslation('Target Pressure'), line: { color: '#8fd3bf', dash: 'dot', width: 2 }, hoverinfo: 'skip' },
-        { ...chartData.targetFlow, name: getTranslation('Target Flow'), line: { color: '#7fa8ec', dash: 'dot', width: 2 }, hoverinfo: 'skip' }
+        // Colors come from chartData, which updateChartColors has already put
+        // on the current theme — the expanded view used to carry its own
+        // literals and so stayed in light-mode colors on a dark screen.
+        { ...chartData.pressure, name: getTranslation('Pressure (bar)'), line: { color: chartData.pressure.line.color, width: 3 }, hoverinfo: 'skip' },
+        { ...chartData.flow, name: getTranslation('Flow (ml/s)'), line: { color: chartData.flow.line.color, width: 3 }, hoverinfo: 'skip' },
+        { ...chartData.weight, name: getTranslation('GFlow (g/s)'), line: { color: chartData.weight.line.color, width: 3 }, hoverinfo: 'skip' },
+        { ...chartData.targetPressure, name: getTranslation('Target Pressure'), line: { color: chartData.targetPressure.line.color, dash: 'dot', width: 2 }, hoverinfo: 'skip' },
+        { ...chartData.targetFlow, name: getTranslation('Target Flow'), line: { color: chartData.targetFlow.line.color, dash: 'dot', width: 2 }, hoverinfo: 'skip' }
     ];
 }
 
 function expandedTempTraces() {
     const traces = [
-        { ...chartData.groupTemperature, name: `${getTranslation('Coffee')} °C`, line: { color: '#ff97a1', width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
+        { ...chartData.groupTemperature, name: `${getTranslation('Coffee')} °C`, line: { color: chartData.groupTemperature.line.color, width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
+        // Water and Mix Target have no counterpart in the style guide's graph
+        // tokens, so they keep their own literals in both themes.
         { ...expandedMixTemp, name: `${getTranslation('Water')} °C`, type: 'scatter', mode: 'lines', line: { color: '#d9822b', width: 3 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' },
-        { ...chartData.targetTemperature, name: getTranslation('Group Target °C'), line: { color: '#f0b8bd', dash: 'dot', width: 2 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' }
+        { ...chartData.targetTemperature, name: getTranslation('Group Target °C'), line: { color: chartData.targetTemperature.line.color, dash: 'dot', width: 2 }, hoverinfo: 'skip', xaxis: 'x2', yaxis: 'y2', legend: 'legend2' }
     ];
     if (expandedTargetMixTemp.y.length) {
         traces.push({
@@ -1447,21 +1446,24 @@ export function plotProfile(profile) {
     renderMain(plotData, layout);
 }
 
-// Function to update chart colors based on theme
+// Swap every themed trace to its Dark Mode/Border/Graph.* token, or back to
+// the Light Mode value baseChartData holds. Flow has no entry here: the style
+// guide's dark frame defines Graph.Flow.Goal but no Graph.Flow.Ongoing, so the
+// light #0358cf stands in until the design supplies one.
+const DARK_TRACE_COLORS = {
+    pressure: '#00B087',        // Graph.Pressure.Ongoing
+    targetPressure: '#374D47',  // Graph.Pressure.Goal
+    targetFlow: '#23416C',      // Graph.Flow.Goal
+    groupTemperature: '#653F43',// Graph.Temp.Ongoing
+    targetTemperature: '#3E3233',// Graph.Temp.Goal
+    weight: '#695F57',          // Graph.Weight.Ongoing
+};
+
 function updateChartColors(theme) {
     const isDark = theme === 'dark';
-
-    // Update target flow line color
-    chartData.targetFlow.line.color = isDark ? '#23416c' : baseChartData.targetFlow.line.color;
-
-    // Update target temperature line color
-    chartData.targetTemperature.line.color = isDark ? '#3e3233' : baseChartData.targetTemperature.line.color;
-
-    // Update temperature line color
-    chartData.groupTemperature.line.color = isDark ? '#AE6D73' : baseChartData.groupTemperature.line.color;
-
-    // Update weight line color
-    chartData.weight.line.color = isDark ? '#695f57' : baseChartData.weight.line.color;
+    for (const [key, dark] of Object.entries(DARK_TRACE_COLORS)) {
+        chartData[key].line.color = isDark ? dark : baseChartData[key].line.color;
+    }
 }
 
 let chartWindowResizeTimeout = 0;

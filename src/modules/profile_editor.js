@@ -825,7 +825,26 @@ function renderStepCards() {
         editorState.editingStep = numSteps > 0 ? numSteps - 1 : null;
     }
 
-    const R = { HEADER: 1, TEMP: 2, PUMP: 3, MAX: 4, EXIT: 5, FOOTER: 6 };
+    // Maximum, Move on if and the footer share one TAIL track rather than a
+    // track each: Maximum shows one line per limit that is actually set, and a
+    // shared grid row is sized by the tallest card, so a single step with all
+    // three limits used to stretch every other card's Maximum cell to three
+    // lines. Inside TAIL each card stacks its own blocks and hugs its content
+    // (align-self: start), so a one-line Maximum card is one line tall. The
+    // trade-off the design accepts: cards no longer end at the same height,
+    // and the gutter's Move on if label lines up with the tallest card only.
+    const R = { HEADER: 1, TEMP: 2, PUMP: 3, TAIL: 4 };
+
+    // Maximum block geometry, duplicated here as arithmetic rather than
+    // measured: controlLine/collapsedRow are both min-h-[72px], mCell has a
+    // 15px gap and 15px top+bottom padding. The gutter needs the tallest
+    // card's Maximum height before anything is laid out, and counting lines
+    // is cheaper (and steadier) than a forced reflow mid-render.
+    const MAX_LINE_H = 72, MAX_LINE_GAP = 15, MAX_CELL_PAD = 30;
+    const maxLinesFor = (step, isExpanded) => (isExpanded
+        ? 3
+        : Math.max(1, ['weight', 'seconds', 'volume'].filter((k) => (step[k] || 0) > 0).length));
+    const maxBlockHeight = (lines) => lines * MAX_LINE_H + (lines - 1) * MAX_LINE_GAP + MAX_CELL_PAD;
 
     container.style.display = 'grid';
     // repeat() rejects a count of 0 and CSS drops the whole declaration, so a
@@ -841,15 +860,12 @@ function renderStepCards() {
     // so they absorb the rest of the container's height — `auto` rows
     // stopped short of the bottom, leaving a bg-tertiary gap under the cards
     // instead of running the cards full height.
-    // Figma's own label-gutter row heights (Temp 157, Pump 289, Move on if
-    // 140) assumed a two-line Maximum row (289 too); Maximum carries a third
-    // line (Volume) here, so its share is scaled up from 289 by the same
-    // ratio a third 72px control line + 15px gap adds to a two-line row
-    // (~1.46x) rather than reusing Pump's two-line figure verbatim.
-    // Maximum is content-sized (auto): it hugs the tallest card in the row, so
-    // it is three lines tall while a card is expanded and shrinks to fit when
-    // every card shows fewer. The slack goes to the proportional rows.
-    container.style.gridTemplateRows = `minmax(45px, auto) 157fr 422fr auto 140fr minmax(57px, auto)`;
+    // Figma's own label-gutter row heights (Temp 157, Pump 289) set the
+    // proportions between the two rows that are uniform across every card.
+    // TAIL is content-sized (auto) and each card hugs its own content inside
+    // it, so the track only ever grows to the tallest card and the slack goes
+    // to the proportional rows.
+    container.style.gridTemplateRows = `minmax(45px, auto) 157fr 422fr auto`;
     container.style.columnGap = `${CARD_GAP}px`;
     // Cards stop short of the content area's bottom edge: the design's card row
     // is 1138 tall in a 1600 frame starting at y=420, leaving a 42px skirt
@@ -878,12 +894,17 @@ function renderStepCards() {
     // overstates how far the container can actually rest.
     container.dataset.numSteps = String(numSteps);
 
-    function mkCell(row, col, className) {
+    // A grid cell when it goes straight into the container, a plain stacked
+    // block when `parent` is a card's TAIL cell — those are flex children, so
+    // a gridRow/gridColumn on them would mean nothing.
+    function mkCell(row, col, className, parent = container) {
         const el = document.createElement('div');
-        el.style.gridRow = row;
-        el.style.gridColumn = col;
+        if (parent === container) {
+            el.style.gridRow = row;
+            el.style.gridColumn = col;
+        }
         el.className = className;
-        container.appendChild(el);
+        parent.appendChild(el);
         return el;
     }
 
@@ -915,14 +936,37 @@ function renderStepCards() {
     // chip row) sits 43.5px above centre. 87px of bottom padding lifts the
     // label's centre by the same amount, putting it level with that chip.
     pumpLabel.style.paddingBottom = '87px';
-    const maxLabel = mkLabel(R.MAX, getTranslation('Maximum'));
-    maxLabel.id = 'editor-row-max';
-    // Maximum's cell is top-aligned, so its first 72px line is centred
-    // 1.5 + 15 + 36 = 52.5px from the row top; a 30px label starts 37.5px down.
-    maxLabel.style.alignItems = 'flex-start';
-    maxLabel.style.paddingTop = '37.5px';
-    mkLabel(R.EXIT,   getTranslation('Move on if')).id = 'editor-row-exit';
-    mkLabel(R.FOOTER, '');
+    // The gutter mirrors the cards' TAIL stack: a Maximum slot as tall as the
+    // tallest card's Maximum block, then Move on if. Cards shorter than that
+    // sit higher than their label — unavoidable once each card hugs its own
+    // content, and the reason the label tracks the tallest card rather than
+    // the first one.
+    const tallestMax = Math.max(
+        maxBlockHeight(1),
+        ...steps.map((s, i) => maxBlockHeight(maxLinesFor(s, editorState.editingStep === i))),
+    );
+    const tailLabel = mkLabel(R.TAIL, '');
+    tailLabel.className = 'flex flex-col items-end bg-[var(--bg-tertiary)] px-[22.5px]';
+
+    function mkTailLabel(text, height, topPad) {
+        const slot = document.createElement('div');
+        slot.className = 'flex items-start justify-end w-full shrink-0';
+        slot.style.height = `${height}px`;
+        slot.style.paddingTop = `${topPad}px`;
+        const span = document.createElement('span');
+        span.className = 'w-[123px] text-right text-[24px] font-bold text-[var(--text-primary)] leading-tight';
+        span.textContent = text;
+        slot.appendChild(span);
+        tailLabel.appendChild(slot);
+        return slot;
+    }
+
+    // Maximum's block is top-aligned, so its first 72px line is centred
+    // 1.5 + 15 + 36 = 52.5px from the block top; a 30px label starts 37.5px down.
+    mkTailLabel(getTranslation('Maximum'), tallestMax, 37.5).id = 'editor-row-max';
+    // Move on if is a single centred 72px line in a 15px-padded block, so its
+    // label sits (102 - 30) / 2 = 36px down, less half the 30px label.
+    mkTailLabel(getTranslation('Move on if'), 102, 36).id = 'editor-row-exit';
 
     // ── Card columns ────────────────────────────────────────────────────────
     // Each column is one white "card": rounded-[15px], 1.5px border, drawn as
@@ -1159,8 +1203,14 @@ function renderStepCards() {
         // Three horizontal lines, stacked: Weight, Time (seconds), Volume.
         // All three are live on the machine — whichever trips first ends the
         // step — so all three stay editable from here, not just weight/time.
-        const mCell = cardAttr(mkCell(R.MAX, col,
-            `flex flex-col items-center justify-start ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+        // One cell for the rest of the card, stacked internally and hugging
+        // its own content so a card with fewer Maximum lines ends higher
+        // than its neighbours instead of being padded out to match them.
+        const tailCell = cardAttr(mkCell(R.TAIL, col, 'flex flex-col min-w-0'));
+        tailCell.style.alignSelf = 'start';
+
+        const mCell = cardAttr(mkCell(R.TAIL, col,
+            `flex flex-col items-center justify-start ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
         onExpandClick(mCell);
 
         const MAX_FIELDS = [
@@ -1206,8 +1256,8 @@ function renderStepCards() {
         // ── Move on if row ──────────────────────────────────────────────────
         // One horizontal line: the exit-condition chip, then the ± value —
         // the value is simply absent while the chip reads Off.
-        const eCell = cardAttr(mkCell(R.EXIT, col,
-            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+        const eCell = cardAttr(mkCell(R.TAIL, col,
+            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] min-h-[102px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
         onExpandClick(eCell);
 
         const exitDef = readExitDef(step);
@@ -1283,8 +1333,8 @@ function renderStepCards() {
         }
 
         // ── Footer row — trash / plus, on every card (collapsed or expanded) ──
-        const fCell = cardAttr(mkCell(R.FOOTER, col,
-            `flex items-center justify-between ${CARD_BG} ${SIDE} border-b-[1.5px] ${HAIRLINE} rounded-b-[15px] px-[30px] pt-[15px] pb-[22.5px] ${expanded ? '' : 'cursor-pointer'}`));
+        const fCell = cardAttr(mkCell(R.TAIL, col,
+            `flex items-center justify-between ${CARD_BG} ${SIDE} border-b-[1.5px] ${HAIRLINE} rounded-b-[15px] px-[30px] pt-[15px] pb-[22.5px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
         onExpandClick(fCell);
 
         const deleteBtn = document.createElement('button');
@@ -1334,7 +1384,7 @@ function renderStepCards() {
     // profile needs its own affordance or it is a dead end (Save also rejects
     // a profile with no steps).
     if (numSteps === 0) {
-        const emptyCell = mkCell('1 / 7', 2, 'flex items-center justify-center');
+        const emptyCell = mkCell('1 / 5', 2, 'flex items-center justify-center');
         const addBtn = document.createElement('button');
         addBtn.type = 'button';
         addBtn.className = 'w-[72px] h-[72px] rounded-[15px] bg-[var(--button-grey)] flex items-center justify-center cursor-pointer';
