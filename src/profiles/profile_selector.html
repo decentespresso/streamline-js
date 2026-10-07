@@ -50,9 +50,9 @@
                  absolute against #left-panel (not wrapped around #profile-list itself --
                  #profile-list must stay a DIRECT flex child of #left-panel for the
                  `#profile-list { flex: 1 1 0; min-height: 0; height: auto }` rule in
-                 main.css to size it correctly). Lives in the 40px margin-right gutter
-                 #profile-list already reserves for the (now-hidden) native scrollbar. -->
-            <div id="profile-list-thumb" class="absolute right-[1px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] hidden" style="touch-action: none;" aria-hidden="true"></div>
+                 main.css to size it correctly). Lives in the 114px margin-right gutter #profile-list reserves, 40px clear
+                 of the panel border (Figma). -->
+            <div id="profile-list-thumb" class="absolute w-[39px] rounded-full bg-[var(--secondary-button-bg)] hidden" style="right: 40px; touch-action: none;" aria-hidden="true"></div>
         </div>
         <div id="separator" class="cursor-col-resize w-px bg-transparent hover:bg-blue-500 transition-colors z-10" style="position: relative;" aria-hidden="true"></div>
         <div id="right-panel" class="flex flex-col bg-[var(--profile-button-background-color)]" role="main" aria-label="Profile Details">

@@ -728,15 +728,19 @@ body {
    swipe-scrolled. Proportional thumb height since the list's length varies
    with the profile count instead of the editor's fixed-height panes. */
 #profile-list {
-  /* Figma's Scroll Bar (node 2662-1356, x945 w60) sits 53px shy of the panel's
-     own right edge (Rectangle 273, node 2662-1355, x0 w1058) -- 53 * 0.75,
-     the file's canvas-to-shell ratio, is the 40px here. This is margin, not
-     padding, so #left-panel's background shows between the thumb and its
-     border-r, and the thumb (absolutely positioned against #left-panel,
-     a sibling of #profile-list, not a wrapper -- #profile-list must stay
-     a direct flex child for the flex/min-height rule below to size it)
-     lands in the reserved gutter instead of overlapping row content. */
-  margin-right: 40px;
+  /* Figma (node 2662-1343, x0.75): list ends at 673, thumb spans 709-754,
+     panel border at 793. So the thumb sits 40px clear of the border -- which
+     is also the drag separator, so a thumb flush against it (as it once was)
+     made finger taps on the thumb land on the separator -- and 35px right of
+     the list. The thumb is 39px wide, hence 40 + 39 + 35 = 114.
+     Margin, not padding, so #left-panel's background shows in the gutter. The
+     thumb is absolutely positioned against #left-panel (a sibling of
+     #profile-list, not a wrapper -- #profile-list must stay a direct flex
+     child for the flex/min-height rule below to size it). */
+  margin-right: 114px;
+  /* Figma's row highlight ends 19px inside the list (654 of 673 at x0.75); the
+     p-3 on the element would leave 12. */
+  padding-right: 19px;
   scrollbar-width: none;
 }
 #profile-list::-webkit-scrollbar {
