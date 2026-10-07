@@ -50,3 +50,7 @@ export async function loadEasyMDE() {
 export function loadIro() {
     return loadScript('src/vendor/iro.min.js', 'iro');
 }
+
+export function loadQrCodeGen() {
+    return loadScript('src/vendor/qrcodegen.js', 'qrcodegen');
+}

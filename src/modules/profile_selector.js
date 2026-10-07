@@ -8,6 +8,7 @@ import { initChart, plotProfile } from './chart.js';
 import { translatePage, getTranslation } from './i18n.js';
 import { loadPage } from './router.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
+import { showProfileQrModal, initQrShareModal } from './qrShare.js';
 
 const initializedProfileRoots = new WeakSet();
 // True when the pre-selected profile is just "the first row" rather than the
@@ -495,6 +496,10 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
             },
         },
         {
+            label: getTranslation('Share'),
+            onSelect: () => showProfileQrModal(profileRecord.profile),
+        },
+        {
             label: getTranslation('Duplicate'),
             onSelect: async () => {
                 try {
@@ -957,11 +962,14 @@ function initProfileListScrollThumb() {
         let dragStartY = 0;
         let dragStartScrollTop = 0;
 
+        // clientY of a mouse or touch event; `||` would treat a mouse at y=0 as
+        // "no clientY" and fall through to the undefined touches list.
+        const pointerY = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
+
         const startDrag = (e) => {
             e.preventDefault();
             isDragging = true;
-            const clientY = e.clientY || e.touches[0].clientY;
-            dragStartY = clientY;
+            dragStartY = pointerY(e);
             dragStartScrollTop = container.scrollTop;
 
             document.addEventListener('mousemove', drag);
@@ -982,13 +990,20 @@ function initProfileListScrollThumb() {
                 e.preventDefault();
             }
 
+            // Read the pointer now: by the time the frame runs a touchend may
+            // have emptied e.touches.
+            const clientY = pointerY(e);
             requestAnimationFrame(() => {
+                if (!isDragging) return;
                 const maxScroll = container.scrollHeight - container.clientHeight;
                 if (maxScroll <= 0) return;
                 const thumbHeight = profileListThumbHeight(container);
                 const travel = container.clientHeight - thumbHeight;
-                const clientY = e.clientY || e.touches[0].clientY;
-                const deltaY = clientY - dragStartY;
+                // The page is drawn through scale(sx, sy) (scaling.js), so finger
+                // movement is in screen px while travel is in layout px. Without
+                // this the thumb drifts from the finger on every non-1:1 tablet.
+                const scaleY = container.offsetHeight ? container.getBoundingClientRect().height / container.offsetHeight : 1;
+                const deltaY = (clientY - dragStartY) / (scaleY || 1);
                 const deltaScroll = travel > 0 ? (deltaY / travel) * maxScroll : 0;
                 container.scrollTop = Math.max(0, Math.min(maxScroll, dragStartScrollTop + deltaScroll));
             });
@@ -1522,6 +1537,7 @@ export async function initializeProfileSelector() {
 
     translatePage();
     console.log('initializeProfileSelector: i18n translated');
+    initQrShareModal();
 
     // Suppress browser-default selection/long-press/drag/callout across the whole
     // profile-selector page. Delegated listeners on the root also cover items

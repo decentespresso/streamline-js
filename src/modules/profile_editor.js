@@ -1677,6 +1677,59 @@ function initScrollThumb(containerId, thumbId, topOffset = 0) {
     if (!container || container.dataset.scrollThumbInit) return;
     container.dataset.scrollThumbInit = '1';
     container.addEventListener('scroll', () => updateScrollThumb(containerId, thumbId, topOffset));
+    initScrollThumbDrag(container, document.getElementById(thumbId), topOffset);
+}
+
+// Drag the pill to scroll, same mechanics as the profile selector's
+// initProfileListScrollThumb. Native scrollbar thumbs can't be touch-dragged in
+// Android WebView, so the hand-drawn pill has to accept the drag itself.
+function initScrollThumbDrag(container, thumb, topOffset) {
+    if (!thumb || thumb.dataset.dragInit) return;
+    thumb.dataset.dragInit = '1';
+    let isDragging = false;
+    let startY = 0;
+    let startScrollTop = 0;
+    const pointerY = (e) => (e.touches ? e.touches[0].clientY : e.clientY);
+
+    const drag = (e) => {
+        if (!isDragging) return;
+        if (e.type === 'touchmove') e.preventDefault();
+        const clientY = pointerY(e);
+        requestAnimationFrame(() => {
+            if (!isDragging) return;
+            const maxScroll = container.scrollHeight - container.clientHeight;
+            if (maxScroll <= 0) return;
+            const pillHeight = Math.min(SCROLL_THUMB_HEIGHT, container.clientHeight - topOffset * 2);
+            const travel = container.clientHeight - topOffset * 2 - pillHeight;
+            // Finger moves in screen px, travel is in layout px: the page is drawn
+            // through scale(sx, sy) (scaling.js).
+            const scaleY = container.offsetHeight ? container.getBoundingClientRect().height / container.offsetHeight : 1;
+            const deltaY = (clientY - startY) / (scaleY || 1);
+            const deltaScroll = travel > 0 ? (deltaY / travel) * maxScroll : 0;
+            container.scrollTop = Math.max(0, Math.min(maxScroll, startScrollTop + deltaScroll));
+        });
+    };
+    const stopDrag = () => {
+        isDragging = false;
+        document.removeEventListener('mousemove', drag);
+        document.removeEventListener('mouseup', stopDrag);
+        document.removeEventListener('touchmove', drag);
+        document.removeEventListener('touchend', stopDrag);
+        document.removeEventListener('touchcancel', stopDrag);
+    };
+    const startDrag = (e) => {
+        e.preventDefault();
+        isDragging = true;
+        startY = pointerY(e);
+        startScrollTop = container.scrollTop;
+        document.addEventListener('mousemove', drag);
+        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('touchmove', drag, { passive: false });
+        document.addEventListener('touchend', stopDrag);
+        document.addEventListener('touchcancel', stopDrag);
+    };
+    thumb.addEventListener('mousedown', startDrag);
+    thumb.addEventListener('touchstart', startDrag, { passive: false });
 }
 
 function renderSettingsTab() {

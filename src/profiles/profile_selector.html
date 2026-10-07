@@ -87,6 +87,25 @@
         <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <!-- Experiment: scan-to-download a profile. Only handles trimming `notes` on
+         overflow (usually the biggest field by far) -- a profile whose steps
+         alone don't fit shows qr-share-too-big instead. See src/modules/qrShare.js. -->
+    <dialog id="qr-share-modal" class="modal">
+        <div class="modal-box bg-[var(--box-color)] max-w-[680px] rounded-[20px] p-8 flex flex-col items-center gap-4">
+            <h3 class="font-bold text-[26px] text-[var(--text-primary)]">Scan to Download</h3>
+            <!-- Canvas size is set by qrShare.js from the module count: a dense code
+                 has to be drawn larger or a phone camera cannot resolve it. -->
+            <canvas id="qr-share-canvas" class="bg-white rounded-[8px]" style="image-rendering:pixelated;"></canvas>
+            <!-- Inline styles, not Tailwind: app.css is a pre-built stylesheet, so
+                 arbitrary-value classes invented here would not exist in it. -->
+            <p id="qr-share-host" style="display:none; font-size:16px; color:var(--low-contrast-white); text-align:center; margin:0"></p>
+            <button id="qr-share-copy" type="button" style="display:none; font-size:18px; font-weight:700; color:var(--text-primary); background:transparent; border:1px solid var(--profile-button-outline-color); border-radius:999px; padding:8px 24px">Copy</button>
+            <p id="qr-share-warning" class="text-[16px] text-amber-500 text-center" style="display:none">Notes were cut to fit the QR code.</p>
+            <p id="qr-share-too-big" class="text-[18px] text-red-500 text-center" style="display:none">This profile is too large to fit in a QR code, even without notes.</p>
+        </div>
+        <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
     </div>
 <script src="src/modules/profile_selector.js" type="module" defer></script>
 <script type="module">
