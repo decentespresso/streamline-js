@@ -207,7 +207,20 @@ export function initScaling() {
     updateScale();
     if (content && !isInitialScaleDone) {
         isInitialScaleDone = true;
-        requestAnimationFrame(() => content.classList.add('scaled'));
+        // Native WebViews can report a stale innerWidth/innerHeight at boot and
+        // correct it a few frames later. Reveal only once the size holds still
+        // for 3 frames, or after 600ms regardless so the UI always appears.
+        const start = performance.now();
+        let last = '', stable = 0;
+        const reveal = () => {
+            updateScale();
+            const now = `${window.innerWidth}x${window.innerHeight}`;
+            stable = now === last ? stable + 1 : 0;
+            last = now;
+            if (stable >= 3 || performance.now() - start > 600) content.classList.add('scaled');
+            else requestAnimationFrame(reveal);
+        };
+        requestAnimationFrame(reveal);
     }
     setTimeout(updateScale, 250);
     

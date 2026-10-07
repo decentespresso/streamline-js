@@ -2482,7 +2482,7 @@ function renderScriptGraph() {
 
     const isDark = (localStorage.getItem('theme') || 'light') === 'dark';
     const stepMarkerColor = isDark ? '#7f8bbb' : '#7c7c7c';
-    const tempLineColor = isDark ? '#AE6D73' : '#ff97a1';
+    const tempLineColor = isDark ? '#653F43' : '#ff97a1';
 
     // Build step-target traces + step boundary markers
     const pressureX = [], pressureY = [], flowX = [], flowY = [], tempX = [], tempY = [];
@@ -2532,22 +2532,25 @@ function renderScriptGraph() {
     // smooth: true rounds the frame-to-frame corners into a shot-like curve \u2014
     // this is a preview plot of the target profile, not the live/history shot
     // trace, so it doesn't need to stay exact point-for-point.
+    const pressureLineColor = isDark ? '#00B087' : '#17c29a';
     const traces = [
-        { x: pressureX, y: pressureY, name: 'Pressure', mode: 'lines', line: { color: '#17c29a', smooth: true }, hoverinfo: 'name' },
+        { x: pressureX, y: pressureY, name: 'Pressure', mode: 'lines', line: { color: pressureLineColor, smooth: true }, hoverinfo: 'name' },
         { x: flowX,     y: flowY,     name: 'Flow',     mode: 'lines', line: { color: '#0358cf', smooth: true }, hoverinfo: 'name' },
         { x: tempX,     y: tempY,     name: '\u00b0C',  mode: 'lines', line: { color: tempLineColor, smooth: true }, hoverinfo: 'name' },
     ];
 
+    const cardColor = getComputedStyle(document.documentElement).getPropertyValue('--profile-button-background-color').trim() || '#292c38';
+    const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border-graph-grid').trim() || (isDark ? '#1E202B' : '#E8E8E8');
     const layout = isDark ? {
-        plot_bgcolor: '#0d0e14',
-        paper_bgcolor: '#0d0e14',
+        plot_bgcolor: cardColor,
+        paper_bgcolor: cardColor,
         font: { color: '#606579', size: 16 },
         autosize: true,
         margin: { l: 50, r: 50, t: 20, b: 40, pad: 0 },
         showlegend: false,
         shapes: stepShapes,
-        xaxis: { gridcolor: '#3D4255', linecolor: '#606579', tickcolor: '#606579', fixedrange: true },
-        yaxis: { gridcolor: '#3D4255', linecolor: '#606579', tickcolor: '#606579', range: [0, 10], dtick: 1, fixedrange: true },
+        xaxis: { gridcolor: gridColor, linecolor: '#606579', tickcolor: '#606579', fixedrange: true },
+        yaxis: { gridcolor: gridColor, linecolor: '#606579', tickcolor: '#606579', range: [0, 10], dtick: 1, fixedrange: true },
     } : {
         plot_bgcolor: 'white',
         paper_bgcolor: 'white',
@@ -2556,8 +2559,8 @@ function renderScriptGraph() {
         margin: { l: 50, r: 50, t: 20, b: 40, pad: 0 },
         showlegend: false,
         shapes: stepShapes,
-        xaxis: { gridcolor: '#E0E0E0', linecolor: '#959595', tickcolor: '#959595', fixedrange: true },
-        yaxis: { gridcolor: '#E0E0E0', linecolor: '#959595', tickcolor: '#959595', range: [0, 10], dtick: 1, fixedrange: true },
+        xaxis: { gridcolor: gridColor, linecolor: '#959595', tickcolor: '#959595', fixedrange: true },
+        yaxis: { gridcolor: gridColor, linecolor: '#959595', tickcolor: '#959595', range: [0, 10], dtick: 1, fixedrange: true },
     };
 
     void loadECharts().then(echarts => {
@@ -2626,7 +2629,7 @@ function setActiveTab(tabIndex) {
     document.querySelectorAll('.editor-tab-btn').forEach((btn) => {
         const idx = parseInt(btn.dataset.tab, 10);
         if (idx === tabIndex) {
-            btn.className = 'editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap bg-[var(--button-primary-bg)] text-white';
+            btn.className = 'editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap bg-[var(--button-primary-bg)] text-[var(--button-primary-text)]';
         } else {
             btn.className = 'editor-tab-btn font-bold w-[251.25px] h-[75px] rounded-[45px] transition-colors text-[30px] tracking-[2.25px] whitespace-nowrap text-[var(--tab-text-inactive)] bg-transparent';
         }
