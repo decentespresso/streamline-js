@@ -1,5 +1,6 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
 import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
+import { isGrinderSensorEntry, MT80_PLUGIN_ID } from '../modules/grinder-control.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
 import { initScaling } from '../modules/scaling.js';
@@ -873,6 +874,8 @@ export function renderSettingsContent(category) {
             return renderBluetoothScaleSettings(settingsCache.rea);
         case 'ble_machine':
             return renderBluetoothMachineSettings();
+        case 'ble_grinder':
+            return renderBluetoothGrinderSettings();
         case 'calib_fan':
             return renderCalibFanSettings(settingsCache.de1);
         case 'calib_defaultload':
@@ -9909,6 +9912,7 @@ function renderDeviceListFromCache() {
                         device.name.toLowerCase().includes('weight')))
     );
 
+    renderGrinderDevices();
     renderDeviceList('bluetooth-machine-devices-container', machines, 'Machine',
         settingsCache.rea?.preferredMachineId || '', 'preferredMachineId');
     renderDeviceList('bluetooth-scale-devices-container', scales, 'Scale',
@@ -10380,6 +10384,80 @@ export function renderBluetoothScaleSettings(settings) {
     `;
 }
 
+// Render Bluetooth Grinder settings (Bookoo MT80 through the decaid-bookoo-mt80
+// plugin: a *sensor*, so it is filtered by type + id prefix, not by name).
+export function renderBluetoothGrinderSettings() {
+    setTimeout(() => {
+        renderDeviceListFromCache();
+    }, 0);
+
+    const pluginUiUrl = `${API_BASE_URL}/plugins/${encodeURIComponent(MT80_PLUGIN_ID)}/ui`;
+
+    return `
+        <div class="flex flex-col gap-[32px] items-start relative w-full max-w-full overflow-x-hidden">
+
+            <!-- Header -->
+            <div class="flex items-center w-full">
+                <div class="w-[139px] shrink-0"></div>
+                <p class="flex-1 text-center font-['Inter:Semi_Bold',sans-serif] font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Grinder">Grinder</p>
+                <button id="scan-grinder-btn"
+                        class="w-[139px] shrink-0 border-[var(--mimoja-blue)] text-[var(--mimoja-blue)] h-[62px] rounded-[67.5px] border text-[24px] transition-colors duration-200 hover:bg-[var(--mimoja-blue)] hover:text-white"
+                        onclick="window.scanForGrinders()" data-i18n-key="Search">
+                    Search
+                </button>
+            </div>
+
+            <hr class="border-t border-[#c9c9c9] w-full" />
+
+            <!-- Connected Device -->
+            <div class="flex flex-col gap-[16px] items-start relative w-full">
+                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[#385a92] text-[30px]">
+                    <p class="leading-[1.2]" data-i18n-key="Connected Device">Connected Device</p>
+                </div>
+                <div id="bluetooth-grinder-devices-container" class="w-full">
+                    <!-- Grinder devices will be populated dynamically via WebSocket -->
+                </div>
+            </div>
+
+            <hr class="border-t border-[#c9c9c9] w-full" />
+
+            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] break-words" data-i18n-key="The grinder burr is adjusted by hand. The Gap value is only the grind size recorded on the grinder.">
+                The grinder burr is adjusted by hand. The Gap value is only the grind size recorded on the grinder.
+            </p>
+
+            <!-- Plugin control page: same-frame navigation, as for other plugin pages. -->
+            <a href="${escapeHtml(pluginUiUrl)}"
+               class="bg-[#385a92] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold inline-flex items-center justify-center"
+               data-i18n-key="Open grinder settings">Open grinder settings</a>
+
+        </div>
+    `;
+}
+
+// Grinder sensors are listed from the shared devices feed. Built with DOM
+// nodes + textContent: the name and id come from a BLE advertisement.
+function renderGrinderDevices() {
+    const container = document.getElementById('bluetooth-grinder-devices-container');
+    if (!container) return;
+    const grinders = deviceStateCache.devices.filter(isGrinderSensorEntry);
+    if (grinders.length > 0) {
+        container.innerHTML = renderSingleDeviceList(grinders, '', '', 'Grinder');
+    } else {
+        container.replaceChildren();
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-[16px] w-full bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] rounded-[18px] px-[28px] py-[24px] opacity-60';
+        const dot = document.createElement('div');
+        dot.className = 'w-[14px] h-[14px] rounded-full bg-[var(--profile-button-outline-color)] flex-shrink-0';
+        const text = document.createElement('p');
+        text.className = 'text-[24px] text-[var(--text-primary)]';
+        text.dataset.i18nKey = 'No grinder found — tap Search to find nearby devices.';
+        text.textContent = 'No grinder found — tap Search to find nearby devices.';
+        row.append(dot, text);
+        container.append(row);
+    }
+    translatePage();
+}
+
 // Helper function to render a list of devices of a specific type
 function renderDeviceList(containerId, devices, type, preferredId = '', settingKey = '') {
     const container = document.getElementById(containerId);
@@ -10472,8 +10550,8 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                         ${isConnected ? '<div class="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-40"></div>' : ''}
                     </div>
                     <div class="flex flex-col gap-[4px] min-w-0">
-                        <span class="text-[26px] font-bold text-[var(--text-primary)] truncate leading-tight">${device.name}</span>
-                        <span class="text-[18px] text-[var(--text-primary)] opacity-40 font-mono truncate">${device.id || 'N/A'}</span>
+                        <span class="text-[26px] font-bold text-[var(--text-primary)] truncate leading-tight">${escapeHtml(device.name)}</span>
+                        <span class="text-[18px] text-[var(--text-primary)] opacity-40 font-mono truncate">${escapeHtml(device.id || 'N/A')}</span>
                     </div>
                 </div>
                 <div class="flex items-center gap-[20px] flex-shrink-0 ml-[24px]">
@@ -10629,6 +10707,18 @@ window.scanForScales = async function() {
     } catch (error) {
         console.error('Error scanning for scales:', error);
         ui.showToast(`Error scanning for scales: ${error.message}`, 5000, 'error');
+    }
+};
+
+// Function to scan for grinders specifically
+window.scanForGrinders = async function() {
+    try {
+        ui.showToast('Scanning for grinders...', 2000, 'info');
+        sendDeviceCommand({ command: 'scan' });
+        ui.showToast('Scanning started, results will appear shortly', 3000, 'info');
+    } catch (error) {
+        console.error('Error scanning for grinders:', error);
+        ui.showToast(`Error scanning for grinders: ${error.message}`, 5000, 'error');
     }
 };
 

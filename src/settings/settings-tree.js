@@ -18,7 +18,8 @@ export const SETTINGS_TREE = {
         i18nKey: 'Connection',
         subcategories: [
             { id: 'ble_machine', name: '1. Machine', settingsCategory: 'ble_machine' },
-            { id: 'ble_scale', name: '2. Scale', settingsCategory: 'ble_scale' }
+            { id: 'ble_scale', name: '2. Scale', settingsCategory: 'ble_scale' },
+            { id: 'ble_grinder', name: '3. Grinder', settingsCategory: 'ble_grinder' }
         ]
     },
     'calibration': {

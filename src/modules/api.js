@@ -1,6 +1,6 @@
 import * as ui from './ui.js';
 import { logger ,setDebug} from './logger.js';
-import { createSocketSlot } from './socket-slot.js';
+import { createSocketSlot, silenceSocket } from './socket-slot.js';
 import { createScaleSampleBuffer } from './calibrated-steam.js';
 import { clampAutoSteamSettings } from './auto-steam-safety.js';
 import { AUTO_STEAM_SESSION_KEY, readAutoSteamSession } from './auto-steam-session.js';
@@ -9,6 +9,7 @@ import { buildCalibrateBody, classifyCalState } from './loadcell-cal.js';
 import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-policy.js';
 import { splitNdjson, advanceFirmwareState, initialFirmwareState } from './firmware-progress.js';
 import { parseSse } from './derek-stream.js';
+import { findGrinderSensorId } from './grinder-control.js';
 
 export let reaHostname = localStorage.getItem('reaHostname') || window.location.hostname;
 export const REA_PORT = 8080;
@@ -617,6 +618,64 @@ export function closeSensorSnapshotWebSocket() {
     sensorSnapshotWebSocketId = null;
 }
 
+// ── Grinder sensor (Bookoo MT80 via the decaid-bookoo-mt80 plugin) ───────────
+// The plugin registers the grinder as a *sensor*, so the generic /grinder API
+// never sees it. It gets its own socket slot so it cannot evict the milk-probe
+// socket above. Frames are flat channel maps (`{ bladeGap, feedingRpm, ... }`);
+// vendor parsing lives in grinder-control.js. Sensor ids contain `:` and `.`
+// and are decoded server-side, so every path use goes through
+// encodeURIComponent.
+const grinderSensorSocketSlot = createSocketSlot('grinder sensor');
+let grinderSensorSocket = null;
+let grinderSensorSocketId = null;
+
+export function connectGrinderSensorSocket(sensorId, onData) {
+    if (grinderSensorSocket && grinderSensorSocketId === sensorId) return;
+    grinderSensorSocketId = sensorId;
+    grinderSensorSocket = grinderSensorSocketSlot.replace(() => new ReconnectingWebSocket(`${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/sensors/${encodeURIComponent(sensorId)}/snapshot`, [], {
+        reconnectInterval: 3000,
+    }));
+    grinderSensorSocket.onmessage = (event) => {
+        try {
+            onData(JSON.parse(event.data));
+        } catch (error) {
+            logger.error('Error parsing grinder sensor WebSocket message:', error);
+        }
+    };
+    grinderSensorSocket.onerror = (error) => {
+        logger.error('Grinder sensor WebSocket error:', error);
+    };
+}
+
+export function closeGrinderSensorSocket() {
+    const socket = grinderSensorSocketSlot.current();
+    if (socket) {
+        silenceSocket(socket);
+        try { socket.close(); } catch (error) { logger.warn('Failed to close grinder sensor WebSocket cleanly:', error); }
+    }
+    grinderSensorSocket = null;
+    grinderSensorSocketId = null;
+}
+
+/**
+ * POST /sensors/:id/execute. Resolves with the response's `result`; rejects with
+ * the server's message (Decaid answers `{ status: 'error', message }`, the
+ * plugin may answer `{ error }`) so callers can toast it.
+ */
+export async function executeSensorCommand(sensorId, commandId, params = {}) {
+    const response = await fetch(`${API_BASE_URL}/sensors/${encodeURIComponent(sensorId)}/execute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commandId, params }),
+    });
+    let body = null;
+    try { body = await response.json(); } catch (_) { /* non-JSON error body */ }
+    if (!response.ok || body?.error || body?.status === 'error') {
+        throw new Error(body?.error || body?.message || `Sensor command ${commandId} failed (status ${response.status})`);
+    }
+    return body?.result ?? body;
+}
+
 export function connectShotSettingsWebSocket(onData) {
     const shotSettingsWebSocket = shotSettingsSocketSlot.replace(() => new ReconnectingWebSocket(`${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/machine/shotSettings`, [], {
         reconnectInterval: 3000,
@@ -755,6 +814,28 @@ export function subscribeMachineConnectionChanges(listener) {
     const onDisconnect = () => { previous = 'disconnected'; listener(); };
     deviceDataListeners.add(onData);
     deviceDisconnectListeners.add(onDisconnect);
+    return () => { deviceDataListeners.delete(onData); deviceDisconnectListeners.delete(onDisconnect); };
+}
+
+/**
+ * Notify `listener(sensorId|null)` whenever the connected grinder sensor changes
+ * in the shared devices feed (no polling). Fires once at once if the feed has
+ * already delivered a frame, and with null when the Decaid link drops. Returns
+ * the unsubscribe function.
+ */
+export function subscribeGrinderSensorChanges(listener) {
+    let previous;
+    const emit = (id) => {
+        if (id === previous) return;
+        previous = id;
+        listener(id);
+    };
+    const onData = data => emit(findGrinderSensorId(data));
+    const onDisconnect = () => emit(null);
+    deviceDataListeners.add(onData);
+    deviceDisconnectListeners.add(onDisconnect);
+    if (lastDeviceData) onData(lastDeviceData);
+    connectDeviceWebSocket(); // no-op when the shared feed is already open
     return () => { deviceDataListeners.delete(onData); deviceDisconnectListeners.delete(onDisconnect); };
 }
 

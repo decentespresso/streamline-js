@@ -177,6 +177,15 @@ test('sensor select: finds the Bengle milk probe by name', () => {
     assert.equal(selectMilkProbeSensorId(sensors), '17B33560-milkprobe');
 });
 
+test('sensor select: a Bookoo MT80 grinder sensor is never taken for the milk probe', () => {
+    const sensors = [
+        { id: 'plugin:bookoo-mt80.reaplugin:mt80:AA:BB', info: { name: 'Bookoo MT80', vendor: 'Bookoo' } },
+        { id: '17B33560-milkprobe', info: { name: 'Bengle Milk Probe', vendor: 'DecentEspresso' } },
+    ];
+    assert.equal(selectMilkProbeSensorId(sensors.slice(0, 1)), null);
+    assert.equal(selectMilkProbeSensorId(sensors), '17B33560-milkprobe');
+});
+
 test('sensor select: a name match with no usable id resolves to no probe', () => {
     const sensors = [{ info: { name: 'Bengle Milk Probe' } }, { id: '', info: { name: 'Bengle Milk Probe' } }];
     assert.equal(selectMilkProbeSensorId(sensors), null);

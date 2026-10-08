@@ -1,11 +1,12 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
-import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
+import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, executeSensorCommand, subscribeGrinderSensorChanges, connectGrinderSensorSocket, closeGrinderSensorSocket, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
 import { openDB, getSetting, setSetting } from './idb.js';
 import { deriveSleepButtonAction, isWakePending } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel } from './machine.js';
 import { STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync } from './steam-mode.js';
 import { shouldUseNumpad } from './numpad-policy.js';
+import { grinderAdapterForId, MT80_MODES } from './grinder-control.js';
 import { openContextMenu } from './context-menu.js';
 import { initCalibratedSteam } from './calibrated-steam-ui.js';
 import { logger } from './logger.js';
@@ -301,6 +302,151 @@ export function updateTemperatureValue(newValue) {
     });
 }
 
+// ── Grinder tile (Bookoo MT80 sensor) ───────────────────────────────────────
+// While a grinder sensor is connected the Grind tile shows three rows
+// (Gap | Feed | Spd) and +/- writes the selected row to the grinder. The recipe
+// grind value is hidden and is never touched: handleGrinderStep() is the ONE
+// click-time dispatcher and swallows every tap while connected, so
+// updateGrindValue() cannot run. Values shown come from the grinder's own
+// snapshots only -- a tap never paints a number the device has not reported.
+// The MT80's burr is moved by hand; the Gap row is a recorded grind-size value.
+const grinderTile = {
+    sensorId: null,
+    adapter: null,
+    mode: 'gap',
+    snapshot: {},
+    pending: null, // { mode, value } not yet sent
+    timer: null,
+};
+let grinderTileCleanup = null;
+
+const GRINDER_MODE_UI = {
+    gap: { elId: 'grind-sensor-gap', unit: 'µm', label: 'Gap' },
+    feed: { elId: 'grind-sensor-feed', unit: 'rpm', label: 'Feed' },
+    spd: { elId: 'grind-sensor-spd', unit: 'rpm', label: 'Spd' },
+};
+
+function renderGrinderTile() {
+    const connected = grinderTile.sensorId !== null;
+    const setHidden = (id, hidden) => { const el = document.getElementById(id); if (el) el.hidden = hidden; };
+    setHidden('grind-label', connected);
+    setHidden('grind-value', connected);
+    setHidden('grind-mode-rows', !connected);
+    setHidden('grind-sensor-values', !connected);
+
+    const group = document.getElementById('grind-mode-group');
+    if (group) group.setAttribute('aria-label', getTranslation('Grinder settings'));
+
+    const key = grinderTile.adapter?.modeKeys;
+    for (const mode of MT80_MODES) {
+        const cfg = GRINDER_MODE_UI[mode];
+        const selected = connected && mode === grinderTile.mode;
+        const valueEl = document.getElementById(cfg.elId);
+        if (valueEl) {
+            const v = key ? grinderTile.snapshot[key[mode]] : undefined;
+            valueEl.textContent = Number.isInteger(v) ? `${v}${cfg.unit}` : '--';
+            valueEl.setAttribute('aria-pressed', String(selected));
+            const busy = grinderTile.pending?.mode === mode;
+            if (busy) valueEl.setAttribute('aria-busy', 'true'); else valueEl.removeAttribute('aria-busy');
+        }
+        const rowEl = document.querySelector(`.grind-mode-row[data-grind-mode="${mode}"]`);
+        if (rowEl) rowEl.setAttribute('aria-pressed', String(selected));
+    }
+
+    // Name the +/- buttons after the row they now drive; restore on disconnect.
+    const modeLabel = getTranslation(grinderTile.mode === 'gap' ? 'Grind size' : GRINDER_MODE_UI[grinderTile.mode].label);
+    for (const [id, verb, fallback] of [['grind-minus', 'Decrease', 'Decrease Grind'], ['grind-plus', 'Increase', 'Increase Grind']]) {
+        const btn = document.getElementById(id);
+        if (btn) btn.setAttribute('aria-label', connected ? `${getTranslation(verb)} ${modeLabel}` : fallback);
+    }
+}
+
+function flushGrinderPending() {
+    clearTimeout(grinderTile.timer);
+    grinderTile.timer = null;
+    const pending = grinderTile.pending;
+    grinderTile.pending = null;
+    const { sensorId, adapter } = grinderTile;
+    if (!pending || !sensorId || !adapter) { renderGrinderTile(); return; }
+    renderGrinderTile();
+    const command = adapter.writeCommand(pending.mode, pending.value);
+    if (!command) return;
+    executeSensorCommand(sensorId, command.commandId, command.params).catch((error) => {
+        logger.error('Grinder write failed:', error);
+        showToast(`${getTranslation('Grinder')}: ${error.message}`, 4000, 'error');
+    });
+}
+
+function selectGrinderMode(mode) {
+    if (!MT80_MODES.includes(mode) || mode === grinderTile.mode) return;
+    flushGrinderPending(); // a queued write belongs to the row it was made on
+    grinderTile.mode = mode;
+    renderGrinderTile();
+}
+
+/** Click-time dispatcher for grind-minus/plus. Returns true while a grinder is connected. */
+function handleGrinderStep(dir) {
+    const { sensorId, adapter, mode } = grinderTile;
+    if (!sensorId || !adapter) return false;
+    const channel = adapter.modeKeys[mode];
+    const base = grinderTile.pending?.mode === mode ? grinderTile.pending.value : grinderTile.snapshot[channel];
+    // No reading yet (or an unsteppable one): swallow the tap rather than guess.
+    const next = Number.isInteger(base) ? adapter.nextValue(mode, base, dir) : null;
+    if (next === null) return true;
+    grinderTile.pending = { mode, value: next };
+    markTileInteraction();
+    clearTimeout(grinderTile.timer);
+    grinderTile.timer = setTimeout(flushGrinderPending, API_DEBOUNCE_MS);
+    renderGrinderTile();
+    return true;
+}
+
+function onGrinderSnapshot(frame) {
+    if (!grinderTile.adapter) return;
+    const parsed = grinderTile.adapter.parseSnapshot(frame);
+    if (!Object.keys(parsed).length) return;
+    grinderTile.snapshot = { ...grinderTile.snapshot, ...parsed };
+    renderGrinderTile();
+}
+
+function onGrinderSensorChange(sensorId) {
+    if (sensorId === grinderTile.sensorId) return;
+    clearTimeout(grinderTile.timer);
+    grinderTile.timer = null;
+    grinderTile.pending = null;
+    grinderTile.snapshot = {};
+    grinderTile.sensorId = sensorId;
+    grinderTile.adapter = sensorId ? grinderAdapterForId(sensorId) : null;
+    if (!grinderTile.adapter) grinderTile.sensorId = null;
+    if (grinderTile.sensorId) {
+        connectGrinderSensorSocket(grinderTile.sensorId, onGrinderSnapshot);
+    } else {
+        closeGrinderSensorSocket();
+    }
+    renderGrinderTile();
+}
+
+/** Idempotent. Returns the cleanup that tears the tile and its socket down. */
+export function initGrinderTile() {
+    if (grinderTileCleanup) return grinderTileCleanup;
+    const section = document.getElementById('grind-section');
+    if (!section) return () => {};
+    const onClick = (event) => {
+        const target = event.target.closest?.('[data-grind-mode]');
+        if (target && section.contains(target)) selectGrinderMode(target.dataset.grindMode);
+    };
+    section.addEventListener('click', onClick);
+    const unsubscribe = subscribeGrinderSensorChanges(onGrinderSensorChange);
+    grinderTileCleanup = () => {
+        unsubscribe();
+        section.removeEventListener('click', onClick);
+        onGrinderSensorChange(null);
+        grinderTile.mode = 'gap';
+        grinderTileCleanup = null;
+    };
+    return grinderTileCleanup;
+}
+
 export function updateGrindValue(newValue) {
     const workflowUpdate = {
         context: {
@@ -563,7 +709,11 @@ export function setHotWaterTileMode(mode) {
     updateHotWaterPresetDisplay();
 }
 
-function setupValueAdjuster(minusBtnId, plusBtnId, valueElId, step, min, formatter, onUpdate, afterUpdate) {
+// `intercept(dir)` runs first on every click (dir is -1 or +1). Returning true
+// means another owner handled the tap (e.g. the grinder tile) and the
+// DOM-value path below must not run -- one dispatcher per button, decided at
+// click time, so a grinder connecting later needs no listener swap.
+function setupValueAdjuster(minusBtnId, plusBtnId, valueElId, step, min, formatter, onUpdate, afterUpdate, intercept) {
     const minusBtn = document.getElementById(minusBtnId);
     const plusBtn = document.getElementById(plusBtnId);
 
@@ -581,6 +731,7 @@ function setupValueAdjuster(minusBtnId, plusBtnId, valueElId, step, min, formatt
 
     minusBtn.addEventListener('click', (e) => {
         flashPlusMinusButton(e.currentTarget);
+        if (intercept?.(-1)) return;
         const valueEl = document.getElementById(valueElId);
         if (!valueEl) return;
         let currentValue = parseFloat(valueEl.textContent);
@@ -594,6 +745,7 @@ function setupValueAdjuster(minusBtnId, plusBtnId, valueElId, step, min, formatt
 
     plusBtn.addEventListener('click', (e) => {
         flashPlusMinusButton(e.currentTarget);
+        if (intercept?.(1)) return;
         const valueEl = document.getElementById(valueElId);
         if (!valueEl) return;
         let currentValue = parseFloat(valueEl.textContent);
@@ -2417,7 +2569,8 @@ export function initUI(callbacks) {
         }
     }
     setupValueAdjuster('dose-in-minus', 'dose-in-plus', 'dose-in-value', 1, 0, (val) => `${val}g`, (val) => { updateDoseValue('in', val); updateDrinkRatio(); }, syncDrinkOutPresets);
-    setupValueAdjuster('grind-minus', 'grind-plus', 'grind-value', () => grindStep, 0, (val) => grindStep === 1 ? String(Math.round(val)) : val.toFixed(1), updateGrindValue);
+    setupValueAdjuster('grind-minus', 'grind-plus', 'grind-value', () => grindStep, 0, (val) => grindStep === 1 ? String(Math.round(val)) : val.toFixed(1), updateGrindValue, undefined, handleGrinderStep);
+    initGrinderTile();
     setupValueAdjuster('flush-minus', 'flush-plus', 'flush-value', 1, 0, (val) => `${val}s`, (val) => {
         updateFlushValue(val);
         updateFlushDisplay(val);

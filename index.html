@@ -84,9 +84,25 @@
             <!-- Grind -->
             <div id="grind-section" class="flex justify-start items-center gap-[39px]">
                 <span id="grind-label" class="w-[112.5px] text-[var(--left-label-text)] text-[25.5px] font-bold break-words" data-i18n-key="Grind">Grind</span>
+                <!-- Grinder mode rows (Bookoo MT80): shown instead of the label above while a grinder is connected. -->
+                <div id="grind-mode-rows" hidden class="w-[112.5px]">
+                  <div id="grind-mode-group" class="flex flex-col justify-between h-[72px]" role="group" aria-label="Grinder settings">
+                    <button type="button" data-grind-mode="gap" aria-pressed="false" class="grind-mode-row h-[24px] w-full text-left text-[20px] leading-none font-bold text-[var(--left-label-text)] opacity-60 aria-pressed:opacity-100" data-i18n-key="Gap">Gap</button>
+                    <button type="button" data-grind-mode="feed" aria-pressed="false" class="grind-mode-row h-[24px] w-full text-left text-[20px] leading-none font-bold text-[var(--left-label-text)] opacity-60 aria-pressed:opacity-100" data-i18n-key="Feed">Feed</button>
+                    <button type="button" data-grind-mode="spd" aria-pressed="false" class="grind-mode-row h-[24px] w-full text-left text-[20px] leading-none font-bold text-[var(--left-label-text)] opacity-60 aria-pressed:opacity-100" data-i18n-key="Spd">Spd</button>
+                  </div>
+                </div>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="grind-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Grind"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <span id="grind-value" class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center text-[var(--text-primary)] text-[25.5px] font-bold" aria-labelledby="grind-label">1.4</span>
+                    <!-- Values come from the grinder's own snapshots only; never optimistic. -->
+                    <div id="grind-sensor-values" hidden class="absolute left-[72px] top-0 w-[102px] h-[72px]">
+                      <div class="flex flex-col justify-between h-full">
+                        <button type="button" id="grind-sensor-gap" data-grind-mode="gap" aria-pressed="false" class="block w-full h-[24px] text-center leading-none text-[var(--text-primary)] text-[17px] font-medium opacity-60 aria-pressed:opacity-100 aria-pressed:text-[22px] aria-pressed:font-bold aria-busy:animate-pulse">--</button>
+                        <button type="button" id="grind-sensor-feed" data-grind-mode="feed" aria-pressed="false" class="block w-full h-[24px] text-center leading-none text-[var(--text-primary)] text-[17px] font-medium opacity-60 aria-pressed:opacity-100 aria-pressed:text-[22px] aria-pressed:font-bold aria-busy:animate-pulse">--</button>
+                        <button type="button" id="grind-sensor-spd" data-grind-mode="spd" aria-pressed="false" class="block w-full h-[24px] text-center leading-none text-[var(--text-primary)] text-[17px] font-medium opacity-60 aria-pressed:opacity-100 aria-pressed:text-[22px] aria-pressed:font-bold aria-busy:animate-pulse">--</button>
+                      </div>
+                    </div>
                     <button id="grind-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Grind"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
             </div>
