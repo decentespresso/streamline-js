@@ -11,8 +11,6 @@ import { openContextMenu } from './context-menu.js';
 import { showToast, setupPressAndHold } from './ui.js';
 import { isVisualizerEnabled, uploadShotToVisualizer } from './visualizer.js';
 
-const DEREK_URL = 'https://derek.decentespresso.com/';
-
 const PAGE_SIZE = 20;
 let shots = [];
 let currentShotIndex = -1;
@@ -297,8 +295,7 @@ async function copyMd(md) {
 // their own press from bubbling so navigation taps still work.
 //
 // We build the summary up front so both actions act on a ready string: "Discuss
-// with Derek" is a link item (anchor) — the user's tap opens the OS browser with
-// the Derek URL (gh#384) and copies the summary on the same tap to paste.
+// with Derek" opens the in-app Derek chat and sends the summary straight away.
 function setupHistoryLongPress() {
     const panel = document.getElementById('shot-history-panel');
     if (!panel) return;
@@ -316,7 +313,7 @@ function setupHistoryLongPress() {
         const md = await buildCurrentShotSummary();
         if (md == null) return;
         const items = [
-            { label: getTranslation('Discuss with Derek'), href: DEREK_URL, onSelect: () => copyMd(md) },
+            { label: getTranslation('Discuss with Derek'), onSelect: () => import('./derek-modal.js').then((m) => m.openDerekModal(md, { onOpenExternal: () => copyMd(md) })) },
             { label: getTranslation('Copy Shot Summary'), onSelect: () => copyMd(md) },
         ];
         // Manual upload: the one on screen, whichever the user has paged to.

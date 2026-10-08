@@ -735,11 +735,15 @@ function renderProfiles() {
                 });
                 unhideButton.addEventListener('pointerdown', (e) => e.stopPropagation());
                 div.appendChild(unhideButton);
+            } else if (key === selectedProfileKey) {
+                // Either/or, never both: two text-[...] utilities on one row have
+                // equal specificity, so the winner is whichever Tailwind emitted
+                // last, not whichever was added last. Stacking them left the
+                // selected row reading --text-primary, which is only visible in
+                // light mode -- in dark the two tokens are the same #e8e8e8.
+                div.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
             } else {
                 div.classList.add('text-[var(--text-primary)]');
-                if (key === selectedProfileKey) {
-                    div.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
-                }
             }
 
             const selectItem = () => {
@@ -765,7 +769,7 @@ function renderProfiles() {
 
                 } else {
                     clickedItem.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
-                    clickedItem.classList.remove('text-[#121212]');
+                    clickedItem.classList.remove('text-[var(--text-primary)]');
                     clickedItem.appendChild(createHideButton());
                 }
 
@@ -1494,7 +1498,7 @@ function filterProfiles(searchTerm) {
 
             } else {
                 clickedItem.classList.add('bg-[var(--button-primary-bg)]', 'text-[var(--button-primary-text)]', 'rounded-[8px]');
-                clickedItem.classList.remove('text-[#121212]');
+                clickedItem.classList.remove('text-[var(--text-primary)]');
             }
 
             clickedItem.setAttribute('aria-selected', 'true');
