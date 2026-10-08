@@ -1,6 +1,6 @@
 # Decaid and Streamline.js — User Manual
 
-**Applies to:** Decaid (the app formerly called decent.app) and the Streamline.js skin, v0.2.10
+**Applies to:** Decaid (the app formerly called decent.app) and the Streamline.js skin, v0.2.11
 
 ---
 
