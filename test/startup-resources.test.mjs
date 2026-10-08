@@ -129,7 +129,13 @@ test('startup scales and reveals before asynchronous preference reconciliation',
     const scaling = read('src/modules/scaling.js');
     const css = read('src/css/main.css');
     assert.ok(app.indexOf('initScaling();') < app.indexOf('await Promise.all([i18nReady, unitsReady])'));
-    assert.match(scaling, /updateScale\(\);[\s\S]*requestAnimationFrame\(\(\) => content\.classList\.add\('scaled'\)\)/);
+    // The reveal is driven by requestAnimationFrame, not by awaiting anything:
+    // it scales first, then adds 'scaled' once the viewport size has settled
+    // (or the 600ms ceiling fires), so a stale WebView innerWidth at boot can
+    // not freeze the UI at the wrong scale.
+    assert.match(scaling, /updateScale\(\);[\s\S]*requestAnimationFrame\(reveal\)/);
+    assert.match(scaling, /content\.classList\.add\('scaled'\)/);
+    assert.doesNotMatch(scaling, /await[^\n]*\bclassList\.add\('scaled'\)/);
     assert.match(scaling, /setTimeout\(updateScale, 250\)/);
     assert.doesNotMatch(scaling, /\}, 300\);\s*\}, 100\);/);
     assert.doesNotMatch(css.match(/#scaled-content \{[\s\S]*?\}/)?.[0] || '', /opacity|transition/);
