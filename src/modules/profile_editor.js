@@ -691,6 +691,21 @@ function removeCardPagingScrollHandler() {
     _pagingScrollHandler = null;
 }
 
+// Run `fn` at most once per animation frame. A touch scroll fires its event far
+// more often than the screen repaints, and both scroll handlers in this file
+// read layout (scrollLeft, scrollHeight/clientHeight) and then write styles —
+// unthrottled that is a forced synchronous reflow per event, for a result the
+// user can only see once a frame. Same shape as the soft-keyboard storm in
+// scaling.js: coalesce, don't recompute.
+function perFrame(fn) {
+    let queued = false;
+    return () => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; fn(); });
+    };
+}
+
 // Binds the paging buttons and the scroll listener exactly once per page
 // mount. Called from initializeProfileEditor, NOT from renderStepCards: the
 // prev/next buttons and the scroll container are static markup in
@@ -726,7 +741,7 @@ function initCardPaging() {
     nextBtn.addEventListener('click', () => container.scrollBy({ left: CARD_PITCH, behavior: 'smooth' }));
 
     removeCardPagingScrollHandler();
-    _pagingScrollHandler = () => updatePagingButtons();
+    _pagingScrollHandler = perFrame(updatePagingButtons);
     container.addEventListener('scroll', _pagingScrollHandler);
     updatePagingButtons();
 }
@@ -1726,7 +1741,7 @@ function initScrollThumb(containerId, thumbId, topOffset = 0) {
     // this file would otherwise carry a stale flag on a since-detached node.
     if (!container || container.dataset.scrollThumbInit) return;
     container.dataset.scrollThumbInit = '1';
-    container.addEventListener('scroll', () => updateScrollThumb(containerId, thumbId, topOffset));
+    container.addEventListener('scroll', perFrame(() => updateScrollThumb(containerId, thumbId, topOffset)));
     initScrollThumbDrag(container, document.getElementById(thumbId), topOffset);
 }
 

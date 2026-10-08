@@ -6,7 +6,17 @@ export function initScaling() {
     const designWidth = 1920;
     const designHeight = 1200;
     let baselineHeight = window.innerHeight;
-    let keyboardWasShrunk = false;
+    // How far the canvas is currently lifted to clear the soft keyboard, and the
+    // breathing room left between the focused field and the keyboard's top edge.
+    let keyboardShift = 0;
+    const KEYBOARD_GAP = 12;
+    // Signature of the last geometry actually written to the DOM. A soft keyboard
+    // fires visualViewport resize every frame of its slide-in animation, and each
+    // pass used to rewrite the transform and dispatch streamline:scaleupdate --
+    // which re-runs EasyMDE's codemirror.refresh() in the notes modal, the one
+    // place a keyboard is most likely to be open. The geometry is identical on
+    // nearly all of those passes, so skip the writes when nothing moved.
+    let lastGeometry = '';
 
     // Detect if device is mobile
     function isMobileDevice() {
@@ -97,22 +107,35 @@ export function initScaling() {
         // Get actual viewport dimensions — guard against keyboard shrinking innerHeight
         const screenWidth = window.innerWidth;
         const rawHeight = window.innerHeight;
+        // Some WebViews resize the window for the keyboard, others only shrink
+        // visualViewport and leave innerHeight alone. Take whichever is smaller
+        // so both report the same "keyboard is up".
+        const visibleHeight = window.visualViewport ? window.visualViewport.height : rawHeight;
         const activeEl = document.activeElement;
         const inputFocused = activeEl &&
             (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
-        const keyboardShrunk = inputFocused && rawHeight < baselineHeight * 0.85;
+        const keyboardShrunk = inputFocused && Math.min(rawHeight, visibleHeight) < baselineHeight * 0.85;
         const screenHeight = keyboardShrunk ? baselineHeight : rawHeight;
         if (!keyboardShrunk) baselineHeight = rawHeight;
 
-        // The canvas is deliberately kept at its pre-keyboard size above (so
-        // the main chart/controls don't jump), but that means the real
-        // on-screen keyboard can cover the focused field with nothing to
-        // trigger the browser's normal "scroll input into view" behavior.
-        // Do it ourselves, once, on the rising edge.
-        if (keyboardShrunk && !keyboardWasShrunk) {
-            requestAnimationFrame(() => activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' }));
+        // The canvas is deliberately kept at its pre-keyboard size above so the
+        // chart and controls don't jump, which also means the keyboard can cover
+        // the focused field. scrollIntoView cannot fix that here: #scaling-container
+        // is overflow:hidden and the non-zoomed branch below resets its scrollTop to
+        // 0 on every pass, so any scroll it managed was undone a frame later. Lift
+        // the whole canvas in the transform instead, by exactly the overlap.
+        if (keyboardShrunk) {
+            const rect = activeEl.getBoundingClientRect();
+            const overlap = rect.bottom + KEYBOARD_GAP - visibleHeight;
+            if (overlap > 0) {
+                // rect already includes the shift applied last pass, so this is
+                // the extra lift needed, not the total. Never lift so far that
+                // the field's own top goes off-screen.
+                keyboardShift += Math.min(overlap, Math.max(0, rect.top - KEYBOARD_GAP));
+            }
+        } else {
+            keyboardShift = 0;
         }
-        keyboardWasShrunk = keyboardShrunk;
 
         // Width always fills. What happens vertically depends on the screen's aspect
         // relative to the 16:10 design canvas:
@@ -145,9 +168,6 @@ export function initScaling() {
                 if (sx > sy) sx *= k; else sy *= k;
             }
         }
-
-        content.style.width = `${designWidth}px`;
-        content.style.height = `${canvasHeight}px`;
 
         // Option A: only apply user zoom when the base scale < 1.0
         // (i.e. UI is already smaller than designed — small/tablet screens).
@@ -190,6 +210,19 @@ export function initScaling() {
             viewport.scrollLeft = 0;
         }
 
+        // Lift the canvas clear of the keyboard (0 whenever it is down).
+        offsetY -= keyboardShift;
+
+        // Everything above is arithmetic; this is where it reaches the DOM. Bail
+        // out when the result is identical to the last pass so a keyboard's
+        // per-frame resize storm doesn't re-write the transform or re-fire
+        // streamline:scaleupdate, whose listeners do real layout work.
+        const geometry = `${screenWidth}|${screenHeight}|${canvasHeight}|${sx}|${sy}|${offsetX}|${offsetY}`;
+        if (geometry === lastGeometry) return;
+        lastGeometry = geometry;
+
+        content.style.width = `${designWidth}px`;
+        content.style.height = `${canvasHeight}px`;
         content.style.transformOrigin = 'top left';
         content.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${sx}, ${sy})`;
 
@@ -241,6 +274,14 @@ export function initScaling() {
     if (window.visualViewport) {
         window.visualViewport.addEventListener('resize', onResize);
     }
+
+    // Which field needs clearing changes on focus, not on resize: tabbing from
+    // one input to the next with the keyboard already up fires no viewport event
+    // at all. Unthrottled on purpose -- updateScale returns early when the
+    // geometry is unchanged, so the common case costs one string compare.
+    document.addEventListener('focusin', updateScale);
+    // On blur activeElement is still the old field for the rest of the tick.
+    document.addEventListener('focusout', () => requestAnimationFrame(updateScale));
     
     // Also listen for orientation changes which can affect viewport dimensions
     window.addEventListener('orientationchange', () => {

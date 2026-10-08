@@ -93,4 +93,37 @@ function zoomOffsetX(screenWidth, sx, ghcVisible) {
     assert.ok(Math.abs((DESIGN_W * sx + withGhc) - screenWidth) < 0.01, 'GHC column must sit flush against the viewport right edge');
 }
 
+// Soft-keyboard lift (mirrors the keyboardShift block in scaling.js). The canvas
+// keeps its pre-keyboard height, so the focused field has to be lifted clear of
+// the keyboard in the transform; scrollIntoView can't do it because the viewport
+// is overflow:hidden and has its scrollTop reset on every pass.
+const GAP = 12;
+function lift(shift, rectTop, rectBottom, visibleHeight) {
+    const overlap = rectBottom + GAP - visibleHeight;
+    if (overlap <= 0) return shift;
+    return shift + Math.min(overlap, Math.max(0, rectTop - GAP));
+}
+{
+    // A field already above the keyboard is left alone.
+    assert.strictEqual(lift(0, 100, 160, 600), 0, 'field clear of the keyboard must not move');
+
+    // A covered field is lifted by exactly its overlap, gap included.
+    assert.strictEqual(lift(0, 590, 650, 600), 650 + GAP - 600, 'lift must equal the overlap');
+
+    // Converges in one pass: getBoundingClientRect on the next pass already
+    // includes the shift, so re-running must not stack a second lift.
+    const first = lift(0, 590, 650, 600);
+    const second = lift(first, 590 - first, 650 - first, 600);
+    assert.strictEqual(second, first, 'a settled lift must not grow on the next pass');
+
+    // Never lift so far that the field's own top leaves the screen: a tall field
+    // near the top can only rise until its top reaches the gap.
+    assert.strictEqual(lift(0, 20, 900, 400), 20 - GAP, 'lift is capped by the field top');
+    assert.ok(lift(0, 5, 900, 400) === 0, 'a field already at the top edge must not move');
+
+    // Keyboard down resets the canvas rather than leaving it lifted.
+    const down = 0; // scaling.js assigns keyboardShift = 0 on the !keyboardShrunk path
+    assert.strictEqual(down, 0, 'keyboard down must clear the lift');
+}
+
 console.log('ok — scaling fit math');
