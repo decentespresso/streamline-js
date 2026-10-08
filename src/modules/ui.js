@@ -1,7 +1,7 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
-import { openDB, getSetting, setSetting } from './idb.js';
+import { openDB, getSetting } from './idb.js';
 import { deriveSleepButtonAction, isWakePending } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel } from './machine.js';
 import { STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync } from './steam-mode.js';
@@ -9,6 +9,7 @@ import { shouldUseNumpad } from './numpad-policy.js';
 import { openContextMenu } from './context-menu.js';
 import { initCalibratedSteam } from './calibrated-steam-ui.js';
 import { logger } from './logger.js';
+import { SETTINGS_RESTORED_EVENT } from './settingsSync.js';
 import * as chart from './chart.js';
 
 function openNumpadModal(...args) {
@@ -152,6 +153,7 @@ let milkStopPresets = [...MILK_STOP_PRESETS]; // Milk-mode stop-target presets (
 const DEFAULT_STEAM_TIME_PRESETS = [15, 30, 45, 60];
 const STEAM_TIME_PRESETS_KEY = 'steam-time-presets-user';
 const DEFAULT_MILK_STOP_PRESETS = [...MILK_STOP_PRESETS];
+const MILK_STOP_PRESETS_KEY = 'milk-stop-presets-user';
 // Machine-model-specific steam-flow preset groups live in steam-mode.js
 // (pure, node-tested). Resolved at boot via setSteamFlowPresetsFromMachineModel().
 let DEFAULT_STEAM_FLOW_PRESETS = [...STEAM_FLOW_PRESETS_BY_MODEL.standard];
@@ -159,6 +161,8 @@ const STEAM_FLOW_PRESETS_KEY = 'steam-flow-presets-user';
 const STEAM_FLOW_PRESET_INDEX_KEY = 'steam-flow-preset-selected-index';
 const STEAM_FLOW_PRESETS_MODEL_KEY = 'steam-flow-presets-model';
 let selectedSteamFlowPresetIndex = 1; // default = second leftmost
+// Last model app.js resolved the flow presets for; replayed by a late KV restore.
+let lastSteamFlowModel = null;
 let steamApiDebounce = null;
 let hotWaterApiDebounce = null;
 const API_DEBOUNCE_MS = 1000;
@@ -1109,42 +1113,106 @@ function updateSteamPresetDisplay() {
     }
 }
 
-async function persistSteamFlowPresets() {
+// Preset edits are user intent, not machine state, and they used to live in
+// IndexedDB — which belongs to the WebView's origin and is wiped by every
+// Decaid app update, so a hand-dialed 14:28 had to be re-entered each time.
+// localStorage is the store settingsSync mirrors into Decaid's KV box (see
+// SYNCED_KEYS), so writing here is what makes a preset survive an update.
+function savePresetSetting(key, value) {
     try {
-        await setSetting(STEAM_FLOW_PRESETS_KEY, [...steamFlowPresets]);
+        localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
-        logger.warn('Failed to persist steam flow presets:', e);
+        logger.warn(`Failed to persist ${key}:`, e);
     }
 }
 
-async function persistSteamFlowSelectedIndex(index) {
+// Reads the durable copy, falling back once to the pre-mirror IndexedDB home so
+// an install that still has its edits there keeps them (and promotes them).
+async function readPresetSetting(key) {
     try {
-        await setSetting(STEAM_FLOW_PRESET_INDEX_KEY, index);
+        const raw = localStorage.getItem(key);
+        if (raw !== null) return JSON.parse(raw);
     } catch (e) {
-        logger.warn('Failed to persist steam flow preset index:', e);
+        logger.warn(`Failed to read ${key}:`, e);
+    }
+    try {
+        await openDB();
+        const legacy = await getSetting(key);
+        if (legacy !== undefined) savePresetSetting(key, legacy);
+        return legacy;
+    } catch (e) {
+        logger.warn(`Failed to migrate ${key}:`, e);
+        return undefined;
     }
 }
 
-async function persistSteamTimePresets() {
-    try {
-        await setSetting(STEAM_TIME_PRESETS_KEY, [...steamTimePresets]);
-    } catch (e) {
-        logger.warn('Failed to persist steam time presets:', e);
+function persistSteamFlowPresets() {
+    savePresetSetting(STEAM_FLOW_PRESETS_KEY, [...steamFlowPresets]);
+}
+
+function persistSteamFlowSelectedIndex(index) {
+    savePresetSetting(STEAM_FLOW_PRESET_INDEX_KEY, index);
+}
+
+function persistSteamTimePresets() {
+    savePresetSetting(STEAM_TIME_PRESETS_KEY, [...steamTimePresets]);
+}
+
+function persistMilkStopPresets() {
+    savePresetSetting(MILK_STOP_PRESETS_KEY, [...milkStopPresets]);
+}
+
+// A hydrate that lands AFTER the page painted (Decaid answered on the retry
+// ladder, not at boot) has written the restored presets to localStorage, but
+// the buttons already rendered from what was there before. Re-run the loaders
+// for exactly the keys that changed — they read localStorage, so this is the
+// same path as boot, not a second source of truth.
+function initPresetRestoreListener() {
+    if (initPresetRestoreListener.attached) return;
+    initPresetRestoreListener.attached = true;
+    const byKey = {
+        [DRINK_OUT_PRESETS_KEY]: () => withEl('drink-out-presets', loadDrinkOutPresets),
+        [TEMP_PRESETS_KEY]: loadTempPresets,
+        [FLUSH_PRESETS_KEY]: () => withEl('flush-presets', loadFlushPresets),
+        [HOT_WATER_TEMP_PRESETS_KEY]: loadHotWaterPresets,
+        [HOT_WATER_VOL_PRESETS_KEY]: loadHotWaterPresets,
+        [STEAM_TIME_PRESETS_KEY]: loadSteamTimePresets,
+        [MILK_STOP_PRESETS_KEY]: loadMilkStopPresets,
+        // Steam flow is model-gated, so it re-runs the whole resolve with the
+        // model app.js last reported rather than reading the array directly.
+        [STEAM_FLOW_PRESETS_KEY]: () => setSteamFlowPresetsFromMachineModel(lastSteamFlowModel),
+    };
+    window.addEventListener(SETTINGS_RESTORED_EVENT, (event) => {
+        const keys = Object.keys(event.detail || {}).filter(key => byKey[key]);
+        // One run per loader: the two hot-water keys share one.
+        new Set(keys.map(key => byKey[key])).forEach(load => {
+            Promise.resolve().then(load).catch(e => logger.warn('Preset restore repaint failed:', e));
+        });
+    });
+}
+
+function withEl(id, load) {
+    const el = document.getElementById(id);
+    return el ? load(el) : undefined;
+}
+
+// Milk-stop presets were never persisted at all — edits died on the next
+// reload, not just on an app update.
+async function loadMilkStopPresets() {
+    const stored = await readPresetSetting(MILK_STOP_PRESETS_KEY);
+    if (Array.isArray(stored) && stored.length === milkStopPresets.length) {
+        milkStopPresets = stored.map(Number);
+        updateSteamPresetDisplay();
     }
 }
 
 // Restore user-edited steam time presets at boot. No machine-model dependency,
 // unlike steam flow, so this just loads once — no per-model reset logic needed.
 async function loadSteamTimePresets() {
-    try {
-        await openDB();
-        const stored = await getSetting(STEAM_TIME_PRESETS_KEY);
-        if (Array.isArray(stored) && stored.length === 4) {
-            steamTimePresets = stored.map(Number);
-            updateSteamPresetDisplay();
-        }
-    } catch (e) {
-        logger.warn('Failed to load steam time presets:', e);
+    const stored = await readPresetSetting(STEAM_TIME_PRESETS_KEY);
+    if (Array.isArray(stored) && stored.length === 4) {
+        steamTimePresets = stored.map(Number);
+        updateSteamPresetDisplay();
     }
 }
 
@@ -1152,27 +1220,18 @@ async function loadSteamTimePresets() {
 // button's textContent — so persist/restore work off the DOM instead.
 const FLUSH_PRESETS_KEY = 'flush-presets-user';
 
-async function persistFlushPresets(flushPresetsEl) {
-    try {
-        const values = Array.from(flushPresetsEl.children).map(b => parseFloat(b.textContent));
-        await setSetting(FLUSH_PRESETS_KEY, values);
-    } catch (e) {
-        logger.warn('Failed to persist flush presets:', e);
-    }
+function persistFlushPresets(flushPresetsEl) {
+    const values = Array.from(flushPresetsEl.children).map(b => parseFloat(b.textContent));
+    savePresetSetting(FLUSH_PRESETS_KEY, values);
 }
 
 async function loadFlushPresets(flushPresetsEl) {
-    try {
-        await openDB();
-        const stored = await getSetting(FLUSH_PRESETS_KEY);
-        const buttons = Array.from(flushPresetsEl.children);
-        if (Array.isArray(stored) && stored.length === buttons.length) {
-            buttons.forEach((btn, i) => {
-                if (typeof stored[i] === 'number' && !isNaN(stored[i])) btn.textContent = `${stored[i]}s`;
-            });
-        }
-    } catch (e) {
-        logger.warn('Failed to load flush presets:', e);
+    const stored = await readPresetSetting(FLUSH_PRESETS_KEY);
+    const buttons = Array.from(flushPresetsEl.children);
+    if (Array.isArray(stored) && stored.length === buttons.length) {
+        buttons.forEach((btn, i) => {
+            if (typeof stored[i] === 'number' && !isNaN(stored[i])) btn.textContent = `${stored[i]}s`;
+        });
     }
 }
 
@@ -1192,78 +1251,51 @@ function updateTempPresetDisplay() {
     });
 }
 
-async function persistTempPresets() {
-    try {
-        await setSetting(TEMP_PRESETS_KEY, [...brewTempPresets]);
-    } catch (e) {
-        logger.warn('Failed to persist brew temp presets:', e);
-    }
+function persistTempPresets() {
+    savePresetSetting(TEMP_PRESETS_KEY, [...brewTempPresets]);
 }
 
 async function loadTempPresets() {
-    try {
-        await openDB();
-        const stored = await getSetting(TEMP_PRESETS_KEY);
-        if (Array.isArray(stored) && stored.length === brewTempPresets.length) {
-            brewTempPresets = stored.map(Number);
-        }
-        updateTempPresetDisplay();
-    } catch (e) {
-        logger.warn('Failed to load brew temp presets:', e);
+    const stored = await readPresetSetting(TEMP_PRESETS_KEY);
+    if (Array.isArray(stored) && stored.length === brewTempPresets.length) {
+        brewTempPresets = stored.map(Number);
     }
+    updateTempPresetDisplay();
 }
 
 // Drink-out presets store a "dose:out" pair, not a single number — persist
 // the raw label text rather than parsing it.
 const DRINK_OUT_PRESETS_KEY = 'drink-out-presets-user';
 
-async function persistDrinkOutPresets(drinkOutPresetsEl) {
-    try {
-        const values = Array.from(drinkOutPresetsEl.children).map(b => b.textContent.trim());
-        await setSetting(DRINK_OUT_PRESETS_KEY, values);
-    } catch (e) {
-        logger.warn('Failed to persist drink-out presets:', e);
-    }
+function persistDrinkOutPresets(drinkOutPresetsEl) {
+    const values = Array.from(drinkOutPresetsEl.children).map(b => b.textContent.trim());
+    savePresetSetting(DRINK_OUT_PRESETS_KEY, values);
 }
 
 async function loadDrinkOutPresets(drinkOutPresetsEl) {
-    try {
-        await openDB();
-        const stored = await getSetting(DRINK_OUT_PRESETS_KEY);
-        const buttons = Array.from(drinkOutPresetsEl.children);
-        if (Array.isArray(stored) && stored.length === buttons.length) {
-            buttons.forEach((btn, i) => {
-                if (typeof stored[i] === 'string' && /^\d+(\.\d+)?:\d+(\.\d+)?$/.test(stored[i])) btn.textContent = stored[i];
-            });
-        }
-    } catch (e) {
-        logger.warn('Failed to load drink-out presets:', e);
+    const stored = await readPresetSetting(DRINK_OUT_PRESETS_KEY);
+    const buttons = Array.from(drinkOutPresetsEl.children);
+    if (Array.isArray(stored) && stored.length === buttons.length) {
+        buttons.forEach((btn, i) => {
+            if (typeof stored[i] === 'string' && /^\d+(\.\d+)?:\d+(\.\d+)?$/.test(stored[i])) btn.textContent = stored[i];
+        });
     }
 }
 
 const HOT_WATER_TEMP_PRESETS_KEY = 'hot-water-temp-presets-user';
 const HOT_WATER_VOL_PRESETS_KEY = 'hot-water-vol-presets-user';
 
-async function persistHotWaterPresets() {
-    try {
-        await setSetting(HOT_WATER_TEMP_PRESETS_KEY, [...hotWaterTempPresets]);
-        await setSetting(HOT_WATER_VOL_PRESETS_KEY, [...hotWaterVolPresets]);
-    } catch (e) {
-        logger.warn('Failed to persist hot water presets:', e);
-    }
+function persistHotWaterPresets() {
+    savePresetSetting(HOT_WATER_TEMP_PRESETS_KEY, [...hotWaterTempPresets]);
+    savePresetSetting(HOT_WATER_VOL_PRESETS_KEY, [...hotWaterVolPresets]);
 }
 
 async function loadHotWaterPresets() {
-    try {
-        await openDB();
-        const storedTemp = await getSetting(HOT_WATER_TEMP_PRESETS_KEY);
-        const storedVol = await getSetting(HOT_WATER_VOL_PRESETS_KEY);
-        if (Array.isArray(storedTemp) && storedTemp.length === 4) hotWaterTempPresets = storedTemp.map(Number);
-        if (Array.isArray(storedVol) && storedVol.length === 4) hotWaterVolPresets = storedVol.map(Number);
-        if (storedTemp || storedVol) updateHotWaterPresetDisplay();
-    } catch (e) {
-        logger.warn('Failed to load hot water presets:', e);
-    }
+    const storedTemp = await readPresetSetting(HOT_WATER_TEMP_PRESETS_KEY);
+    const storedVol = await readPresetSetting(HOT_WATER_VOL_PRESETS_KEY);
+    if (Array.isArray(storedTemp) && storedTemp.length === 4) hotWaterTempPresets = storedTemp.map(Number);
+    if (Array.isArray(storedVol) && storedVol.length === 4) hotWaterVolPresets = storedVol.map(Number);
+    if (storedTemp || storedVol) updateHotWaterPresetDisplay();
 }
 
 function syncPresetHighlight(container, matchFn) {
@@ -1305,6 +1337,7 @@ function highlightSteamFlowPreset(index) {
 }
 
 export async function setSteamFlowPresetsFromMachineModel(model) {
+    lastSteamFlowModel = model ?? null;
     // On a Bengle WITH the milk probe the main-screen steam-stop is by milk
     // temperature: replace the "Time" toggle label with "Milk". (Duration stays
     // settable in Settings.) Probe presence usually reports a beat after this
@@ -1318,13 +1351,12 @@ export async function setSteamFlowPresetsFromMachineModel(model) {
     updateSteamModeOptions(milkAvailable);
     if (steamMode !== 'auto') steamMode = resolveSteamTileMode(steamMode, milkAvailable, milkStopArmed, readSteamStopFallback());
     try {
-        await openDB();
         const baseline = resolveSteamFlowPresetsForModel(model);
         DEFAULT_STEAM_FLOW_PRESETS = [...baseline];
 
-        const storedModel = await getSetting(STEAM_FLOW_PRESETS_MODEL_KEY);
-        const userPresets = await getSetting(STEAM_FLOW_PRESETS_KEY);
-        const storedIndex = await getSetting(STEAM_FLOW_PRESET_INDEX_KEY);
+        const storedModel = await readPresetSetting(STEAM_FLOW_PRESETS_MODEL_KEY);
+        const userPresets = await readPresetSetting(STEAM_FLOW_PRESETS_KEY);
+        const storedIndex = await readPresetSetting(STEAM_FLOW_PRESET_INDEX_KEY);
 
         // If model changed since last save, drop the old user array — its values
         // are tuned for a different group head and would be misleading.
@@ -1333,9 +1365,9 @@ export async function setSteamFlowPresetsFromMachineModel(model) {
             steamFlowPresets = userPresets.map(Number);
         } else {
             steamFlowPresets = [...baseline];
-            await setSetting(STEAM_FLOW_PRESETS_KEY, [...steamFlowPresets]);
+            savePresetSetting(STEAM_FLOW_PRESETS_KEY, [...steamFlowPresets]);
         }
-        await setSetting(STEAM_FLOW_PRESETS_MODEL_KEY, String(model || ''));
+        savePresetSetting(STEAM_FLOW_PRESETS_MODEL_KEY, String(model || ''));
 
         selectedSteamFlowPresetIndex = (Number.isInteger(storedIndex) && storedIndex >= 0 && storedIndex < 4)
             ? storedIndex
@@ -1718,6 +1750,7 @@ export function initUI(callbacks) {
     initLanguageSwitcher();
     initScaleClick(callbacks.onWeightClick);
     initScreensaver(); // Initialize screensaver functionality
+    initPresetRestoreListener();
     const drinkOutValueEl = document.getElementById('drink-out-value');
     const tempValueEl = document.getElementById('temp-value');
     const doseInValueEl = document.getElementById('dose-in-value');
@@ -2065,6 +2098,7 @@ export function initUI(callbacks) {
 
     if (steamMilkPresetsEl) {
         updateSteamPresetDisplay();
+        loadMilkStopPresets(); // async restore of user edits, re-renders once loaded
 
         Array.from(steamMilkPresetsEl.children).forEach((button, index) => {
             button.classList.add('no-select', 'has-context-menu');
@@ -2104,6 +2138,7 @@ export function initUI(callbacks) {
                                 const num = fromDisplayTemp(parseFloat(newVal));
                                 if (isNaN(num)) return;
                                 milkStopPresets[index] = clampMilkStop(num);
+                                persistMilkStopPresets();
                                 updateSteamPresetDisplay();
                                 flashElement(button);
                                 showToast(`Preset saved as ${formatTemp(milkStopPresets[index], 0)}`, 2000, 'success');
@@ -2112,12 +2147,14 @@ export function initUI(callbacks) {
                     } },
                     { label: getTranslation('Save current ({value}) here').replace('{value}', valueEl.textContent), disabled: isNaN(currentValueC), onSelect: () => {
                         milkStopPresets[index] = clampMilkStop(currentValueC);
+                        persistMilkStopPresets();
                         updateSteamPresetDisplay();
                         flashElement(button);
                         flashElement(valueEl);
                     } },
                     { label: getTranslation('Revert to {value}').replace('{value}', formatTemp(defaultValue, 0)), danger: true, onSelect: () => {
                         milkStopPresets[index] = defaultValue;
+                        persistMilkStopPresets();
                         updateSteamPresetDisplay();
                         flashElement(button);
                         showToast(`Preset reverted to ${formatTemp(defaultValue, 0)}`, 2000, 'info');

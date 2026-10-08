@@ -18,6 +18,13 @@ import { logger } from './logger.js';
 // migration source and deletes keys out of it once they are imported.
 export const SETTINGS_NAMESPACE = 'streamlineSettings';
 
+// Fired on window after a hydrate actually applied something, with
+// `detail: { [key]: value }` for the keys that changed. The on-time hydrate
+// runs before any page mounts and nobody is listening — this exists for the
+// retry ladder below, where a Decaid that answers seconds late would otherwise
+// leave the already-painted page showing the pre-restore values.
+export const SETTINGS_RESTORED_EVENT = 'streamline-settings-restored';
+
 // Preferences the user set on purpose and would have to hunt through Settings
 // to restore. Machine-side settings (temperatures, flush, steam targets) are
 // already Decaid's and are not mirrored here.
@@ -58,6 +65,20 @@ export const SYNCED_KEYS = [
     'tempUnit',
     'visualizerEnabled',
     'visualizerAutoUpload',
+    // Main-page quick presets. The values the buttons SET are Decaid's, but the
+    // button labels are the user's own shortcuts — re-entering a favourite
+    // 14:28 ratio after every app update is exactly the loss this mirror exists
+    // to stop. Written as JSON by src/modules/ui.js.
+    'drink-out-presets-user',
+    'brew-temp-presets-user',
+    'flush-presets-user',
+    'hot-water-temp-presets-user',
+    'hot-water-vol-presets-user',
+    'steam-time-presets-user',
+    'steam-flow-presets-user',
+    'steam-flow-preset-selected-index',
+    'steam-flow-presets-model',
+    'milk-stop-presets-user',
 ];
 
 const synced = new Set(SYNCED_KEYS);
@@ -188,7 +209,10 @@ async function boot() {
             await openDB().then(() => setSetting('language', applied.language)).catch(() => {});
         }
 
-        if (Object.keys(applied).length) logger.info(`Restored settings from KV: ${Object.keys(applied).join(', ')}`);
+        if (Object.keys(applied).length) {
+            logger.info(`Restored settings from KV: ${Object.keys(applied).join(', ')}`);
+            window.dispatchEvent(new CustomEvent(SETTINGS_RESTORED_EVENT, { detail: applied }));
+        }
         return applied;
     };
 

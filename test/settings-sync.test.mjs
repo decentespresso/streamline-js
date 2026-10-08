@@ -417,3 +417,46 @@ test('the transient Auto steam session remains device-local', () => {
     assert.ok(syncedKeys, 'SYNCED_KEYS declaration not found');
     assert.doesNotMatch(syncedKeys, /streamline\.autoSteamSession/);
 });
+
+// Main-page quick presets used to live in IndexedDB, which the WebView loses on
+// every Decaid app update -- a user's favourite 14:28 ratio had to be re-entered
+// each time. They now go through localStorage so the KV mirror carries them.
+test('every main-page preset key is mirrored to KV', () => {
+    const ui = readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8');
+    const sync = readFileSync(new URL('../src/modules/settingsSync.js', import.meta.url), 'utf8');
+    const syncedKeys = sync.match(/export const SYNCED_KEYS = \[[\s\S]*?\];/)?.[0];
+    assert.ok(syncedKeys, 'SYNCED_KEYS declaration not found');
+
+    const presetKeys = [...ui.matchAll(/^const [A-Z_]*PRESETS?[A-Z_]*_KEY = '([^']+)';$/gm)].map(m => m[1]);
+    assert.ok(presetKeys.length >= 9, `expected the preset keys, found ${presetKeys.length}`);
+    for (const key of presetKeys) {
+        assert.match(syncedKeys, new RegExp(`'${key}'`), `${key} is not mirrored to KV`);
+    }
+});
+
+test('preset writes do not go back to IndexedDB', () => {
+    const ui = readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(ui, /\bsetSetting\(\s*[A-Z_]*PRESET/);
+});
+
+// A hydrate that lands after the page painted (Decaid answered on the retry
+// ladder) has to tell the UI, or the buttons keep showing pre-restore values.
+test('a late restore announces the keys it applied', () => {
+    const sync = readFileSync(new URL('../src/modules/settingsSync.js', import.meta.url), 'utf8');
+    const ui = readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8');
+
+    assert.match(sync, /export const SETTINGS_RESTORED_EVENT = '[^']+';/);
+    // Fired only when something actually changed, and carrying what changed.
+    assert.match(sync, /if \(Object\.keys\(applied\)\.length\) \{[\s\S]*?dispatchEvent\(new CustomEvent\(SETTINGS_RESTORED_EVENT, \{ detail: applied \}\)\)/);
+
+    // ui.js listens and re-runs a loader for every preset key it persists.
+    assert.match(ui, /addEventListener\(SETTINGS_RESTORED_EVENT/);
+    const handler = ui.match(/function initPresetRestoreListener\(\) \{[\s\S]*?\r?\n\}/)?.[0];
+    assert.ok(handler, 'initPresetRestoreListener not found');
+    for (const key of [...ui.matchAll(/^const ([A-Z_]*PRESETS?[A-Z_]*_KEY) = '[^']+';$/gm)].map(m => m[1])) {
+        // The selected-index and model keys are bookkeeping, not button labels.
+        if (/INDEX|MODEL/.test(key)) continue;
+        assert.match(handler, new RegExp(`\\[${key}\\]`), `${key} has no restore repaint`);
+    }
+    assert.match(ui, /initPresetRestoreListener\(\);/);
+});
