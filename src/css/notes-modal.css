@@ -1,0 +1,358 @@
+.notes-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.notes-modal-overlay.active {
+    display: flex;
+    opacity: 1;
+}
+
+.notes-modal-container {
+    width: 100%;
+    height: 100%;
+    background-color: white;
+    padding: 32px 48px;
+    padding-bottom: max(32px, env(safe-area-inset-bottom));
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.notes-modal-overlay.active .notes-modal-container {
+    transform: translateY(0);
+}
+
+.notes-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e8e8e8;
+}
+
+.notes-modal-title {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    font-size: 28px;
+    color: #121212;
+}
+
+.notes-modal-header-actions {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.notes-modal-cancel {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 240px;
+    height: 82px;
+    min-height: 0;
+    border-radius: 67.5px;
+    background: transparent;
+    border: 1px solid var(--mimoja-blue, #385A92);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    font-size: 24px;
+    color: var(--mimoja-blue, #385A92);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.notes-modal-cancel:active {
+    background-color: #f3f4f6;
+}
+
+.notes-modal-confirm {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 240px;
+    height: 82px;
+    min-height: 0;
+    border-radius: 67.5px;
+    background-color: var(--mimoja-blue, #385A92);
+    border: 1px solid var(--mimoja-blue, #385A92);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    font-size: 24px;
+    color: white;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.notes-modal-confirm:active {
+    background-color: #2d4a72;
+}
+
+/* ── EasyMDE overrides inside modal ──────────────────────────────────────── */
+
+/* Outer flex slot — takes remaining space after header, acts as positioning anchor */
+.notes-modal-editor-wrap {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    margin-top: 24px;
+    overflow: hidden;
+}
+
+/* Inner div that gets the inverse scale — absolutely positioned so it
+   never pushes the header or affects the flex layout */
+.notes-modal-editor-scaled {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    /* width/height and transform set by JS */
+}
+
+#notes-modal-textarea {
+    width: 100%;
+    height: 100%;
+    resize: none;
+    border: 2px solid #e8e8e8;
+    border-radius: 16px;
+    background: #fafbfc;
+    color: #121212;
+    padding: 24px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 24px;
+    line-height: 1.6;
+    outline: none;
+}
+
+#notes-modal-textarea:focus {
+    border-color: #385A92;
+    background: #ffffff;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    /* Prevent side-by-side mode from going position:fixed */
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    padding: 0 !important;
+    z-index: auto !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .CodeMirror {
+    flex: 1;
+    min-height: 0;
+    border: 2px solid #e8e8e8;
+    border-radius: 0 0 16px 16px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 24px;
+    line-height: 1.6;
+    color: #121212;
+    background-color: #fafbfc;
+    padding: 16px;
+    position: relative;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .CodeMirror-focused {
+    border-color: #385A92;
+    background-color: #ffffff;
+}
+
+/* Override EasyMDE fullscreen/side-by-side — keep everything inside the modal flex layout */
+.notes-modal-editor-scaled .EasyMDEContainer .CodeMirror-fullscreen {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    height: auto !important;
+    z-index: auto !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar.fullscreen {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    width: 100% !important;
+    z-index: auto !important;
+    opacity: 1 !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-preview-side {
+    position: absolute !important;
+    top: 71px !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 9 !important;
+    border-left: 2px solid #e8e8e8;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar,
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar.fullscreen {
+    border: 2px solid #e8e8e8;
+    border-bottom: 1px solid #e8e8e8;
+    border-radius: 16px 16px 0 0;
+    background-color: #f6f8fa;
+    padding: 8px 12px !important;
+    min-height: 71px !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar button {
+    width: 48px !important;
+    height: 48px !important;
+    border: none !important;
+    border-radius: 10px !important;
+    margin: 2px !important;
+    cursor: pointer;
+    color: #121212 !important;
+    background-color: #ededed !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar button:hover {
+    background-color: #d0d0d0 !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar button.active,
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar.fullscreen button.active {
+    background-color: var(--mimoja-blue, #385A92) !important;
+    color: #ffffff !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar i.separator {
+    border-left-color: #e8e8e8 !important;
+    margin: 0 8px !important;
+}
+
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar,
+.notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar.fullscreen {
+    border: 2px solid #e8e8e8 !important;
+    border-bottom: 1px solid #e8e8e8 !important;
+    border-radius: 16px 16px 0 0 !important;
+    background-color: #f6f8fa !important;
+}
+
+/* Preview pane */
+.notes-modal-editor-scaled .EasyMDEContainer .editor-preview,
+.notes-modal-editor-scaled .EasyMDEContainer .editor-preview-side {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 24px;
+    line-height: 1.6;
+    padding: 24px;
+    color: #121212;
+}
+
+/* ── Dark Theme ──────────────────────────────────────────────────────────── */
+
+[data-theme='dark'] .notes-modal-container {
+    background-color: #101217;
+}
+
+[data-theme='dark'] .notes-modal-title {
+    color: #ffffff;
+}
+
+[data-theme='dark'] .notes-modal-header {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='dark'] .notes-modal-cancel {
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+[data-theme='dark'] .notes-modal-cancel:active {
+    background-color: #1F2234;
+}
+
+[data-theme='dark'] .notes-modal-confirm {
+    background-color: #385A92;
+    border-color: #385A92;
+}
+
+[data-theme='dark'] .notes-modal-confirm:active {
+    background-color: #2d4a72;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .CodeMirror {
+    background-color: #1a1c24;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #e8e8e8;
+}
+
+[data-theme='dark'] #notes-modal-textarea {
+    background: #1a1c24;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #e8e8e8;
+}
+
+[data-theme='dark'] #notes-modal-textarea:focus {
+    border-color: #385A92;
+    background: #1F2234;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .CodeMirror-focused {
+    border-color: #385A92;
+    background-color: #1F2234;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .CodeMirror-cursor {
+    border-left-color: #e8e8e8;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar {
+    background-color: #1a1c24 !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar button {
+    color: #e8e8e8 !important;
+    background-color: #1F2234 !important;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar button:hover {
+    background-color: #2b3048 !important;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar button.active {
+    background-color: #385A92 !important;
+    color: white !important;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-toolbar i.separator {
+    border-left-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-preview,
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-preview-side {
+    background-color: #1a1c24;
+    color: #e8e8e8;
+}
+
+[data-theme='dark'] .notes-modal-editor-scaled .EasyMDEContainer .editor-preview-active-side {
+    border-left-color: rgba(255, 255, 255, 0.12);
+}
