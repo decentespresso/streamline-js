@@ -14,6 +14,7 @@ import {
     mt80SettingsPatch,
     nextMt80Value,
     parseMt80Snapshot,
+    parseMt80Stream,
 } from '../src/modules/grinder-control.js';
 
 const MT80_ID = `${MT80_ID_PREFIX}AA:BB:CC:DD:EE:FF`;
@@ -60,6 +61,18 @@ test('parseMt80Snapshot maps the grinder snapshot onto the tile keys', () => {
         bladeGap: 0,
         grindRpm: 500,
     });
+});
+
+test('parseMt80Stream takes only feed RPM from the plugin WebSocket', () => {
+    // The plugin stream carries the full periodInfo; gap and spd stay on the
+    // grinder snapshot so each row has one source.
+    assert.deepEqual(parseMt80Stream({ feedingRpm: 40, bladeGap: 180, grindRpm: 1290, devState: 'IDLE' }), { feedingRpm: 40 });
+    assert.deepEqual(parseMt80Stream({ bladeGap: 180 }), {});
+    assert.deepEqual(parseMt80Stream({ feedingRpm: '40' }), {});
+    assert.deepEqual(parseMt80Stream({ feedingRpm: 40.5 }), {});
+    assert.deepEqual(parseMt80Stream(null), {});
+    assert.deepEqual(parseMt80Stream([1, 2]), {});
+    assert.deepEqual(parseMt80Stream('x'), {});
 });
 
 test('parseMt80Snapshot never invents a value for the Feed row', () => {
@@ -115,10 +128,10 @@ test('nextMt80Value rejects unusable input instead of guessing', () => {
     assert.equal(nextMt80Value('gap', 250, 0), null);
 });
 
-test('mt80SettingsPatch names the grinder field and the wire type it needs', () => {
+test('mt80SettingsPatch names the field, the wire type and the transport', () => {
     // `setting` is a string on the grinder API; `rpm` is an integer.
-    assert.deepEqual(mt80SettingsPatch('gap', 250), { field: 'setting', value: '250' });
-    assert.deepEqual(mt80SettingsPatch('spd', 900), { field: 'rpm', value: 900 });
+    assert.deepEqual(mt80SettingsPatch('gap', 250), { kind: 'grinder', field: 'setting', value: '250' });
+    assert.deepEqual(mt80SettingsPatch('spd', 900), { kind: 'grinder', field: 'rpm', value: 900 });
     assert.equal(mt80SettingsPatch('gap', 250.5), null);
     assert.equal(mt80SettingsPatch('gap', '250'), null);
     assert.equal(mt80SettingsPatch('gap', 1000), null);
@@ -127,18 +140,28 @@ test('mt80SettingsPatch names the grinder field and the wire type it needs', () 
     assert.equal(mt80SettingsPatch('start', 1), null);
 });
 
-test('the Feed row has no grinder write at all', () => {
-    // feedingRpm is absent from the grinder contract, so the row cannot be
-    // stepped and must never produce a write.
-    assert.equal(mt80SettingsPatch('feed', 40), null);
-    assert.equal(mt80SettingsPatch('feed', 4000), null);
+test('the Feed row writes through the plugin, not the grinder API', () => {
+    // feedingRpm has no slot in the grinder contract, so it posts the plugin's
+    // own command endpoint with the published range enforced.
+    assert.deepEqual(mt80SettingsPatch('feed', 40), {
+        kind: 'plugin',
+        commandId: 'setSettings',
+        params: { feedingRpm: 40 },
+    });
+    assert.equal(mt80SettingsPatch('feed', 9), null);
+    assert.equal(mt80SettingsPatch('feed', 66), null);
+    assert.equal(mt80SettingsPatch('feed', 40.5), null);
 });
 
-test('the adapter writes through the grinder fields', () => {
+test('the adapter writes through the grinder fields and the plugin command', () => {
     const adapter = grinderAdapterForId(MT80_ID);
-    assert.deepEqual(adapter.writeCommand('gap', 180), { field: 'setting', value: '180' });
-    assert.deepEqual(adapter.writeCommand('spd', 1290), { field: 'rpm', value: 1290 });
-    assert.equal(adapter.writeCommand('feed', 40), null);
+    assert.deepEqual(adapter.writeCommand('gap', 180), { kind: 'grinder', field: 'setting', value: '180' });
+    assert.deepEqual(adapter.writeCommand('spd', 1290), { kind: 'grinder', field: 'rpm', value: 1290 });
+    assert.deepEqual(adapter.writeCommand('feed', 40), {
+        kind: 'plugin',
+        commandId: 'setSettings',
+        params: { feedingRpm: 40 },
+    });
     assert.equal(adapter.writeCommand('gap', 4000), null);
 });
 
@@ -177,6 +200,11 @@ test('api.js gives the grinder its own socket slot, apart from the milk probe', 
     assert.match(api, /export function connectGrinderSocket\(/);
     assert.match(api, /export function closeGrinderSocket\(/);
     assert.match(api, /export async function executeGrinderCommand\(/);
+    assert.match(api, /createSocketSlot\('grinder stream'\)/);
+    assert.match(api, /ws\/v1\/plugins\/\$\{encodeURIComponent\(pluginId\)\}\/stream/);
+    assert.match(api, /export function connectGrinderStreamSocket\(/);
+    assert.match(api, /export function closeGrinderStreamSocket\(/);
+    assert.match(api, /export async function executePluginCommand\(/);
     // The sensor path this replaced must be gone, not merely unused. The
     // remaining /ws/v1/sensors socket in api.js is the Bengle milk probe's and
     // is unrelated to the grinder.

@@ -6,9 +6,11 @@
 // `ws/v1/grinder/snapshot` channel and carries only `{state, setting, rpm}`:
 // `setting` is `bladeGap` as a string and `rpm` is `grindRpm`.
 //
-// `feedingRpm` has no slot in that contract, so the tile's Feed row is a
-// placeholder: it renders `--` and cannot be stepped. Feed RPM remains visible
-// on the plugin's own control page.
+// `feedingRpm` has no slot in that contract, so it arrives on the plugin's own
+// WebSocket (`ws/v1/plugins/bookoo-mt80.reaplugin/stream`), which carries the
+// full periodInfo, and is written back through the plugin's HTTP endpoint.
+// That keeps the vendor-specific path to exactly the one field the generic
+// contract cannot express.
 //
 // The MT80 is adjusted by hand: writing `bladeGap` records the grind-size value
 // on the device but does NOT move the burr. The UI therefore presents it as a
@@ -83,6 +85,20 @@ export function parseMt80Snapshot(frame) {
 }
 
 /**
+ * Map a frame from the plugin's own WebSocket — the full `periodInfo` — onto
+ * the tile keys. Only feed RPM is taken: `bladeGap` and `grindRpm` come from
+ * the grinder snapshot, so each row has one source and the two channels cannot
+ * disagree about a value.
+ * @returns {Record<string, number>}
+ */
+export function parseMt80Stream(frame) {
+    const out = {};
+    if (!frame || typeof frame !== 'object' || Array.isArray(frame)) return out;
+    if (Number.isInteger(frame.feedingRpm)) out.feedingRpm = frame.feedingRpm;
+    return out;
+}
+
+/**
  * The value one +/- tap away from `current`, snapped to the channel's step grid
  * and clamped to its published range. Returns null for an unknown mode, a
  * non-numeric `current`, or a zero direction.
@@ -101,10 +117,13 @@ export function nextMt80Value(mode, current, dir) {
 }
 
 /**
- * The grinder write for a stepped row: `{field, value}` naming the field of
- * `PUT /grinder/setting` (a string, as the contract requires) or
- * `PUT /grinder/rpm` (an integer). Returns null for a row the contract cannot
- * write — Feed has no field — or a value outside the published range, so
+ * The write for a stepped row, tagged with the transport it needs:
+ *   - `{kind: 'grinder', field, value}` names a field of `PUT /grinder/setting`
+ *     (a string, as the contract requires) or `PUT /grinder/rpm` (an integer);
+ *   - `{kind: 'plugin', commandId, params}` posts the plugin's own command
+ *     endpoint, which is the only way to reach a field the grinder contract
+ *     does not carry.
+ * Returns null for an unknown row or a value outside the published range, so
  * nothing is sent.
  */
 export function mt80SettingsPatch(mode, value) {
@@ -112,12 +131,17 @@ export function mt80SettingsPatch(mode, value) {
     if (mode === 'gap') {
         const { min, max } = MT80_RANGES.bladeGap;
         if (value < min || value > max) return null;
-        return { field: 'setting', value: String(value) };
+        return { kind: 'grinder', field: 'setting', value: String(value) };
     }
     if (mode === 'spd') {
         const { min, max } = MT80_RANGES.grindRpm;
         if (value < min || value > max) return null;
-        return { field: 'rpm', value };
+        return { kind: 'grinder', field: 'rpm', value };
+    }
+    if (mode === 'feed') {
+        const { min, max } = MT80_RANGES.feedingRpm;
+        if (value < min || value > max) return null;
+        return { kind: 'plugin', commandId: 'setSettings', params: { feedingRpm: value } };
     }
     return null;
 }
@@ -131,8 +155,9 @@ const MT80_ADAPTER = {
     ranges: MT80_RANGES,
     grinderFromList: mt80GrinderFromList,
     parseSnapshot: parseMt80Snapshot,
+    parseStream: parseMt80Stream,
     nextValue: nextMt80Value,
-    /** @returns {{field: 'setting'|'rpm', value: string|number}|null} */
+    /** @returns {{kind: 'grinder'|'plugin', ...}|null} */
     writeCommand(mode, value) {
         return mt80SettingsPatch(mode, value);
     },

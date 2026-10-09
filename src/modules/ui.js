@@ -1,6 +1,6 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
-import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, executeGrinderCommand, subscribeGrinderChanges, connectGrinderSocket, closeGrinderSocket, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
+import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, executeGrinderCommand, executePluginCommand, subscribeGrinderChanges, connectGrinderSocket, closeGrinderSocket, connectGrinderStreamSocket, closeGrinderStreamSocket, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
 import { openDB, getSetting, setSetting } from './idb.js';
 import { deriveSleepButtonAction, isWakePending } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel } from './machine.js';
@@ -371,7 +371,12 @@ function flushGrinderPending() {
     renderGrinderTile();
     const command = adapter.writeCommand(pending.mode, pending.value);
     if (!command) return;
-    executeGrinderCommand(command).catch((error) => {
+    // A row the grinder contract cannot carry goes through the plugin's own
+    // command endpoint instead.
+    const write = command.kind === 'plugin'
+        ? executePluginCommand(adapter.pluginId, command.commandId, command.params)
+        : executeGrinderCommand(command);
+    write.catch((error) => {
         logger.error('Grinder write failed:', error);
         showToast(`${getTranslation('Grinder')}: ${error.message}`, 4000, 'error');
     });
@@ -409,6 +414,13 @@ function onGrinderSnapshot(frame) {
     renderGrinderTile();
 }
 
+function onGrinderStream(frame) {
+    const parsed = grinderTile.adapter?.parseStream?.(frame);
+    if (!parsed || !Object.keys(parsed).length) return;
+    grinderTile.snapshot = { ...grinderTile.snapshot, ...parsed };
+    renderGrinderTile();
+}
+
 function onGrinderSensorChange(sensorId) {
     if (sensorId === grinderTile.sensorId) return;
     clearTimeout(grinderTile.timer);
@@ -420,8 +432,10 @@ function onGrinderSensorChange(sensorId) {
     if (!grinderTile.adapter) grinderTile.sensorId = null;
     if (grinderTile.sensorId) {
         connectGrinderSocket(grinderTile.sensorId, onGrinderSnapshot);
+        connectGrinderStreamSocket(grinderTile.adapter.pluginId, onGrinderStream);
     } else {
         closeGrinderSocket();
+        closeGrinderStreamSocket();
     }
     renderGrinderTile();
 }
