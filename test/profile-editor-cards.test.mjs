@@ -29,7 +29,7 @@ const TRANSLATIONS = {
 const getTranslation = (key) => TRANSLATIONS[key] ?? key;
 
 const M = new Function('getTranslation', `${body}
-    return { PUMP_CYCLE_STATES, pumpCycleIndex, pumpChipLabel, EXIT_CYCLE_STATES, exitCycleIndex, exitChipLabel, CARD_WIDTH, CARD_GAP, CARD_PITCH, isChevronDisabled };`)(getTranslation);
+    return { PUMP_CYCLE_STATES, pumpCycleIndex, pumpChipLabel, pumpChipParts, EXIT_CYCLE_STATES, exitCycleIndex, exitChipLabel, exitChipParts, CARD_WIDTH, CARD_GAP, CARD_PITCH, isChevronDisabled };`)(getTranslation);
 
 // ── Pump-mode cycle ─────────────────────────────────────────────────────────
 
@@ -105,6 +105,22 @@ test('off is reachable and leavable in the 5-state cycle', () => {
     assert.deepEqual(M.EXIT_CYCLE_STATES[i], { type: 'off', condition: null });
     i = (i + 1) % M.EXIT_CYCLE_STATES.length; // off wraps back to the start
     assert.deepEqual(M.EXIT_CYCLE_STATES[i], { type: 'pressure', condition: 'over' });
+});
+
+test('the CARDS chips break where the design breaks them, and the sentence still joins', () => {
+    // createCycleChip renders one part per line (Figma 2662-989 / 2662-1037);
+    // the collapsed rows and the SCRIPT tab take the joined string, so the two
+    // must stay in step -- hence parts being the single source for both.
+    assert.deepEqual(M.pumpChipParts({ pump: 'pressure', transition: 'fast' }), ['Pressure', 'Quickly']);
+    assert.deepEqual(M.exitChipParts({ type: 'pressure', condition: 'over' }), ['Pressure', 'is over']);
+    // Off is one word, so it is one line, not an empty second one.
+    assert.deepEqual(M.exitChipParts({ type: 'off' }), ['Off']);
+    for (const state of M.PUMP_CYCLE_STATES) {
+        assert.equal(M.pumpChipParts(state).join(' '), M.pumpChipLabel(state));
+    }
+    for (const state of M.EXIT_CYCLE_STATES) {
+        assert.equal(M.exitChipParts(state).join(' '), M.exitChipLabel(state));
+    }
 });
 
 test('exitChipLabel composes from existing translation keys, and Off is its own key', () => {

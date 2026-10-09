@@ -259,8 +259,13 @@ const STEPPER_BTN_CLASS = 'bg-[var(--stepper-btn-bg)] rounded-[15px] w-[72px] h-
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// Figma 4351-1658/1659 give the adjust button a disabled state per END, not
+// per button: MINUS DISABLED and PLUS DISABLED are the same treatment, applied
+// to whichever one is sitting on its limit. The glyph mutes in both themes;
+// light also drops the fill to Adjust.Inactive, dark keeps its own.
 function setStepperLimit(btn, atLimit) {
     btn.firstChild.style.backgroundColor = atLimit ? 'var(--stepper-icon-disabled)' : 'var(--stepper-icon)';
+    btn.style.backgroundColor = atLimit ? 'var(--stepper-btn-bg-disabled)' : '';
 }
 
 function deepCopy(obj) {
@@ -435,13 +440,13 @@ function createGridStepper({ value, lim, numpad, unit = null, offWhenZero = fals
     valueCol.className = 'flex flex-col items-center justify-center w-[72px] cursor-pointer select-none';
 
     const valueLine = document.createElement('span');
-    valueLine.className = 'font-bold text-[25.5px] text-center leading-tight';
+    valueLine.className = 'font-bold text-[25.5px] text-center leading-[30.75px]';
     valueCol.appendChild(valueLine);
 
     let unitLine = null;
     if (unit) {
         unitLine = document.createElement('span');
-        unitLine.className = 'font-semibold text-[19.5px] text-center leading-tight';
+        unitLine.className = 'font-semibold text-[19.5px] text-center leading-[23.25px]';
         unitLine.textContent = unit;
         valueCol.appendChild(unitLine);
     }
@@ -512,10 +517,26 @@ function createCycleChip({ states, index, labelFor, onChange }) {
     let i = index;
     const chip = document.createElement('button');
     chip.type = 'button';
-    chip.className = 'w-[114px] h-[72px] rounded-[15px] bg-[var(--button-primary-bg)] border-[1.5px] border-[var(--button-primary-bg)] text-[var(--button-primary-text)] font-bold text-[19.5px] leading-tight flex items-center justify-center text-center shrink-0 cursor-pointer select-none';
-    chip.style.whiteSpace = 'normal';
+    // Line box and inset are the design's, not Tailwind's defaults: Figma's
+    // chip text is 26/31 (19.5/23.25 here, so leading-tight's 1.25 ran two
+    // lines 2.25 too tall) in a box inset 3 (2.25) from the 152-wide frame,
+    // which is also the width a two-word label wraps against.
+    // Outline, not filled, in BOTH themes (Figma 2662-936): the chips bind
+    // Buttons/Primary.Background.Inactive as fill, Border/Primary as stroke and
+    // --action-label as label. Only those tokens' values differ between light
+    // and dark; the shape never does. The fill matches the card behind it in
+    // both themes -- the stroke is what draws the box, as designed.
+    chip.className = 'w-[114px] h-[72px] rounded-[15px] bg-[var(--profile-button-background-color)] border-[1.5px] border-[var(--border-primary)] text-[var(--action-label)] font-bold text-[19.5px] leading-[23.25px] px-[2.25px] flex items-center justify-center text-center shrink-0 cursor-pointer select-none';
+    // pre-line, not normal: honour the explicit breaks labelFor hands back,
+    // and still wrap a line too long for the box on its own.
+    chip.style.whiteSpace = 'pre-line';
 
-    function render() { chip.textContent = labelFor(states[i], i); }
+    // labelFor may return a string, or one string per line for the chips the
+    // design breaks itself; pre-line above is what honours the join.
+    function render() {
+        const label = labelFor(states[i], i);
+        chip.textContent = Array.isArray(label) ? label.join('\n') : label;
+    }
     render();
 
     chip.addEventListener('click', (e) => {
@@ -546,9 +567,18 @@ const PUMP_CYCLE_STATES = [
 function pumpCycleIndex(pump, transition) {
     return (pump === 'pressure' ? 2 : 0) + (transition === 'smooth' ? 1 : 0);
 }
+// Figma (2662-989, 2662-1037) breaks these chips between the noun and its
+// qualifier -- "Flow / Quickly", "Pressure / is over" -- rather than wherever
+// the 114px box runs out. Hence parts: createCycleChip renders one per line,
+// while the collapsed rows and the SCRIPT tab join them back into a sentence.
+function pumpChipParts(state) {
+    return [
+        getTranslation(state.pump === 'pressure' ? 'Pressure' : 'Flow'),
+        getTranslation(state.transition === 'smooth' ? 'Slowly' : 'Quickly'),
+    ];
+}
 function pumpChipLabel(state) {
-    return `${getTranslation(state.pump === 'pressure' ? 'Pressure' : 'Flow')} `
-         + getTranslation(state.transition === 'smooth' ? 'Slowly' : 'Quickly');
+    return pumpChipParts(state).join(' ');
 }
 
 // "Move on if" chip: Pressure is over → Pressure is under → Flow is over →
@@ -565,10 +595,15 @@ function exitCycleIndex(type, condition) {
     if (type !== 'pressure' && type !== 'flow') return 4; // off
     return (type === 'flow' ? 2 : 0) + (condition === 'under' ? 1 : 0);
 }
+function exitChipParts(state) {
+    if (state.type === 'off') return [getTranslation('Off')];
+    return [
+        getTranslation(state.type === 'flow' ? 'Flow' : 'Pressure'),
+        getTranslation(state.condition === 'under' ? 'is under' : 'is over'),
+    ];
+}
 function exitChipLabel(state) {
-    if (state.type === 'off') return getTranslation('Off');
-    return `${getTranslation(state.type === 'flow' ? 'Flow' : 'Pressure')} `
-         + getTranslation(state.condition === 'under' ? 'is under' : 'is over');
+    return exitChipParts(state).join(' ');
 }
 
 // Card paging: the row scrolls by one card "pitch" (450 card + 15 gap) per tap.
@@ -794,7 +829,7 @@ function collapsedRow(labelText, valueText, { accent = true } = {}) {
     const row = document.createElement('div');
     row.className = 'flex items-center justify-center gap-[7.5px] flex-wrap px-[16px] min-h-[72px]';
     const label = document.createElement('span');
-    label.className = `text-[24px] text-[var(--text-primary)]${accent ? ' font-bold' : ''}`;
+    label.className = `text-[24px] ${accent ? 'font-bold text-[var(--action-label)]' : 'text-[var(--text-primary)]'}`;
     label.textContent = labelText;
     const value = document.createElement('span');
     value.className = 'font-bold text-[25.5px] text-[var(--text-primary)]';
@@ -811,7 +846,7 @@ function collapsedRow(labelText, valueText, { accent = true } = {}) {
 // of left slot its row uses.
 function labelSlot(text) {
     const span = document.createElement('span');
-    span.className = 'w-[114px] shrink-0 text-[24px] font-normal text-[var(--text-primary)] text-center leading-tight';
+    span.className = 'w-[114px] shrink-0 text-[24px] font-normal text-[var(--text-primary)] text-center leading-[28.5px]';
     span.textContent = text;
     return span;
 }
@@ -851,15 +886,57 @@ function renderStepCards() {
     const R = { HEADER: 1, TEMP: 2, PUMP: 3, TAIL: 4 };
 
     // Maximum block geometry, duplicated here as arithmetic rather than
-    // measured: controlLine/collapsedRow are both min-h-[72px], mCell has a
-    // 15px gap and 15px top+bottom padding. The gutter needs the tallest
-    // card's Maximum height before anything is laid out, and counting lines
-    // is cheaper (and steadier) than a forced reflow mid-render.
-    const MAX_LINE_H = 72, MAX_LINE_GAP = 15, MAX_CELL_PAD = 30;
+    // measured: controlLine/collapsedRow are both min-h-[72px] and mCell adds
+    // a gap plus top+bottom padding. The gutter needs the tallest card's
+    // Maximum height before anything is laid out, and counting lines is
+    // cheaper (and steadier) than a forced reflow mid-render.
+    //
+    // Figma only ever draws two Maximum lines. A card showing all three -- any
+    // open card, or a closed one with all three limits set -- totals 939 at
+    // the design's spacing against the 853.5 the content area has. Rather than
+    // taking all 85.5 out of the two rows that happen to be adjacent to it,
+    // the whole row drops to a tighter ROW_PAD: every row keeps its content at
+    // full size (72 lines, 72 +/- targets, a 67.5 footer button) and only the
+    // breathing room around it gives, uniformly, so no row reads as squeezed
+    // next to its neighbours. The step-name header keeps its Figma 97.5.
+    //
+    // Figma only ever draws two Maximum lines. A card showing all three -- any
+    // open card, or a closed one with all three limits set -- needs 87 more
+    // than a two-line one, which the content area does not have.
+    //
+    // Only the last three rows can give it. The step-name, Temp and Pump rows
+    // are shared GRID TRACKS: every card's Temp cell is the same track, which
+    // is what lines the gutter's labels up across the row, and a track is
+    // sized by its tallest cell -- so one card cannot shrink them without
+    // shrinking all of them. Maximum, Move on if and the footer are stacked
+    // inside each card's own TAIL cell, so they are the card's to spend.
+    //
+    // Spread evenly over those three, 87 is 29 off each, and the arithmetic
+    // lands on a three-line tail exactly as tall as a two-line one -- so
+    // nothing moves at all when a card opens:
+    //
+    //   2 lines, 45 pad:  205.5 + 118.5 + 114 = 438
+    //   3 lines, 16 pad:  263.5 +  89.5 +  85 = 438
+    //
+    // Each figure includes the row's own 1.5px top border, which border-box
+    // folds into its height -- easy to forget, and the reason an earlier pass
+    // at this came out 2px over on a CLOSED row.
+    const MAX_LINE_H = 72, MAX_LINE_GAP = 15, HAIRLINE_H = 1.5;
+    const TAIL_PAD = 45, TAIL_PAD_TIGHT = 16;
     const maxLinesFor = (step, isExpanded) => (isExpanded
         ? 3
         : Math.max(1, ['weight', 'seconds', 'volume'].filter((k) => (step[k] || 0) > 0).length));
-    const maxBlockHeight = (lines) => lines * MAX_LINE_H + (lines - 1) * MAX_LINE_GAP + MAX_CELL_PAD;
+    // Per CARD, not per row: a three-line card tightens, its neighbours do not.
+    const isTight = (lines) => lines >= 3;
+    const tailPad = (lines) => (isTight(lines) ? TAIL_PAD_TIGHT : TAIL_PAD);
+    // Tailwind needs whole class names, so both halves are spelled out.
+    const padY = (tight) => (tight ? 'py-[8px]' : 'py-[22.5px]');
+    const rowMinH = (tight) => (tight ? 'min-h-[88px]' : 'min-h-[117px]');
+    const maxBlockHeight = (lines) => lines * MAX_LINE_H + (lines - 1) * MAX_LINE_GAP
+        + tailPad(lines) + HAIRLINE_H;
+
+    // Attach once: the container is never recreated, only its contents are.
+    initScrollThumb('editor-steps-container', 'editor-steps-container-thumb');
 
     container.style.display = 'grid';
     // repeat() rejects a count of 0 and CSS drops the whole declaration, so a
@@ -880,7 +957,17 @@ function renderStepCards() {
     // TAIL is content-sized (auto) and each card hugs its own content inside
     // it, so the track only ever grows to the tallest card and the slack goes
     // to the proportional rows.
-    container.style.gridTemplateRows = `minmax(45px, auto) 157fr 422fr auto`;
+    // Figma 2662-936's own card rows (97.5 / 117 / 204 / 433.5 here) as
+    // proportions rather than fixed px: on the design's 1200-high canvas each
+    // track lands on its exact value, and on a viewport whose aspect differs
+    // the three top rows give up a few px each instead of the row overflowing
+    // into a vertical scrollbar. The floors are each row's own content height,
+    // so they stop shrinking before anything clips; an expanded card whose
+    // Maximum block runs to three lines genuinely does not fit and scrolls.
+    // The three shared tracks keep the design's values whatever any card is
+    // doing: 97.5 for the step name, then Figma's 117:204 for Temp and Pump,
+    // with floors loose enough to absorb the hairlines and sub-pixel rounding.
+    container.style.gridTemplateRows = `97.5px minmax(99px, 117fr) minmax(186px, 204fr) auto`;
     container.style.columnGap = `${CARD_GAP}px`;
     // Cards stop short of the content area's bottom edge: the design's card row
     // is 1138 tall in a 1600 frame starting at y=420, leaving a 42px skirt
@@ -956,10 +1043,13 @@ function renderStepCards() {
     // sit higher than their label — unavoidable once each card hugs its own
     // content, and the reason the label tracks the tallest card rather than
     // the first one.
-    const tallestMax = Math.max(
-        maxBlockHeight(1),
-        ...steps.map((s, i) => maxBlockHeight(maxLinesFor(s, editorState.editingStep === i))),
-    );
+    let tallestMax = maxBlockHeight(1);
+    let tallestMaxPad = TAIL_PAD / 2;
+    steps.forEach((s, i) => {
+        const lines = maxLinesFor(s, editorState.editingStep === i);
+        const h = maxBlockHeight(lines);
+        if (h > tallestMax) { tallestMax = h; tallestMaxPad = tailPad(lines) / 2; }
+    });
     const tailLabel = mkLabel(R.TAIL, '');
     tailLabel.className = 'flex flex-col items-end bg-[var(--bg-tertiary)] px-[22.5px]';
 
@@ -977,11 +1067,13 @@ function renderStepCards() {
     }
 
     // Maximum's block is top-aligned, so its first 72px line is centred
-    // 1.5 + 15 + 36 = 52.5px from the block top; a 30px label starts 37.5px down.
-    mkTailLabel(getTranslation('Maximum'), tallestMax, 37.5).id = 'editor-row-max';
-    // Move on if is a single centred 72px line in a 15px-padded block, so its
-    // label sits (102 - 30) / 2 = 36px down, less half the 30px label.
-    mkTailLabel(getTranslation('Move on if'), 102, 36).id = 'editor-row-exit';
+    // 1.5 (hairline) + padding + 36 from the block top; a 30px label starts
+    // half its own height above that. The padding is the tallest card's, which
+    // is the compact one whenever that card is the open one.
+    mkTailLabel(getTranslation('Maximum'), tallestMax, tallestMaxPad + 22.5).id = 'editor-row-max';
+    // Move on if is a single centred 72px line, so its 30px label sits half
+    // the difference down whatever the row's padding makes that block.
+    mkTailLabel(getTranslation('Move on if'), 72 + TAIL_PAD, (72 + TAIL_PAD - 30) / 2).id = 'editor-row-exit';
 
     // ── Card columns ────────────────────────────────────────────────────────
     // Each column is one white "card": rounded-[15px], 1.5px border, drawn as
@@ -989,8 +1081,18 @@ function renderStepCards() {
     // as one continuous card. The row's own border-top is the hairline between
     // fields — it bleeds the full 450px card width, past the 390px content col.
     const CARD_BG = 'bg-[var(--profile-button-background-color)]';
-    const SIDE = 'border-l-[1.5px] border-r-[1.5px] border-[var(--border-graph-grid)]';
+    // No side strokes: Figma 2662-936 separates cards by their fill against the
+    // page ground, and draws rules only BETWEEN a card's own rows.
+    const SIDE = '';
     const HAIRLINE = 'border-t-[1.5px] border-[var(--border-graph-grid)]';
+
+    // Figma 2662-1053/1057 draw the footer trash and plus as bare glyphs: the
+    // 90 (67.5 here) frame is a tap target whose Rectangle 305 paints nothing,
+    // so there is no fill and no stroke -- only --action-label, which is
+    // already the Action blue in light and Text/Primary.Active in dark (the
+    // style guide ships no dark blue text; #415996 on #292C38 is ~2:1).
+    const FOOTER_BTN_CLASS = 'w-[67.5px] h-[67.5px] rounded-[15px] flex items-center justify-center cursor-pointer';
+
 
     steps.forEach((step, index) => {
         const col = index + 2;
@@ -1014,7 +1116,7 @@ function renderStepCards() {
         // justify-between row, 390 here) with the number + name between them;
         // collapsed has no chevrons, so the label just centres.
         const hCell = cardAttr(mkCell(R.HEADER, col,
-            `flex items-center ${expanded ? 'justify-between' : 'justify-center gap-[8px]'} ${CARD_BG} border-t-[1.5px] border-[var(--border-graph-grid)] ${SIDE} rounded-t-[15px] px-[30px] pt-[30px] pb-[15px] overflow-hidden ${expanded ? '' : 'cursor-pointer'}`));
+            `flex items-center ${expanded ? 'justify-between' : 'justify-center gap-[8px]'} ${CARD_BG} border-t-[1.5px] border-[var(--border-graph-grid)] ${SIDE} rounded-t-[15px] px-[30px] pt-[30px] pb-[22.5px] overflow-hidden ${expanded ? '' : 'cursor-pointer'}`));
         onExpandClick(hCell);
 
         if (expanded) {
@@ -1031,7 +1133,7 @@ function renderStepCards() {
             });
 
             const nameWrapper = document.createElement('div');
-            nameWrapper.className = 'flex items-center gap-[6px] min-w-0 max-w-full';
+            nameWrapper.className = 'flex flex-1 justify-center items-center gap-[6px] min-w-0';
             const numSpan = document.createElement('span');
             numSpan.className = 'text-[24px] font-semibold text-[var(--text-primary)] shrink-0 select-none';
             numSpan.textContent = `${index + 1}.`;
@@ -1039,6 +1141,11 @@ function renderStepCards() {
             nameInput.type = 'text';
             nameInput.value = step.name || '';
             nameInput.className = 'text-[24px] font-bold text-[var(--text-primary)] bg-transparent outline-none min-w-0 max-w-full';
+            // field-sizing hugs the real text width, so the centred "N. Name"
+            // group lands on the card's midline (Figma 2662-936 centres it).
+            // `size` below stays as the fallback for engines without it, where
+            // the box rounds up to whole characters and leans the text left.
+            nameInput.style.fieldSizing = 'content';
             nameInput.addEventListener('click', (e) => e.stopPropagation());
             const syncSize = () => { nameInput.size = Math.max(4, nameInput.value.length + 1); };
             syncSize();
@@ -1085,7 +1192,7 @@ function renderStepCards() {
         // ── Temp row ────────────────────────────────────────────────────────
         // One horizontal line: the sensor chip on the left, then the ± target.
         const tCell = cardAttr(mkCell(R.TEMP, col,
-            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[22.5px] ${expanded ? '' : 'cursor-pointer'}`));
         onExpandClick(tCell);
 
         if (expanded) {
@@ -1119,7 +1226,7 @@ function renderStepCards() {
 
         // ── Pump row ────────────────────────────────────────────────────────
         const pCell = cardAttr(mkCell(R.PUMP, col,
-            `flex flex-col items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
+            `flex flex-col items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[22.5px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`));
         onExpandClick(pCell);
 
         if (expanded) {
@@ -1148,7 +1255,7 @@ function renderStepCards() {
             const modeChip = createCycleChip({
                 states: PUMP_CYCLE_STATES,
                 index: pumpCycleIndex(step.pump === 'pressure' ? 'pressure' : 'flow', step.transition || 'fast'),
-                labelFor: pumpChipLabel,
+                labelFor: pumpChipParts,
                 onChange: (state) => {
                     const s = editorState.profile.steps[index];
                     if (state.pump === 'pressure' && s.pump !== 'pressure') {
@@ -1218,14 +1325,22 @@ function renderStepCards() {
         // Three horizontal lines, stacked: Weight, Time (seconds), Volume.
         // All three are live on the machine — whichever trips first ends the
         // step — so all three stay editable from here, not just weight/time.
-        // One cell for the rest of the card, stacked internally and hugging
-        // its own content so a card with fewer Maximum lines ends higher
-        // than its neighbours instead of being padded out to match them.
+        // One cell for the rest of the card, stacked internally and hugging its
+        // own content: a card with fewer Maximum lines ends higher than its
+        // neighbours rather than being padded out to match them. Stretching it
+        // to the track instead would line every card's footer up, but it also
+        // grows every CLOSED card the moment one is opened, which reads as all
+        // of them expanding at once.
         const tailCell = cardAttr(mkCell(R.TAIL, col, 'flex flex-col min-w-0'));
         tailCell.style.alignSelf = 'start';
 
+        // Three Maximum lines need 87 more than two; this card spends it out
+        // of its own three tail rows, evenly, so its neighbours never move.
+        const tight = isTight(maxLinesFor(step, expanded));
+
+
         const mCell = cardAttr(mkCell(R.TAIL, col,
-            `flex flex-col items-center justify-start ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] gap-[15px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
+            `flex flex-col items-center justify-start ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] ${padY(tight)} gap-[15px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
         onExpandClick(mCell);
 
         const MAX_FIELDS = [
@@ -1272,7 +1387,7 @@ function renderStepCards() {
         // One horizontal line: the exit-condition chip, then the ± value —
         // the value is simply absent while the chip reads Off.
         const eCell = cardAttr(mkCell(R.TAIL, col,
-            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] py-[15px] min-h-[102px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
+            `flex items-center justify-center ${CARD_BG} ${SIDE} ${HAIRLINE} px-[30px] ${padY(tight)} ${rowMinH(tight)} ${expanded ? '' : 'cursor-pointer'}`, tailCell));
         onExpandClick(eCell);
 
         const exitDef = readExitDef(step);
@@ -1292,7 +1407,7 @@ function renderStepCards() {
             const exitChip = createCycleChip({
                 states: EXIT_CYCLE_STATES,
                 index: exitCycleIndex(exitDef.type, exitDef.condition),
-                labelFor: exitChipLabel,
+                labelFor: exitChipParts,
                 onChange: (state) => {
                     // Leaving a real type — remember its value before it's
                     // dropped (Off) or overwritten (switching pressure<->flow),
@@ -1349,14 +1464,14 @@ function renderStepCards() {
 
         // ── Footer row — trash / plus, on every card (collapsed or expanded) ──
         const fCell = cardAttr(mkCell(R.TAIL, col,
-            `flex items-center justify-between ${CARD_BG} ${SIDE} border-b-[1.5px] ${HAIRLINE} rounded-b-[15px] px-[30px] pt-[15px] pb-[22.5px] ${expanded ? '' : 'cursor-pointer'}`, tailCell));
+            `flex items-center justify-between ${CARD_BG} ${SIDE} ${HAIRLINE} rounded-b-[15px] px-[30px] ${padY(tight)} ${expanded ? '' : 'cursor-pointer'}`, tailCell));
         onExpandClick(fCell);
 
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'w-[67.5px] h-[67.5px] rounded-[15px] bg-[var(--footer-btn-bg)] border-[1.5px] border-[var(--footer-btn-border)] flex items-center justify-center cursor-pointer';
+        deleteBtn.className = FOOTER_BTN_CLASS;
         deleteBtn.setAttribute('aria-label', 'Delete step');
-        deleteBtn.appendChild(maskIcon(ICON_TRASH, 37.5, 'var(--footer-btn-icon)'));
+        deleteBtn.appendChild(maskIcon(ICON_TRASH, 37.5, 'var(--action-label)'));
         deleteBtn.addEventListener('click', async (e) => {
             // stopPropagation so tapping trash on a collapsed card deletes the
             // step instead of expanding the card first.
@@ -1370,9 +1485,9 @@ function renderStepCards() {
 
         const insertBtn = document.createElement('button');
         insertBtn.type = 'button';
-        insertBtn.className = 'w-[67.5px] h-[67.5px] rounded-[15px] bg-[var(--footer-btn-bg)] border-[1.5px] border-[var(--footer-btn-border)] flex items-center justify-center cursor-pointer';
+        insertBtn.className = FOOTER_BTN_CLASS;
         insertBtn.setAttribute('aria-label', 'Insert step after');
-        insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--footer-btn-icon)'));
+        insertBtn.appendChild(maskIcon(ICON_PLUS, 37.5, 'var(--action-label)'));
         let insertPending = false;
         insertBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1418,6 +1533,11 @@ function renderStepCards() {
     // only the disabled states need recomputing here, since the step count and
     // the container's scrollWidth just changed.
     updatePagingButtons();
+
+    // Row heights just changed (expanding a card can push its Maximum block to
+    // three lines, which is the only case this row overflows vertically), so
+    // the pill needs a fresh read of the now-final scrollHeight.
+    updateScrollThumb('editor-steps-container', 'editor-steps-container-thumb');
 
     // A full re-render here always follows an execution-field edit — insert,
     // delete, reorder, or a pump-mode/exit-type change that rebuilds the tab —

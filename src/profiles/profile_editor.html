@@ -1,8 +1,8 @@
 <div id="scaled-content">
-<div class="bg-base-200 overflow-hidden flex-grow flex flex-col w-[1920px] h-full" role="main" aria-label="Profile Editor">
+<div class="bg-[var(--bg-tertiary)] overflow-hidden flex-grow flex flex-col w-[1920px] h-full" role="main" aria-label="Profile Editor">
 
     <!-- Header -->
-    <div id="subpage-header" class="flex justify-between items-center p-6 bg-[var(--bg-tertiary)] h-[150px]">
+    <div id="subpage-header" class="flex justify-between items-center p-6 bg-[var(--bg-tertiary)] border-b-[1.5px] border-[var(--border-graph-grid)] h-[150px]">
         <div class="flex items-center gap-4 flex-1">
             <span id="editor-title-display" class="text-[30px] font-semibold text-[var(--text-primary)] cursor-pointer select-none">Untitled Profile</span>
             <input id="editor-title-input" type="text" class="text-[30px] font-semibold text-[var(--text-primary)] bg-transparent border-b-2 border-[var(--mimoja-blue)] outline-none hidden w-[400px]" />
@@ -34,10 +34,15 @@
     <div class="flex-1 overflow-hidden bg-[var(--bg-tertiary)]">
 
         <!-- Tab 0: Steps -->
-        <div id="editor-tab-panel-0" class="editor-tab-panel h-full">
+        <div id="editor-tab-panel-0" class="editor-tab-panel h-full relative">
             <div id="editor-steps-container" class="overflow-x-auto overflow-y-auto h-full">
                 <!-- Step cards rendered by JS -->
             </div>
+            <!-- Vertical overflow only (an expanded card with a three-line
+                 Maximum). Same hand-drawn pill as #script-steps-col-thumb --
+                 see main.css's #editor-steps-container comment -- so the two
+                 tabs scroll alike; the horizontal bar below stays native. -->
+            <div id="editor-steps-container-thumb" class="absolute right-[3px] w-[39px] rounded-full bg-[var(--secondary-button-bg)] hidden" style="touch-action: none;" aria-hidden="true"></div>
         </div>
 
         <!-- Tab 1: Settings (Figma node 2662-1507; 2560px canvas at 0.75) -->

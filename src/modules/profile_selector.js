@@ -59,13 +59,21 @@ function suppressBrowserActions(root) {
     root.addEventListener('dragstart', block);
 }
 
-function getEyeIconSVG(strokeColor) {
-    return `<svg aria-hidden="true" class="w-[49.5px] h-[49.5px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+function getEyeIconSVG(strokeColor, sizeClass = 'w-[49.5px] h-[49.5px]') {
+    return `<svg aria-hidden="true" class="${sizeClass}" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+// lucide:search, the same glyph profile_selector.html draws in #search_profile
+// -- the button's innerHTML is rebuilt on init and on reset, and both used to
+// hand-roll it at w-[36px], leaving the search icon visibly smaller than the
+// plus/eye/trash beside it (Figma 2662-1343 draws all four at 66 in a 110 box).
+function getSearchIconSVG() {
+    return `<svg aria-hidden="true" class="w-[49.5px] h-[49.5px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="currentColor" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 // Quick-hide affordance on the selected row (Figma: inline eye-off icon).
 function getEyeOffIconSVG(strokeColor, sizeClass = 'w-[30px] h-[30px]') {
-    return `<svg aria-hidden="true" class="${sizeClass}" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L57 57" stroke="${strokeColor}" stroke-width="4" stroke-linecap="round"/></svg>`;
+    return `<svg aria-hidden="true" class="${sizeClass}" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="${strokeColor}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="${strokeColor}" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 9L57 57" stroke="${strokeColor}" stroke-width="5.5" stroke-linecap="round"/></svg>`;
 }
 
 // Shared by the row context menu's "Hide" item and the selected-row inline
@@ -722,10 +730,10 @@ function renderProfiles() {
             if (isHidden) {
                 div.classList.add('text-[var(--low-contrast-white)]');
                 const unhideButton = document.createElement('button');
-                unhideButton.className = 'p-1 hover:bg-[var(--button-grey)] rounded-full';
+                unhideButton.className = 'p-1 hover:bg-[var(--button-grey)] rounded-full text-[var(--button-primary-bg)]';
                 unhideButton.title = 'Show this profile';
                 unhideButton.setAttribute('aria-label', `Show profile ${displayTitle}`);
-                unhideButton.innerHTML = `<svg class="w-6 h-6" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                unhideButton.innerHTML = getEyeIconSVG('currentColor', 'w-6 h-6');
 
                 unhideButton.addEventListener('click', async (e) => {
                     e.stopPropagation();
@@ -1130,7 +1138,7 @@ function initViewButton() {
     // Icon shows what the list is doing: crossed eye while hidden profiles are
     // hidden, open eye (on the active blue) while they are listed.
     const BIG_ICON = 'w-[49.5px] h-[49.5px]';
-    button.innerHTML = getEyeOffIconSVG('#385a92', BIG_ICON);
+    button.innerHTML = getEyeOffIconSVG('currentColor', BIG_ICON);
     button.setAttribute('aria-label', 'Show hidden profiles');
     button.title = 'Show hidden profiles';
     button.classList.remove("bg-[var(--mimoja-blue)]");
@@ -1144,6 +1152,9 @@ function initViewButton() {
         if (isShowingHidden) {
             // State: SHOWING hidden profiles -> blue background, white icon
             button.innerHTML = getEyeIconSVG('currentColor');
+            // On the blue fill the glyph switches to the on-primary colour;
+            // clearing it below drops back to the button's own token class.
+            button.style.color = 'var(--button-primary-text)';
             button.setAttribute('aria-label', 'Hide hidden profiles');
             button.title = 'Hide hidden profiles';
             // Use direct style manipulation instead of Tailwind arbitrary values
@@ -1155,10 +1166,11 @@ function initViewButton() {
             console.log('initViewButton: Now showing hidden profiles');
         } else {
             // State: HIDING hidden profiles -> default background, blue icon
-            button.innerHTML = getEyeOffIconSVG('#385a92', BIG_ICON);
+            button.innerHTML = getEyeOffIconSVG('currentColor', BIG_ICON);
             button.setAttribute('aria-label', 'Show hidden profiles');
             button.title = 'Show hidden profiles';
             // Reset to default background
+            button.style.color = '';
             button.style.backgroundColor = '';
             button.classList.add("bg-[var(--button-grey)]");
             if (page_title) {
@@ -1225,7 +1237,7 @@ function initSearchButton() {
     const button = newSearchButton;
 
     // Set initial state on load (default bg, blue icon)
-    button.innerHTML = `<svg class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
+    button.innerHTML = getSearchIconSVG();
     button.classList.remove("bg-[var(--mimoja-blue)]");
     button.classList.add("bg-[var(--button-grey)]"); // Use CSS variable for background
     console.log('initSearchButton: Initial state set');
@@ -1238,7 +1250,7 @@ function initSearchButton() {
 
         if (isSearching) {
             // Enter search mode
-            button.innerHTML = `<svg aria-hidden="true" class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
+            button.innerHTML = `<svg aria-hidden="true" class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#FFFFFF" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
             // Use direct style manipulation instead of Tailwind arbitrary values
             button.style.backgroundColor = 'var(--button-primary-bg)';
             button.classList.remove("bg-[var(--button-grey)]");
@@ -1347,7 +1359,7 @@ function exitSearchMode(originalTitle = null) {
 
     if (searchButton) {
         // Reset the search button to its original state
-        searchButton.innerHTML = `<svg class="w-[36px] h-[36px]" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M30.25 52.25C42.4003 52.25 52.25 42.4003 52.25 30.25C52.25 18.0997 42.4003 8.25 30.25 8.25C18.0997 8.25 8.25 18.0997 8.25 30.25C8.25 42.4003 18.0997 52.25 30.25 52.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M57.7498 57.7508L45.9248 45.9258" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`; // Blue icon
+        searchButton.innerHTML = getSearchIconSVG();
         // Reset to default background
         searchButton.style.backgroundColor = '';
         searchButton.classList.add("bg-[var(--button-grey)]");
@@ -1460,10 +1472,10 @@ function filterProfiles(searchTerm) {
         if (isHidden) {
             div.classList.add('text-[var(--low-contrast-white)]');
             const unhideButton = document.createElement('button');
-            unhideButton.className = 'p-1 hover:bg-[var(--button-grey)] rounded-full';
+            unhideButton.className = 'p-1 hover:bg-[var(--button-grey)] rounded-full text-[var(--button-primary-bg)]';
             unhideButton.title = 'Show this profile';
             unhideButton.setAttribute('aria-label', `Show profile ${displayTitle}`);
-            unhideButton.innerHTML = `<svg class="w-6 h-6" aria-hidden="true" viewBox="0 0 66 66" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5.5 33C5.5 33 13.75 13.75 33 13.75C52.25 13.75 60.5 33 60.5 33C60.5 33 52.25 52.25 33 52.25C13.75 52.25 5.5 33 5.5 33Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><path d="M33 41.25C37.5563 41.25 41.25 37.5563 41.25 33C41.25 28.4437 37.5563 24.75 33 24.75C28.4437 24.75 24.75 28.4437 24.75 33C24.75 37.5563 28.4437 41.25 33 41.25Z" stroke="#385A92" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+            unhideButton.innerHTML = getEyeIconSVG('currentColor', 'w-6 h-6');
 
             unhideButton.addEventListener('click', async (e) => {
                 e.stopPropagation();
