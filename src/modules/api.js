@@ -9,7 +9,7 @@ import { buildCalibrateBody, classifyCalState } from './loadcell-cal.js';
 import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-policy.js';
 import { splitNdjson, advanceFirmwareState, initialFirmwareState } from './firmware-progress.js';
 import { parseSse } from './derek-stream.js';
-import { findGrinderSensorId } from './grinder-control.js';
+import { findGrinderId } from './grinder-control.js';
 
 export let reaHostname = localStorage.getItem('reaHostname') || window.location.hostname;
 export const REA_PORT = 8080;
@@ -618,62 +618,118 @@ export function closeSensorSnapshotWebSocket() {
     sensorSnapshotWebSocketId = null;
 }
 
-// ── Grinder sensor (Bookoo MT80 via the decaid-bookoo-mt80 plugin) ───────────
-// The plugin registers the grinder as a *sensor*, so the generic /grinder API
-// never sees it. It gets its own socket slot so it cannot evict the milk-probe
-// socket above. Frames are flat channel maps (`{ bladeGap, feedingRpm, ... }`);
-// vendor parsing lives in grinder-control.js. Sensor ids contain `:` and `.`
-// and are decoded server-side, so every path use goes through
-// encodeURIComponent.
-const grinderSensorSocketSlot = createSocketSlot('grinder sensor');
-let grinderSensorSocket = null;
-let grinderSensorSocketId = null;
+// ── Grinder (Bookoo MT80 via the decaid-bookoo-mt80 plugin) ─────────────────
+// The plugin registers a grinder driver, so the generic /grinder channel
+// carries it. It gets its own socket slot so it cannot evict the milk-probe
+// socket above. Frames are `{ state, setting, rpm }`; vendor parsing lives in
+// grinder-control.js. The channel carries no device id, so the id is only used
+// to notice when the underlying device changed.
+const grinderSocketSlot = createSocketSlot('grinder');
+let grinderSocket = null;
+let grinderSocketId = null;
 
-export function connectGrinderSensorSocket(sensorId, onData) {
-    if (grinderSensorSocket && grinderSensorSocketId === sensorId) return;
-    grinderSensorSocketId = sensorId;
-    grinderSensorSocket = grinderSensorSocketSlot.replace(() => new ReconnectingWebSocket(`${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/sensors/${encodeURIComponent(sensorId)}/snapshot`, [], {
+export function connectGrinderSocket(grinderId, onData) {
+    if (grinderSocket && grinderSocketId === grinderId) return;
+    grinderSocketId = grinderId;
+    grinderSocket = grinderSocketSlot.replace(() => new ReconnectingWebSocket(`${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/grinder/snapshot`, [], {
         reconnectInterval: 3000,
     }));
-    grinderSensorSocket.onmessage = (event) => {
+    grinderSocket.onmessage = (event) => {
         try {
             onData(JSON.parse(event.data));
         } catch (error) {
-            logger.error('Error parsing grinder sensor WebSocket message:', error);
+            logger.error('Error parsing grinder WebSocket message:', error);
         }
     };
-    grinderSensorSocket.onerror = (error) => {
-        logger.error('Grinder sensor WebSocket error:', error);
+    grinderSocket.onerror = (error) => {
+        logger.error('Grinder WebSocket error:', error);
     };
 }
 
-export function closeGrinderSensorSocket() {
-    const socket = grinderSensorSocketSlot.current();
+export function closeGrinderSocket() {
+    const socket = grinderSocketSlot.current();
     if (socket) {
         silenceSocket(socket);
-        try { socket.close(); } catch (error) { logger.warn('Failed to close grinder sensor WebSocket cleanly:', error); }
+        try { socket.close(); } catch (error) { logger.warn('Failed to close grinder WebSocket cleanly:', error); }
     }
-    grinderSensorSocket = null;
-    grinderSensorSocketId = null;
+    grinderSocket = null;
+    grinderSocketId = null;
+}
+
+// ── Grinder plugin stream ───────────────────────────────────────────────────
+// The grinder snapshot carries only {state, setting, rpm}. A driver's other
+// fields leave through the plugin's own WebSocket, declared as a `websocket`
+// api endpoint and fed by `host.emit` — no polling. It gets its own socket
+// slot for the same reason as the grinder socket above.
+const grinderStreamSocketSlot = createSocketSlot('grinder stream');
+let grinderStreamSocket = null;
+let grinderStreamPluginId = null;
+
+export function connectGrinderStreamSocket(pluginId, onData) {
+    if (grinderStreamSocket && grinderStreamPluginId === pluginId) return;
+    grinderStreamPluginId = pluginId;
+    grinderStreamSocket = grinderStreamSocketSlot.replace(() => new ReconnectingWebSocket(`${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/plugins/${encodeURIComponent(pluginId)}/stream`, [], {
+        reconnectInterval: 3000,
+    }));
+    grinderStreamSocket.onmessage = (event) => {
+        try {
+            onData(JSON.parse(event.data));
+        } catch (error) {
+            logger.error('Error parsing grinder plugin stream message:', error);
+        }
+    };
+    grinderStreamSocket.onerror = (error) => {
+        logger.error('Grinder plugin stream WebSocket error:', error);
+    };
+}
+
+export function closeGrinderStreamSocket() {
+    const socket = grinderStreamSocketSlot.current();
+    if (socket) {
+        silenceSocket(socket);
+        try { socket.close(); } catch (error) { logger.warn('Failed to close grinder plugin stream WebSocket cleanly:', error); }
+    }
+    grinderStreamSocket = null;
+    grinderStreamPluginId = null;
 }
 
 /**
- * POST /sensors/:id/execute. Resolves with the response's `result`; rejects with
- * the server's message (Decaid answers `{ status: 'error', message }`, the
- * plugin may answer `{ error }`) so callers can toast it.
+ * POST /plugins/:id/:endpoint with `{commandId, params}`. The plugin's own
+ * command surface, for fields the grinder contract does not carry. Resolves
+ * with the response's `result`; rejects with the plugin's message so callers
+ * can toast it.
  */
-export async function executeSensorCommand(sensorId, commandId, params = {}) {
-    const response = await fetch(`${API_BASE_URL}/sensors/${encodeURIComponent(sensorId)}/execute`, {
+export async function executePluginCommand(pluginId, commandId, params = {}, endpoint = 'ui') {
+    const response = await fetch(`${API_BASE_URL}/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(endpoint)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ commandId, params }),
     });
     let body = null;
     try { body = await response.json(); } catch (_) { /* non-JSON error body */ }
-    if (!response.ok || body?.error || body?.status === 'error') {
-        throw new Error(body?.error || body?.message || `Sensor command ${commandId} failed (status ${response.status})`);
+    if (!response.ok || body?.ok === false || body?.error) {
+        throw new Error(body?.error || body?.message || `Plugin command ${commandId} failed (status ${response.status})`);
     }
     return body?.result ?? body;
+}
+
+/**
+ * PUT /grinder/setting or /grinder/rpm, per the `{field, value}` the grinder
+ * adapter produces. Resolves on acceptance; rejects with the server's message
+ * (Decaid answers `{ error }`) so callers can toast it.
+ */
+export async function executeGrinderCommand({ field, value }) {
+    const response = await fetch(`${API_BASE_URL}/grinder/${field}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(field === 'rpm' ? { rpm: value } : { setting: value }),
+    });
+    let body = null;
+    try { body = await response.json(); } catch (_) { /* non-JSON error body */ }
+    if (!response.ok || body?.error) {
+        throw new Error(body?.error || body?.message || `Grinder ${field} command failed (status ${response.status})`);
+    }
+    return body;
 }
 
 export function connectShotSettingsWebSocket(onData) {
@@ -823,14 +879,14 @@ export function subscribeMachineConnectionChanges(listener) {
  * already delivered a frame, and with null when the Decaid link drops. Returns
  * the unsubscribe function.
  */
-export function subscribeGrinderSensorChanges(listener) {
+export function subscribeGrinderChanges(listener) {
     let previous;
     const emit = (id) => {
         if (id === previous) return;
         previous = id;
         listener(id);
     };
-    const onData = data => emit(findGrinderSensorId(data));
+    const onData = data => emit(findGrinderId(data));
     const onDisconnect = () => emit(null);
     deviceDataListeners.add(onData);
     deviceDisconnectListeners.add(onDisconnect);

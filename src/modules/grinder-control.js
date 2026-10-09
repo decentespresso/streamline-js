@@ -1,10 +1,16 @@
 // Grinder control policy: DOM-free so `node --test test/` can import it.
 //
 // The Bookoo MT80 reaches Decaid through the decaid-bookoo-mt80 plugin, which
-// registers it as a *sensor* (device id `plugin:bookoo-mt80.reaplugin:mt80:<id>`),
-// not through the generic /grinder API. Everything vendor-specific lives in the
-// adapter below, keyed on that id prefix, so the UI can later be pointed at a
-// generic grinder API by adding another adapter instead of editing callers.
+// registers a **grinder** driver (device id `plugin:bookoo-mt80.reaplugin:mt80:<id>`,
+// `type: "grinder"`). The snapshot arrives on the generic
+// `ws/v1/grinder/snapshot` channel and carries only `{state, setting, rpm}`:
+// `setting` is `bladeGap` as a string and `rpm` is `grindRpm`.
+//
+// `feedingRpm` has no slot in that contract, so it arrives on the plugin's own
+// WebSocket (`ws/v1/plugins/bookoo-mt80.reaplugin/stream`), which carries the
+// full periodInfo, and is written back through the plugin's HTTP endpoint.
+// That keeps the vendor-specific path to exactly the one field the generic
+// contract cannot express.
 //
 // The MT80 is adjusted by hand: writing `bladeGap` records the grind-size value
 // on the device but does NOT move the burr. The UI therefore presents it as a
@@ -13,10 +19,12 @@
 export const MT80_PLUGIN_ID = 'bookoo-mt80.reaplugin';
 export const MT80_ID_PREFIX = `plugin:${MT80_PLUGIN_ID}:mt80:`;
 
-// Tile rows, top to bottom: Gap | Feed | Spd.
+// Tile rows, top to bottom: Gap | Feed | Spd. Feed is a placeholder: the
+// grinder contract has no feed channel, so it always renders `--`.
 export const MT80_MODES = ['gap', 'feed', 'spd'];
 
-// Tile row -> sensor channel.
+// Tile row -> the key this module exposes for it. Feeding is genuinely absent
+// from the contract rather than merely unknown.
 export const MT80_MODE_KEYS = { gap: 'bladeGap', feed: 'feedingRpm', spd: 'grindRpm' };
 
 // Published geneSetting ranges; the device rejects anything outside them.
@@ -26,41 +34,27 @@ export const MT80_RANGES = {
     bladeGap: { min: 0, max: 999, step: 1 },
 };
 
-// The 13 sensor channels and their wire types.
-const MT80_CHANNEL_TYPES = {
-    feedingRpm: 'integer',
-    bladeGap: 'integer',
-    grindRpm: 'integer',
-    humidity: 'integer',
-    devState: 'string',
-    netState: 'string',
-    totalGrinds: 'integer',
-    cupDetect: 'boolean',
-    autoStop: 'boolean',
-    fastClean: 'boolean',
-    brightness: 'integer',
-    standbySec: 'integer',
-    selectPreset: 'integer',
-};
+// `setting` arrives as a string on the grinder snapshot and is the only value
+// that needs converting. `rpm` is already an integer.
+const MT80_SETTING_KEY = 'setting';
+const MT80_RPM_KEY = 'rpm';
 
 function idOf(entry) {
     return typeof entry?.id === 'string' ? entry.id : '';
 }
 
 /**
- * Pick the connected MT80 sensor id out of either payload shape:
- *   - the devices feed / GET /devices (`[{ id, type, state, available }]`, or
- *     `{ devices: [...] }` from the WebSocket), or
- *   - GET /sensors (`[{ id, info }]`; presence in the registry means connected).
- * Returns null (never a guessed id) when nothing matches.
+ * Pick the connected MT80 grinder id out of the devices feed — either
+ * `[{ id, type, state, available }]` or `{ devices: [...] }` from the
+ * WebSocket. Returns null (never a guessed id) when nothing matches.
  * @returns {string|null}
  */
-export function mt80SensorFromList(payload) {
+export function mt80GrinderFromList(payload) {
     const list = Array.isArray(payload) ? payload : payload?.devices;
     if (!Array.isArray(list)) return null;
     const match = list.find((entry) => {
         if (!idOf(entry).startsWith(MT80_ID_PREFIX)) return false;
-        if (entry.type !== undefined && entry.type !== 'sensor') return false;
+        if (entry.type !== undefined && entry.type !== 'grinder') return false;
         if (entry.state !== undefined && entry.state !== 'connected') return false;
         if (entry.available === false) return false;
         return true;
@@ -69,21 +63,38 @@ export function mt80SensorFromList(payload) {
 }
 
 /**
- * Keep only the 13 known channels carrying their declared type. Unknown keys
- * and wrongly typed values (including non-integer numbers on integer channels)
- * are dropped, so a malformed frame can never reach the display.
- * @returns {Record<string, number|string|boolean>}
+ * Map a `ws/v1/grinder/snapshot` frame (`{timestamp, state, setting, rpm}`)
+ * onto the tile's channel keys. `setting` is a string and is converted; a
+ * missing, empty or non-numeric one leaves `bladeGap` out rather than guessing.
+ * `feedingRpm` has no source here, so the Feed row stays empty. Unknown keys and
+ * wrongly typed values are dropped, so a malformed frame never reaches the
+ * display.
+ * @returns {Record<string, number>}
  */
 export function parseMt80Snapshot(frame) {
     const out = {};
     if (!frame || typeof frame !== 'object' || Array.isArray(frame)) return out;
-    for (const [key, type] of Object.entries(MT80_CHANNEL_TYPES)) {
-        if (!Object.prototype.hasOwnProperty.call(frame, key)) continue;
-        const value = frame[key];
-        if (type === 'integer' ? Number.isInteger(value) : typeof value === type) {
-            out[key] = value;
-        }
+    const setting = frame[MT80_SETTING_KEY];
+    if (typeof setting === 'string' && setting.trim() !== '') {
+        const gap = Number(setting);
+        if (Number.isSafeInteger(gap)) out.bladeGap = gap;
     }
+    const rpm = frame[MT80_RPM_KEY];
+    if (Number.isInteger(rpm)) out.grindRpm = rpm;
+    return out;
+}
+
+/**
+ * Map a frame from the plugin's own WebSocket — the full `periodInfo` — onto
+ * the tile keys. Only feed RPM is taken: `bladeGap` and `grindRpm` come from
+ * the grinder snapshot, so each row has one source and the two channels cannot
+ * disagree about a value.
+ * @returns {Record<string, number>}
+ */
+export function parseMt80Stream(frame) {
+    const out = {};
+    if (!frame || typeof frame !== 'object' || Array.isArray(frame)) return out;
+    if (Number.isInteger(frame.feedingRpm)) out.feedingRpm = frame.feedingRpm;
     return out;
 }
 
@@ -106,15 +117,33 @@ export function nextMt80Value(mode, current, dir) {
 }
 
 /**
- * Body for the sensor `setSettings` command: `{ feedingRpm | grindRpm | bladeGap }`
- * with an integer inside the published range, else null (nothing is sent).
+ * The write for a stepped row, tagged with the transport it needs:
+ *   - `{kind: 'grinder', field, value}` names a field of `PUT /grinder/setting`
+ *     (a string, as the contract requires) or `PUT /grinder/rpm` (an integer);
+ *   - `{kind: 'plugin', commandId, params}` posts the plugin's own command
+ *     endpoint, which is the only way to reach a field the grinder contract
+ *     does not carry.
+ * Returns null for an unknown row or a value outside the published range, so
+ * nothing is sent.
  */
 export function mt80SettingsPatch(mode, value) {
-    const key = MT80_MODE_KEYS[mode];
-    const range = MT80_RANGES[key];
-    if (!range || !Number.isInteger(value)) return null;
-    if (value < range.min || value > range.max) return null;
-    return { [key]: value };
+    if (!Number.isInteger(value)) return null;
+    if (mode === 'gap') {
+        const { min, max } = MT80_RANGES.bladeGap;
+        if (value < min || value > max) return null;
+        return { kind: 'grinder', field: 'setting', value: String(value) };
+    }
+    if (mode === 'spd') {
+        const { min, max } = MT80_RANGES.grindRpm;
+        if (value < min || value > max) return null;
+        return { kind: 'grinder', field: 'rpm', value };
+    }
+    if (mode === 'feed') {
+        const { min, max } = MT80_RANGES.feedingRpm;
+        if (value < min || value > max) return null;
+        return { kind: 'plugin', commandId: 'setSettings', params: { feedingRpm: value } };
+    }
+    return null;
 }
 
 const MT80_ADAPTER = {
@@ -124,13 +153,13 @@ const MT80_ADAPTER = {
     modes: MT80_MODES,
     modeKeys: MT80_MODE_KEYS,
     ranges: MT80_RANGES,
-    sensorFromList: mt80SensorFromList,
+    grinderFromList: mt80GrinderFromList,
     parseSnapshot: parseMt80Snapshot,
+    parseStream: parseMt80Stream,
     nextValue: nextMt80Value,
-    /** @returns {{commandId: string, params: object}|null} */
+    /** @returns {{kind: 'grinder'|'plugin', ...}|null} */
     writeCommand(mode, value) {
-        const params = mt80SettingsPatch(mode, value);
-        return params ? { commandId: 'setSettings', params } : null;
+        return mt80SettingsPatch(mode, value);
     },
 };
 
@@ -142,16 +171,16 @@ export function grinderAdapterForId(id) {
     return GRINDER_ADAPTERS.find((adapter) => id.startsWith(adapter.idPrefix)) ?? null;
 }
 
-/** First connected grinder sensor id across all adapters, or null. */
-export function findGrinderSensorId(payload) {
+/** First connected grinder id across all adapters, or null. */
+export function findGrinderId(payload) {
     for (const adapter of GRINDER_ADAPTERS) {
-        const id = adapter.sensorFromList(payload);
+        const id = adapter.grinderFromList(payload);
         if (id) return id;
     }
     return null;
 }
 
-/** Whether a device-list entry is a grinder sensor (for the settings page). */
-export function isGrinderSensorEntry(entry) {
-    return entry?.type === 'sensor' && grinderAdapterForId(idOf(entry)) !== null;
+/** Whether a device-list entry is a grinder this module drives. */
+export function isGrinderEntry(entry) {
+    return entry?.type === 'grinder' && grinderAdapterForId(idOf(entry)) !== null;
 }
