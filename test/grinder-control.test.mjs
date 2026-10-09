@@ -4,12 +4,13 @@ import { readFileSync } from 'node:fs';
 
 import {
     MT80_ID_PREFIX,
+    MT80_MODES,
     MT80_MODE_KEYS,
     MT80_RANGES,
-    findGrinderSensorId,
+    findGrinderId,
     grinderAdapterForId,
-    isGrinderSensorEntry,
-    mt80SensorFromList,
+    isGrinderEntry,
+    mt80GrinderFromList,
     mt80SettingsPatch,
     nextMt80Value,
     parseMt80Snapshot,
@@ -17,53 +18,69 @@ import {
 
 const MT80_ID = `${MT80_ID_PREFIX}AA:BB:CC:DD:EE:FF`;
 
-test('mt80SensorFromList matches a connected sensor by id prefix in the devices feed', () => {
+test('mt80GrinderFromList matches a connected grinder by id prefix in the devices feed', () => {
     const devices = [
         { id: 'X', name: 'DE1', type: 'machine', state: 'connected' },
-        { id: MT80_ID, name: 'Bookoo MT80', type: 'sensor', state: 'connected', available: true },
+        { id: MT80_ID, name: 'Bookoo MT80', type: 'grinder', state: 'connected', available: true },
     ];
-    assert.equal(mt80SensorFromList(devices), MT80_ID);
-    assert.equal(mt80SensorFromList({ devices }), MT80_ID);
-    assert.equal(findGrinderSensorId({ devices }), MT80_ID);
+    assert.equal(mt80GrinderFromList(devices), MT80_ID);
+    assert.equal(mt80GrinderFromList({ devices }), MT80_ID);
+    assert.equal(findGrinderId({ devices }), MT80_ID);
 });
 
-test('mt80SensorFromList ignores disconnected, unavailable, wrong-type and foreign sensors', () => {
-    assert.equal(mt80SensorFromList([{ id: MT80_ID, type: 'sensor', state: 'discovered' }]), null);
-    assert.equal(mt80SensorFromList([{ id: MT80_ID, type: 'sensor', state: 'connected', available: false }]), null);
-    assert.equal(mt80SensorFromList([{ id: MT80_ID, type: 'scale', state: 'connected' }]), null);
-    assert.equal(mt80SensorFromList([{ id: 'plugin:other.reaplugin:x:1', type: 'sensor', state: 'connected' }]), null);
-    assert.equal(mt80SensorFromList([{ id: 'abc-milkprobe', type: 'sensor', state: 'connected' }]), null);
-    assert.equal(mt80SensorFromList(null), null);
-    assert.equal(mt80SensorFromList({}), null);
-    assert.equal(mt80SensorFromList([null, 42, {}]), null);
-});
-
-test('mt80SensorFromList also accepts the GET /sensors shape (registry presence = connected)', () => {
-    assert.equal(mt80SensorFromList([{ id: MT80_ID, info: { name: 'x' } }]), MT80_ID);
+test('mt80GrinderFromList ignores disconnected, unavailable, wrong-type and foreign devices', () => {
+    assert.equal(mt80GrinderFromList([{ id: MT80_ID, type: 'grinder', state: 'discovered' }]), null);
+    assert.equal(mt80GrinderFromList([{ id: MT80_ID, type: 'grinder', state: 'connected', available: false }]), null);
+    // The plugin used to register this device as a sensor; that no longer counts.
+    assert.equal(mt80GrinderFromList([{ id: MT80_ID, type: 'sensor', state: 'connected' }]), null);
+    assert.equal(mt80GrinderFromList([{ id: MT80_ID, type: 'scale', state: 'connected' }]), null);
+    assert.equal(mt80GrinderFromList([{ id: 'plugin:other.reaplugin:x:1', type: 'grinder', state: 'connected' }]), null);
+    assert.equal(mt80GrinderFromList([{ id: 'abc-milkprobe', type: 'sensor', state: 'connected' }]), null);
+    assert.equal(mt80GrinderFromList(null), null);
+    assert.equal(mt80GrinderFromList({}), null);
+    assert.equal(mt80GrinderFromList([null, 42, {}]), null);
 });
 
 test('adapter lookup and settings-page filter key on the id prefix', () => {
     assert.ok(grinderAdapterForId(MT80_ID));
     assert.equal(grinderAdapterForId('plugin:other:x:1'), null);
     assert.equal(grinderAdapterForId(undefined), null);
-    assert.equal(isGrinderSensorEntry({ id: MT80_ID, type: 'sensor' }), true);
-    assert.equal(isGrinderSensorEntry({ id: MT80_ID, type: 'scale' }), false);
-    assert.equal(isGrinderSensorEntry({ id: 'other', type: 'sensor' }), false);
+    assert.equal(isGrinderEntry({ id: MT80_ID, type: 'grinder' }), true);
+    assert.equal(isGrinderEntry({ id: MT80_ID, type: 'sensor' }), false);
+    assert.equal(isGrinderEntry({ id: 'other', type: 'grinder' }), false);
 });
 
-test('parseMt80Snapshot keeps the 13 typed channels and drops unknown or wrongly typed values', () => {
-    const frame = {
-        feedingRpm: 40, bladeGap: 250, grindRpm: 900, humidity: 41, devState: 'IDLE', netState: 'NONE',
-        totalGrinds: 12, cupDetect: true, autoStop: false, fastClean: false, brightness: 3, standbySec: 120, selectPreset: 1,
-    };
-    assert.deepEqual(parseMt80Snapshot(frame), frame);
-    assert.equal(Object.keys(parseMt80Snapshot(frame)).length, 13);
+test('parseMt80Snapshot maps the grinder snapshot onto the tile keys', () => {
+    assert.deepEqual(parseMt80Snapshot({ state: 'idle', setting: '180', rpm: 1290 }), {
+        bladeGap: 180,
+        grindRpm: 1290,
+    });
+    // `setting` is a string on the wire and is converted.
+    assert.deepEqual(parseMt80Snapshot({ state: 'grinding', setting: '0', rpm: 500 }), {
+        bladeGap: 0,
+        grindRpm: 500,
+    });
+});
 
+test('parseMt80Snapshot never invents a value for the Feed row', () => {
+    // The grinder contract has no feed channel, so no frame can fill it.
+    for (const frame of [
+        { state: 'idle', setting: '180', rpm: 1290 },
+        { state: 'idle', feedingRpm: 40, setting: '180', rpm: 1290 },
+    ]) {
+        assert.equal('feedingRpm' in parseMt80Snapshot(frame), false);
+    }
+});
+
+test('parseMt80Snapshot drops unknown keys and unusable values', () => {
     assert.deepEqual(parseMt80Snapshot({
-        bladeGap: 250.5, feedingRpm: '40', grindRpm: NaN, humidity: Infinity, devState: 7, cupDetect: 1,
-        timestamp: 'now', temperature: 90, error: 'not found',
+        state: 'idle', setting: 'abc', rpm: 900.5, temperature: 90, error: 'not found',
     }), {});
-    assert.deepEqual(parseMt80Snapshot({ bladeGap: 300, extra: 1 }), { bladeGap: 300 });
+    assert.deepEqual(parseMt80Snapshot({ setting: '' }), {});
+    assert.deepEqual(parseMt80Snapshot({ setting: '  ' }), {});
+    assert.deepEqual(parseMt80Snapshot({ setting: 180 }), {});
+    assert.deepEqual(parseMt80Snapshot({ rpm: '1290' }), {});
+    assert.deepEqual(parseMt80Snapshot({ setting: '300', extra: 1 }), { bladeGap: 300 });
     assert.deepEqual(parseMt80Snapshot(null), {});
     assert.deepEqual(parseMt80Snapshot([1, 2]), {});
     assert.deepEqual(parseMt80Snapshot('x'), {});
@@ -98,23 +115,35 @@ test('nextMt80Value rejects unusable input instead of guessing', () => {
     assert.equal(nextMt80Value('gap', 250, 0), null);
 });
 
-test('mt80SettingsPatch emits only integer, in-range, single-key patches', () => {
-    assert.deepEqual(mt80SettingsPatch('gap', 250), { bladeGap: 250 });
-    assert.deepEqual(mt80SettingsPatch('feed', 40), { feedingRpm: 40 });
-    assert.deepEqual(mt80SettingsPatch('spd', 900), { grindRpm: 900 });
+test('mt80SettingsPatch names the grinder field and the wire type it needs', () => {
+    // `setting` is a string on the grinder API; `rpm` is an integer.
+    assert.deepEqual(mt80SettingsPatch('gap', 250), { field: 'setting', value: '250' });
+    assert.deepEqual(mt80SettingsPatch('spd', 900), { field: 'rpm', value: 900 });
     assert.equal(mt80SettingsPatch('gap', 250.5), null);
     assert.equal(mt80SettingsPatch('gap', '250'), null);
     assert.equal(mt80SettingsPatch('gap', 1000), null);
     assert.equal(mt80SettingsPatch('gap', -1), null);
-    assert.equal(mt80SettingsPatch('feed', 9), null);
     assert.equal(mt80SettingsPatch('spd', 499), null);
     assert.equal(mt80SettingsPatch('start', 1), null);
 });
 
-test('the adapter writes through the sensor setSettings command', () => {
+test('the Feed row has no grinder write at all', () => {
+    // feedingRpm is absent from the grinder contract, so the row cannot be
+    // stepped and must never produce a write.
+    assert.equal(mt80SettingsPatch('feed', 40), null);
+    assert.equal(mt80SettingsPatch('feed', 4000), null);
+});
+
+test('the adapter writes through the grinder fields', () => {
     const adapter = grinderAdapterForId(MT80_ID);
-    assert.deepEqual(adapter.writeCommand('feed', 40), { commandId: 'setSettings', params: { feedingRpm: 40 } });
-    assert.equal(adapter.writeCommand('feed', 4000), null);
+    assert.deepEqual(adapter.writeCommand('gap', 180), { field: 'setting', value: '180' });
+    assert.deepEqual(adapter.writeCommand('spd', 1290), { field: 'rpm', value: 1290 });
+    assert.equal(adapter.writeCommand('feed', 40), null);
+    assert.equal(adapter.writeCommand('gap', 4000), null);
+});
+
+test('the tile keeps its three rows, Feed included', () => {
+    assert.deepEqual(MT80_MODES, ['gap', 'feed', 'spd']);
 });
 
 // Source invariants (style of test/device-command.test.mjs).
@@ -125,6 +154,7 @@ test('ui.js and settings.js keep Decaid transport behind api.js', () => {
     for (const path of ['../src/modules/ui.js', '../src/settings/settings.js']) {
         const source = read(path);
         assert.doesNotMatch(source, /\/sensors\//, `${path} must not call /sensors/ directly`);
+        assert.doesNotMatch(source, /\/grinder\//, `${path} must not call /grinder/ directly`);
         assert.doesNotMatch(source, /ReconnectingWebSocket\(/, `${path} must not open its own socket`);
     }
 });
@@ -140,10 +170,15 @@ test('the grinder tile never lets the recipe grind path run while connected', ()
     assert.match(step, /return true;/);
 });
 
-test('api.js gives the grinder sensor its own socket slot, apart from the milk probe', () => {
+test('api.js gives the grinder its own socket slot, apart from the milk probe', () => {
     const api = read('../src/modules/api.js');
-    assert.match(api, /createSocketSlot\('grinder sensor'\)/);
-    assert.match(api, /export function connectGrinderSensorSocket\(/);
-    assert.match(api, /export function closeGrinderSensorSocket\(/);
-    assert.match(api, /export async function executeSensorCommand\(/);
+    assert.match(api, /createSocketSlot\('grinder'\)/);
+    assert.match(api, /ws\/v1\/grinder\/snapshot/);
+    assert.match(api, /export function connectGrinderSocket\(/);
+    assert.match(api, /export function closeGrinderSocket\(/);
+    assert.match(api, /export async function executeGrinderCommand\(/);
+    // The sensor path this replaced must be gone, not merely unused. The
+    // remaining /ws/v1/sensors socket in api.js is the Bengle milk probe's and
+    // is unrelated to the grinder.
+    assert.doesNotMatch(api, /executeSensorCommand/);
 });

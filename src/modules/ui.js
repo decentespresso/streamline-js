@@ -1,6 +1,6 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
-import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, executeSensorCommand, subscribeGrinderSensorChanges, connectGrinderSensorSocket, closeGrinderSensorSocket, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
+import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, executeGrinderCommand, subscribeGrinderChanges, connectGrinderSocket, closeGrinderSocket, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver } from './api.js';
 import { openDB, getSetting, setSetting } from './idb.js';
 import { deriveSleepButtonAction, isWakePending } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel } from './machine.js';
@@ -371,7 +371,7 @@ function flushGrinderPending() {
     renderGrinderTile();
     const command = adapter.writeCommand(pending.mode, pending.value);
     if (!command) return;
-    executeSensorCommand(sensorId, command.commandId, command.params).catch((error) => {
+    executeGrinderCommand(command).catch((error) => {
         logger.error('Grinder write failed:', error);
         showToast(`${getTranslation('Grinder')}: ${error.message}`, 4000, 'error');
     });
@@ -419,9 +419,9 @@ function onGrinderSensorChange(sensorId) {
     grinderTile.adapter = sensorId ? grinderAdapterForId(sensorId) : null;
     if (!grinderTile.adapter) grinderTile.sensorId = null;
     if (grinderTile.sensorId) {
-        connectGrinderSensorSocket(grinderTile.sensorId, onGrinderSnapshot);
+        connectGrinderSocket(grinderTile.sensorId, onGrinderSnapshot);
     } else {
-        closeGrinderSensorSocket();
+        closeGrinderSocket();
     }
     renderGrinderTile();
 }
@@ -436,7 +436,7 @@ export function initGrinderTile() {
         if (target && section.contains(target)) selectGrinderMode(target.dataset.grindMode);
     };
     section.addEventListener('click', onClick);
-    const unsubscribe = subscribeGrinderSensorChanges(onGrinderSensorChange);
+    const unsubscribe = subscribeGrinderChanges(onGrinderSensorChange);
     grinderTileCleanup = () => {
         unsubscribe();
         section.removeEventListener('click', onClick);
