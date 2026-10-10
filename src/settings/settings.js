@@ -10656,7 +10656,6 @@ window.openScaleDeviceSettings = function(deviceId) {
             `data-device-id="${escapeHtml(deviceId)}"
              onchange="window.setPreferredDevice('preferredScaleId', this.dataset.deviceId, this.checked)"`,
         )}
-        ${renderScaleDeviceToggle(settings, 'scaleButtonStartsEspressoByDevice', 'scaleButtonStartsEspresso', deviceId, 'Skale Square Button', 'Start espresso on machines without an active group-head controller, or stop active espresso on any machine.')}
         ${renderScaleDeviceToggle(settings, 'skalePoweredByUsbByDevice', 'skalePoweredByUsb', deviceId, 'Skale USB Power', 'Declare USB power manually and suppress battery reads.')}
     `;
     modal.showModal();

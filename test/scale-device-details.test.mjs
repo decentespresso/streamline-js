@@ -114,7 +114,6 @@ test('scale settings use connected-scale metadata and per-device controls', () =
     assert.match(source, /scaleInfoByDeviceId/);
     assert.match(source, /firmwareVersion/);
     assert.match(source, /batteryLevel/);
-    assert.match(source, /scaleButtonStartsEspressoByDevice/);
     assert.match(source, /skalePoweredByUsbByDevice/);
     assert.doesNotMatch(source, /deviceInfo\.powerSource/);
     assert.doesNotMatch(source, /getDevices\(\)[\s\S]*deviceInfo/);
@@ -496,11 +495,10 @@ test('scale setting helper does not fall back from a declared empty map to legac
 test('scale settings put supported controls in a device popup', () => {
     assert.match(source, /openScaleDeviceSettings/);
     assert.match(source, /scale-device-settings-modal/);
-    assert.match(source, /scaleButtonStartsEspressoByDevice/);
     assert.match(source, /skalePoweredByUsbByDevice/);
-    assert.match(source, /'scaleButtonStartsEspresso'/);
     assert.match(source, /'skalePoweredByUsb'/);
     assert.match(source, /data-device-id=/);
+    assert.doesNotMatch(source, /scaleButtonStartsEspresso/);
     assert.doesNotMatch(source, /renderScaleToggle\(settings/);
 });
 
