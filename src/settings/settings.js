@@ -30,7 +30,7 @@ import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
 import { adoptFromMachine, diffUserSettings, restorePatches } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
-         minutesSince, shouldCheckPluginUpdates } from './plugin-view.js';
+         minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl } from './plugin-view.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -6077,6 +6077,7 @@ export function pluginSecureIsSet(value) {
 // `idPrefix` exists because more than one page renders a plugin's schema now
 // (Shot Uploader, Print The Shot); the ids have to stay distinct per page.
 export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload') {
+    if (!isPluginSettingVisible(schema)) return '';
     const id = `${idPrefix}-setting-${key}`;
     const label = escapeHtml(getTranslation(pluginSettingDisplayLabel(key, schema)));
     // One weight for every setting name on the page, including the plugin's own
@@ -6353,7 +6354,7 @@ function setupShotUploadListeners() {
         if (!document.getElementById('shotupload-controls')) return;
 
         const schema = plugin.settings && typeof plugin.settings === 'object' ? plugin.settings : {};
-        const keys = Object.keys(schema);
+        const keys = Object.keys(schema).filter(key => isPluginSettingVisible(schema[key]));
         const controls = keys.map(key => {
             const html = renderPluginSettingControl(key, schema[key]);
             if (!html) logger.warn(`Shot upload: no control for setting ${key} of type ${schema[key]?.type}`);
@@ -6477,16 +6478,6 @@ export function renderExtensionsSettings() {
     setTimeout(setupVisualizerEventListeners, 0);
 
     return template;
-}
-
-// Decaid routes /api/v1/plugins/<id>/<endpoint> from the manifest's api
-// declarations, so a plugin's page is only real when the manifest declares an
-// http endpoint named "ui" -- anything else 404s. Module scope because both the
-// Plugins list and the Print The Shot page link to one.
-function pluginUiUrl(plugin) {
-    const endpoints = Array.isArray(plugin?.api) ? plugin.api : [];
-    const hasUi = endpoints.some(e => e?.type === 'http' && e?.id === 'ui');
-    return hasUi ? `${API_BASE_URL}/plugins/${encodeURIComponent(plugin.id)}/ui` : null;
 }
 
 // Some plugins append their own ui URL to the end of their description
@@ -6786,7 +6777,7 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     const titleKey = vm.name || override.fallbackTitle || pluginId;
     const title = getTranslation(titleKey);
     const description = vm.plugin ? pluginDescription(vm.plugin) : (override.fallbackDescription ? getTranslation(override.fallbackDescription) : '');
-    const uiUrl = vm.plugin ? pluginUiUrl(vm.plugin) : null;
+    const uiUrl = vm.plugin ? pluginUiUrl(vm.plugin, API_BASE_URL, window.location.href) : null;
 
     const rule = `<div class="h-px w-full bg-[var(--profile-button-outline-color)] opacity-40"></div>`;
 

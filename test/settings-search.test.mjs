@@ -69,6 +69,20 @@ test('setting names and their descriptions are indexed', () => {
     assert.ok(kw.includes('visualiser password'));
 });
 
+test('hidden fields do not send search users to controls that are not on the page', () => {
+    const kw = pluginKeywords({
+        id: 'custom.reaplugin', name: 'Custom settings', description: 'Open the configuration page',
+        settings: {
+            internalReadings: { hidden: true, description: 'Serialized measurement shadow' },
+            AutoUpload: { hidden: false, description: 'Upload automatically' },
+        },
+    });
+    assert.ok(kw.includes('custom settings'));
+    assert.ok(kw.includes('open the configuration page'));
+    assert.ok(kw.includes('auto upload'));
+    assert.doesNotMatch(kw, /internal|readings|serialized|measurement|shadow/);
+});
+
 test('a PascalCase setting name is also indexed word by word', () => {
     // Without the split, searching "upload" would miss "AutoUpload".
     assert.ok(pluginKeywords(visualizer).includes('auto upload'));

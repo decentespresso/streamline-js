@@ -10,6 +10,7 @@ import {
     pluginNavEntries,
     pluginCategoryFor,
     pluginIdFromCategory,
+    isPluginSettingVisible,
 } from '../src/settings/plugin-view.js';
 
 // plugin-view.js is the pure metadata -> view-model layer the generic plugin
@@ -118,6 +119,41 @@ test('pluginViewModel tolerates a malformed settings schema (not an object)', ()
     const vm = pluginViewModel([{ id: 'x.reaplugin', loaded: true, settings: 'nonsense' }], 'x.reaplugin');
     assert.deepEqual(vm.settingsSchema, {});
     assert.deepEqual(vm.settingsKeys, []);
+});
+
+test('hidden settings stay in the manifest but are excluded from editable keys', () => {
+    const settings = Object.freeze({
+        usualMilk: Object.freeze({ type: 'number', default: 150 }),
+        flowReadings: Object.freeze({ type: 'string', default: '[]', hidden: true }),
+    });
+    const plugin = Object.freeze({ id: 'custom.reaplugin', loaded: true, settings });
+    const vm = pluginViewModel([plugin], plugin.id);
+    assert.deepEqual(vm.settingsKeys, ['usualMilk']);
+    assert.equal(vm.settingsSchema, settings);
+    assert.equal(vm.plugin, plugin);
+    assert.equal(vm.settingsSchema.flowReadings.default, '[]');
+});
+
+test('hiding every setting leaves the installed plugin visible and enabled', () => {
+    const plugin = {
+        id: 'custom.reaplugin', name: 'Custom settings', version: '1.0.0', loaded: true,
+        api: [{ id: 'ui', type: 'http' }],
+        settings: { internal: { type: 'number', default: 0, hidden: true } },
+    };
+    const vm = pluginViewModel([plugin], plugin.id);
+    assert.deepEqual(vm.settingsKeys, []);
+    assert.equal(vm.loaded, true);
+    assert.equal(vm.version, '1.0.0');
+    assert.equal(vm.plugin.api, plugin.api);
+    assert.equal(pluginNavEntries([plugin])[0].pluginId, plugin.id);
+});
+
+test('only boolean hidden:true opts out of the generated form', () => {
+    assert.equal(isPluginSettingVisible({ hidden: true }), false);
+    for (const hidden of [undefined, false, null, 'true', 'false', 1, 0]) {
+        assert.equal(isPluginSettingVisible({ hidden }), true);
+    }
+    assert.equal(isPluginSettingVisible(undefined), true);
 });
 
 // ── escapeHtml: untrusted manifest text must never reach innerHTML raw ─────

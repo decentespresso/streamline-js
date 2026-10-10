@@ -81,6 +81,19 @@ Use the shared data API for fields it owns. Legacy categories can still have the
 
 ## Common Changes
 
+### Plugin-Owned Settings UI
+
+Plugin authors can mark individual manifest settings with `"hidden": true` to
+omit their controls and search keywords in Streamline. Keep the settings in the
+manifest: Decaid needs those declarations to retain and validate saved values.
+`plugin-view.js` owns this visibility policy; it is a presentation hint, not a
+security boundary. Decaid's native settings screen and other skins may ignore it.
+
+The generic **Open** link passes `returnTo` with the current skin's full address
+and `page=settings`. Preserve the actual host, port and path: skin origins are
+assigned by Decaid, and the browser referrer can omit the route. Plugin UIs must
+validate the return URL before using it. See [Plugin settings UI](plugin-settings-ui.md).
+
 ### Add A Navigation Item
 
 1. Add it to `settings-tree.js`.
