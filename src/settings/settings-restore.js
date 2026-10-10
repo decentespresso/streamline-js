@@ -115,4 +115,3 @@ export function restorePatches(differences) {
     }
     return patches;
 }
-
