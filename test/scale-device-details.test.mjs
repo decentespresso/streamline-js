@@ -210,6 +210,14 @@ test('USB power state is rendered from the per-device setting and suppresses bat
     assert.doesNotMatch(html, /<battery>77<\/battery>/);
 });
 
+test('native USB control remains absent when the backend does not expose it', () => {
+    const metadata = new Map([['A', { firmwareVersion: 'R029', batteryLevel: 77 }]]);
+    const render = loadRenderSingleDeviceList({ scaleInfoByDeviceId: metadata });
+    const html = render([{ id: 'A', name: 'Scale A', state: 'connected' }], '', '', 'Scale');
+    assert.doesNotMatch(html, />USB</);
+    assert.match(html, /<battery>77<\/battery>/);
+});
+
 test('USB badge and battery return to the live metadata path when the map disables the device', () => {
     const metadata = new Map([['A', { firmwareVersion: 'R029', batteryLevel: 77 }]]);
     const render = loadRenderSingleDeviceList({
