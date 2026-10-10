@@ -1,20 +1,18 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { pluginUiUrl as buildPluginUiUrl, isPluginSettingVisible, pluginViewModel, escapeHtml } from '../src/settings/plugin-view.js';
 
 // The Plugins settings page links each plugin to its own web UI. Decaid routes
 // /api/v1/plugins/<id>/<endpoint> from the manifest's api declarations, so a link
 // is only real when the manifest declares an http endpoint named "ui" -- anything
-// else 404s. settings.js can't be imported under node (browser globals), so the
-// function is lifted out of the source, as in settings-sync.test.mjs.
+// else 404s. URL construction is DOM-free and imported directly for testing.
 
 const source = readFileSync(new URL('../src/settings/settings.js', import.meta.url), 'utf8');
 // escapeHtml is defined once, in the DOM-free plugin-view.js, and imported by
 // settings.js -- lift it from where it actually lives.
 const viewSource = readFileSync(new URL('../src/settings/plugin-view.js', import.meta.url), 'utf8');
-const match = source.match(/^function pluginUiUrl\(plugin\) \{[\s\S]*?\r?\n\}/m);
-assert.ok(match, 'pluginUiUrl not found in settings.js');
-const pluginUiUrl = new Function('API_BASE_URL', `${match[0]}\nreturn pluginUiUrl;`)('http://x:8080/api/v1');
+const pluginUiUrl = plugin => buildPluginUiUrl(plugin, 'http://x:8080/api/v1');
 
 test('a plugin declaring a ui endpoint gets a link to it', () => {
     assert.equal(
@@ -49,6 +47,43 @@ test('an id needing escaping stays intact in the path', () => {
     assert.equal(url, 'http://x:8080/api/v1/plugins/odd%20id.reaplugin/ui');
 });
 
+test('Open carries the complete settings route across skin and API ports', () => {
+    const plugin = { id: 'custom.reaplugin', api: [{ id: 'ui', type: 'http' }] };
+    const url = new URL(buildPluginUiUrl(plugin, 'http://localhost:8080/api/v1',
+        'http://localhost:24803/index.html?page=settings'));
+    assert.equal(url.origin, 'http://localhost:8080');
+    assert.equal(url.pathname, '/api/v1/plugins/custom.reaplugin/ui');
+    assert.equal(url.searchParams.get('returnTo'), 'http://localhost:24803/index.html?page=settings');
+});
+
+test('returnTo uses the settings route even if the router has not updated the address yet', () => {
+    const plugin = { id: 'custom.reaplugin', api: [{ id: 'ui', type: 'http' }] };
+    const url = new URL(buildPluginUiUrl(plugin, 'https://tablet.example/api/v1',
+        'https://tablet.example:8443/skins/streamline/index.html?mode=dark&page=index#position'));
+    assert.equal(url.searchParams.get('returnTo'),
+        'https://tablet.example:8443/skins/streamline/index.html?mode=dark&page=settings#position');
+    assert.deepEqual([...url.searchParams.keys()], ['returnTo']);
+});
+
+test('returnTo preserves a remote device address and safely encodes query delimiters', () => {
+    const plugin = { id: 'odd id.reaplugin', api: [{ id: 'ui', type: 'http' }] };
+    const current = 'http://192.168.1.20:24804/index.html?page=settings&label=A%26B';
+    const url = new URL(buildPluginUiUrl(plugin, 'http://192.168.1.20:8080/api/v1', current));
+    assert.equal(url.pathname, '/api/v1/plugins/odd%20id.reaplugin/ui');
+    assert.equal(url.searchParams.get('returnTo'), current);
+    assert.equal(url.searchParams.has('label'), false);
+});
+
+test('an invalid return address does not break the existing Open link', () => {
+    const plugin = { id: 'custom.reaplugin', api: [{ id: 'ui', type: 'http' }] };
+    for (const current of [undefined, '', 'invalid', 'javascript:alert(1)', 'http://name:password@host/']) {
+        assert.equal(buildPluginUiUrl(plugin, 'http://x:8080/api/v1', current),
+            'http://x:8080/api/v1/plugins/custom.reaplugin/ui');
+    }
+    assert.equal(buildPluginUiUrl({ id: 'bare.reaplugin' }, 'http://x:8080/api/v1',
+        'http://x:24803/?page=settings'), null);
+});
+
 // ── Shot Uploader controls are built from the plugin's manifest ──────────────
 //
 // The page used to hand-write its labels and its control list, so it could not
@@ -71,8 +106,8 @@ const shotUpload = (() => {
     ].join('\n');
     // getTranslation is identity here: untranslated strings fall back to the
     // source string, so the manifest text is what reaches the page.
-    return new Function('getTranslation',
-        `${body}\nreturn { renderPluginSettingControl, pluginSettingLabel };`)(k => k);
+    return new Function('getTranslation', 'isPluginSettingVisible',
+        `${body}\nreturn { renderPluginSettingControl, pluginSettingLabel };`)(k => k, isPluginSettingVisible);
 })();
 
 // The manifest shot-upload 0.2.1 actually ships.
@@ -147,6 +182,19 @@ test('a type with no widget renders nothing rather than a broken control', () =>
     assert.equal(shotUpload.renderPluginSettingControl('Missing', undefined), '');
 });
 
+test('hidden fields render no input, label or help text for every supported type', () => {
+    for (const type of ['number', 'boolean', 'string', 'enum']) {
+        assert.equal(shotUpload.renderPluginSettingControl('Internal', {
+            type, values: ['a', 'b'], label: 'Internal state', description: 'Managed by custom UI', hidden: true,
+        }), '');
+    }
+    assert.equal(shotUpload.renderPluginSettingControl('Secret', {
+        type: 'string', secure: true, hidden: true,
+    }), '');
+    assert.match(shotUpload.renderPluginSettingControl('Visible', { type: 'number', hidden: false }),
+        /data-setting-key="Visible"/);
+});
+
 test("the manifest's own label wins over the name derived from the storage key", () => {
     // PluginSettingSchema.label exists so a form can read "Upload shots
     // automatically" instead of "AutoUpload".
@@ -209,6 +257,33 @@ test('manifest text is escaped, not injected', () => {
 const descMatch = source.match(/^function pluginDescription\(plugin\) \{[\s\S]*?\r?\n\}/m);
 assert.ok(descMatch, 'pluginDescription not found in settings.js');
 const pluginDescription = new Function(`${descMatch[0]}\nreturn pluginDescription;`)();
+
+test('a card with only custom-UI settings keeps Open, enable and version controls without raw fields', () => {
+    const match = source.match(/^function renderPluginCard\(pluginId, plugins, \{ asPage = false \} = \{\}\) \{[\s\S]*?\r?\n\}/m);
+    assert.ok(match, 'renderPluginCard not found');
+    const render = new Function('pluginCardOverride', 'pluginViewModel', 'getTranslation',
+        'pluginDescription', 'pluginUiUrl', 'API_BASE_URL', 'window', 'escapeHtml',
+        'renderPluginSettingControl', 'logger', `${match[0]}\nreturn renderPluginCard;`)(
+        () => ({}), pluginViewModel, k => k, pluginDescription, buildPluginUiUrl,
+        'http://localhost:8080/api/v1', { location: { href: 'http://localhost:24803/index.html?page=settings' } },
+        escapeHtml, shotUpload.renderPluginSettingControl, { warn() { assert.fail('hidden fields are not unsupported types'); } });
+    const plugin = {
+        id: 'custom.reaplugin', name: 'Custom settings', loaded: true,
+        api: [{ id: 'ui', type: 'http' }],
+        settings: { flowReadings: { type: 'string', hidden: true, default: '[]' } },
+    };
+    const html = render(plugin.id, [plugin], { asPage: true });
+    assert.match(html, /data-i18n-key="Open"/);
+    assert.match(html, /plugin-enable-toggle" checked/);
+    assert.match(html, /data-role="plugin-version-info"/);
+    assert.doesNotMatch(html, /flowReadings|data-setting-key/);
+    const href = html.match(/<a href="([^"]+)"/)[1];
+    assert.equal(new URL(href).searchParams.get('returnTo'),
+        'http://localhost:24803/index.html?page=settings');
+
+    plugin.settings.normal = { type: 'boolean', default: false };
+    assert.match(render(plugin.id, [plugin]), /data-setting-key="normal"/);
+});
 
 test('a bridge ui URL is dropped from the end of a description', () => {
     assert.equal(

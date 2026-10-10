@@ -22,6 +22,29 @@ export function findPlugin(plugins, pluginId) {
     return Array.isArray(plugins) ? (plugins.find(p => p?.id === pluginId) || null) : null;
 }
 
+// Presentation only: settings managed by a plugin's own UI must stay in the
+// manifest for Decaid to retain and validate their stored values.
+export function isPluginSettingVisible(schema) {
+    return schema?.hidden !== true;
+}
+
+// Pass the actual skin address, including its assigned port, explicitly.
+// Cross-origin referrers can lose the path/query or be absent in a WebView.
+export function pluginUiUrl(plugin, apiBaseUrl, currentUrl) {
+    const endpoints = Array.isArray(plugin?.api) ? plugin.api : [];
+    if (!endpoints.some(e => e?.type === 'http' && e?.id === 'ui')) return null;
+    const uiUrl = `${apiBaseUrl}/plugins/${encodeURIComponent(plugin.id)}/ui`;
+    if (!currentUrl) return uiUrl;
+    try {
+        const returnTo = new URL(currentUrl);
+        if (!['http:', 'https:'].includes(returnTo.protocol) || returnTo.username || returnTo.password) return uiUrl;
+        returnTo.searchParams.set('page', 'settings');
+        return `${uiUrl}?returnTo=${encodeURIComponent(returnTo.href)}`;
+    } catch {
+        return uiUrl;
+    }
+}
+
 // Only these two kinds are checkable: updateAllPlugins skips everything else
 // (plugin_source_service.dart, `!source.kind.isManaged` -> continue), so a
 // local ZIP or folder install is a snapshot that can never report an update.
@@ -120,7 +143,7 @@ export function pluginViewModel(plugins, pluginId) {
         pending: plugin?.pendingUpdate || null,
         loaded: !!plugin?.loaded,
         settingsSchema,
-        settingsKeys: Object.keys(settingsSchema),
+        settingsKeys: Object.keys(settingsSchema).filter(key => isPluginSettingVisible(settingsSchema[key])),
     };
 }
 

@@ -6,6 +6,8 @@
 // name, description and its manifest settings declarations, which is exactly
 // that vocabulary — folded in here as extra keywords on the pages that host it.
 
+import { isPluginSettingVisible } from '../settings/plugin-view.js';
+
 // Manifest setting names are PascalCase identifiers ("AutoUpload",
 // "LengthThreshold"). Searching for "upload" should find them, so index the split
 // words alongside the raw name.
@@ -15,13 +17,14 @@ function splitIdentifier(name) {
         .replace(/[_-]+/g, ' ');
 }
 
-// One lowercase blob per plugin: name, description, and every setting's name and
+// One lowercase blob per plugin: name, description, and each visible setting's name and
 // description. Blob rather than a structure because the search is a substring
 // test, and a structure would only be flattened at the point of use.
 export function pluginKeywords(plugin) {
     if (!plugin) return '';
     const parts = [plugin.name, plugin.description, plugin.id];
     for (const [key, declaration] of Object.entries(plugin.settings || {})) {
+        if (!isPluginSettingVisible(declaration)) continue;
         parts.push(key, splitIdentifier(key), declaration?.description);
     }
     return parts.filter(Boolean).join(' ').toLowerCase();
