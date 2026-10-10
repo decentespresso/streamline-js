@@ -67,6 +67,14 @@ export function createSocketSlot(label) {
             return socket;
         },
 
+        /** Close and clear the owned socket during page/module cleanup. */
+        close() {
+            if (!socket) return;
+            silenceSocket(socket);
+            try { socket.close(); } catch (err) { logger.warn(`Failed to close ${label} WebSocket cleanly:`, err); }
+            socket = null;
+        },
+
         /** The socket currently in the slot, or null. */
         current() {
             return socket;

@@ -1,0 +1,29 @@
+name: JavaScript checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22.x, 24.x, 26.x]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: Check committed CSS
+        if: matrix.node == '24.x'
+        run: |
+          npm run build:css
+          git diff --exit-code -- src/css/app.css
