@@ -1,7 +1,7 @@
 import * as chart from './chart.js';
 import { logger } from './logger.js';
 import { openDB, getLatestShotSummaries, getLatestCachedShotSummaries, getLatestCachedShot, getShot, addShot, addShots, deleteShot as idbDeleteShot, clearShots } from './idb.js';
-import { API_BASE_URL } from './api.js';
+import { API_BASE_URL, getPlugins } from './api.js';
 import { createHistoryPager } from './history-pager.js';
 import { renderPastShot, clearShotData } from './shotData.js';
 import { getTranslation } from './i18n.js';
@@ -10,6 +10,9 @@ import { generateShotSummary } from './shotSummary.js';
 import { openContextMenu } from './context-menu.js';
 import { showToast, setupPressAndHold } from './ui.js';
 import { isVisualizerEnabled, uploadShotToVisualizer } from './visualizer.js';
+import { ASSISTED_DIALIN_PLUGIN_ID, findAssistedDialInPlugin, buildAssistedDialInUrl } from './assisted-dialin.js';
+import { openBeanScaleCaptureModal } from './bean-scale-modal.js';
+import { openBeanSelectionModal } from './bean-selection-modal.js';
 
 const PAGE_SIZE = 20;
 let shots = [];
@@ -276,8 +279,36 @@ async function copyText(text) {
     }
 }
 
-// Build the markdown summary of the displayed shot (loading measurements as
-// needed). Returns null and toasts if there's nothing to summarize.
+// Launch the plugin for the displayed shot. The plugin fetches the shot by ID
+// and owns analysis/feedback; Streamline only verifies the installed manifest.
+async function openAssistedDialIn(action, beanCapture = null) {
+    const shot = shots[currentShotIndex];
+    if (!shot?.id) {
+        showToast(getTranslation('No shot selected'), 2400, 'warning');
+        return;
+    }
+    try {
+        const plugins = await getPlugins();
+        const plugin = findAssistedDialInPlugin(plugins);
+        if (!plugin) {
+            showToast(getTranslation('Assisted dial-in plugin is not installed or enabled'), 4000, 'warning');
+            return;
+        }
+        const returnUrl = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+        const url = buildAssistedDialInUrl(API_BASE_URL, plugin, {
+            shotId: shot.id,
+            action,
+            returnUrl,
+            beanCapture,
+        });
+        if (!url) throw new Error(`Invalid ${ASSISTED_DIALIN_PLUGIN_ID} manifest`);
+        window.location.href = url;
+    } catch (error) {
+        logger.warn('Assisted dial-in launch failed:', error);
+        showToast(getTranslation('Could not open assisted dial-in'), 4000, 'error');
+    }
+}
+
 async function buildCurrentShotSummary() {
     if (currentShotIndex < 0) { showToast(getTranslation('No shot selected'), 2400, 'warning'); return null; }
     const shot = await ensureCurrentShotMeasurements();
@@ -294,8 +325,8 @@ async function copyMd(md) {
 // setupPressAndHold helper (same one profile cards use). The nav arrows stop
 // their own press from bubbling so navigation taps still work.
 //
-// We build the summary up front so both actions act on a ready string: "Discuss
-// with Derek" opens the in-app Derek chat and sends the summary straight away.
+// Summary actions load measurements only when selected; plugin actions can open
+// directly from a selected shot even when its measurements are not cached.
 function setupHistoryLongPress() {
     const panel = document.getElementById('shot-history-panel');
     if (!panel) return;
@@ -309,12 +340,58 @@ function setupHistoryLongPress() {
             btn?.addEventListener(ev, (e) => e.stopPropagation()));
     });
 
-    setupPressAndHold(panel, () => {}, async () => {
-        const md = await buildCurrentShotSummary();
-        if (md == null) return;
+    if (!document.getElementById('current-bean-selection-btn')) {
+        const beanButton = document.createElement('button');
+        beanButton.id = 'current-bean-selection-btn';
+        beanButton.type = 'button';
+        beanButton.textContent = getTranslation('Select current coffee batch');
+        beanButton.style.cssText = 'font-size:18px;padding:8px 14px;border-radius:12px;margin:8px auto;display:block;';
+        ['pointerdown', 'mousedown', 'touchstart'].forEach(event => beanButton.addEventListener(event, e => e.stopPropagation()));
+        beanButton.addEventListener('click', () => openBeanSelectionModal({
+            onSaved: () => showToast(getTranslation('Current workflow coffee updated'), 2400, 'success'),
+        }).catch(error => {
+            logger.warn('Coffee batch selection failed:', error);
+            showToast(getTranslation('Could not open coffee selection'), 4000, 'error');
+        }));
+        panel.append(beanButton);
+    }
+
+    setupPressAndHold(panel, () => {}, () => {
         const items = [
-            { label: getTranslation('Discuss with Derek'), onSelect: () => import('./derek-modal.js').then((m) => m.openDerekModal(md, { onOpenExternal: () => copyMd(md) })) },
-            { label: getTranslation('Copy Shot Summary'), onSelect: () => copyMd(md) },
+            {
+                label: getTranslation('Discuss with Derek'),
+                onSelect: async () => {
+                    const md = await buildCurrentShotSummary();
+                    if (md != null) import('./derek-modal.js').then((m) => m.openDerekModal(md, { onOpenExternal: () => copyMd(md) }));
+                },
+            },
+            {
+                label: getTranslation('Copy Shot Summary'),
+                onSelect: async () => {
+                    const md = await buildCurrentShotSummary();
+                    if (md != null) copyMd(md);
+                },
+            },
+            { label: getTranslation('Assisted dial-in analysis'), onSelect: () => openAssistedDialIn('analyze') },
+            { label: getTranslation('Assisted dial-in feedback'), onSelect: () => openAssistedDialIn('feedback') },
+            {
+                label: getTranslation('Select current coffee batch'),
+                onSelect: () => openBeanSelectionModal({
+                    onSaved: () => showToast(getTranslation('Current workflow coffee updated'), 2400, 'success'),
+                }).catch(error => {
+                    logger.warn('Coffee batch selection failed:', error);
+                    showToast(getTranslation('Could not open coffee selection'), 4000, 'error');
+                }),
+            },
+            {
+                label: getTranslation('Capture bean weight'),
+                onSelect: () => openBeanScaleCaptureModal({
+                    onCapture: capture => openAssistedDialIn('feedback', capture),
+                }).catch(error => {
+                    logger.warn('Bean scale capture failed:', error);
+                    showToast(getTranslation('Could not open bean scale capture'), 4000, 'error');
+                }),
+            },
         ];
         // Manual upload: the one on screen, whichever the user has paged to.
         // Offered whenever Visualizer is switched on — with auto-upload off this
