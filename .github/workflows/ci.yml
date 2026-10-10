@@ -1,0 +1,43 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24', '26']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: Build and verify generated assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Verify generated assets are committed
+        run: git diff --exit-code -- src/css/app.css src/modules/echarts-streamline.min.js
+      - name: Validate skin manifest
+        run: node --input-type=module -e "import fs from 'node:fs'; const m = JSON.parse(fs.readFileSync('skin-manifest.json', 'utf8')); if (m.id !== 'streamline.js' || typeof m.version !== 'string' || !m.version) process.exit(1);"
