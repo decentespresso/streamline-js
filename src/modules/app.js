@@ -1,4 +1,4 @@
-import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShotIds, getShots, getValueFromStore, verifyVisualizerCredentials, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket } from './api.js';
+import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShotIds, getShots, getValueFromStore, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket } from './api.js';
 import { initScaling } from './scaling.js';
 import * as chart from './chart.js';
 import * as ui from './ui.js';
@@ -2160,37 +2160,18 @@ async function initializeDe1Connection() {
 }
 
 async function initVisualizer() {
+    // Legacy browser credentials have no server binding. Purge them even
+    // while the integration is disabled so an upgrade cannot retain secrets.
+    localStorage.removeItem('visualizerUsername');
+    localStorage.removeItem('visualizerPassword');
     if (!isVisualizerEnabled()) {
         logger.info('Visualizer is disabled. Skipping initialization.');
         return;
     }
-    
-    logger.info('Initializing Visualizer connection...');
-    const username = localStorage.getItem('visualizerUsername');
-    const encodedPassword = localStorage.getItem('visualizerPassword');
-
-    if (username && encodedPassword) {
-        try {
-            const password = atob(encodedPassword); // Decode password
-            const { valid: isValid } = await verifyVisualizerCredentials(username, password);
-            if (isValid) {
-                logger.info('Saved Visualizer credentials are valid.');
-
-            } else {
-                logger.warn('Saved Visualizer credentials failed to validate. Please check your settings.');
-                // Clearing the invalid credentials
-                localStorage.removeItem('visualizerUsername');
-                localStorage.removeItem('visualizerPassword');
-            }
-        } catch (e) {
-            logger.error('Failed to decode or verify saved credentials', e);
-            // Clear potentially corrupted credentials
-            localStorage.removeItem('visualizerUsername');
-            localStorage.removeItem('visualizerPassword');
-        }
-    } else {
-        logger.info('No saved Visualizer credentials found.');
-    }
+    // Credentials belong to the plugin's secure, server-scoped store. Do not
+    // revive the legacy browser keys: they have no server binding and could be
+    // sent to a newly selected self-hosted Visualizer during boot.
+    logger.info('Visualizer is enabled; credentials are managed by the plugin.');
 }
 
 // Resolves as soon as history.initHistory() has populated the shots array --

@@ -2726,18 +2726,17 @@ export async function verifyVisualizerCredentials(username, password, serverUrl)
             body: JSON.stringify(body),
         });
         if (!response.ok) {
-            let detail = '';
-            try {
-                const err = await response.json();
-                detail = err?.detail || err?.error || '';
-            } catch { /* non-JSON error body */ }
-            return { valid: false, error: detail || `API Error: ${response.status}` };
+            return { valid: false, error: `API Error: ${response.status}` };
         }
         const result = await response.json();
-        return { valid: result.valid === true, error: result.error || null };
+        return {
+            valid: result?.valid === true,
+            error: typeof result?.error === 'string' ? result.error : null,
+            serverUrl: result?.serverUrl || serverUrl || null,
+        };
     } catch (error) {
-        logger.error('Failed to verify Visualizer credentials:', error.message);
-        return { valid: false, error: error.message || 'Connection failed' };
+        logger.error('Failed to verify Visualizer credentials:', error?.name || 'request failed');
+        return { valid: false, error: 'Could not verify Visualizer credentials.' };
     }
 }
 

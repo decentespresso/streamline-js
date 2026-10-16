@@ -1,0 +1,44 @@
+{
+  "requests": [
+    {
+      "endpoint": "/plugins/visualizer.reaplugin/settings",
+      "method": "POST",
+      "body": {
+        "Username": "edited-user",
+        "Password": "edited-secret",
+        "AutoUpload": true,
+        "LengthThreshold": 5,
+        "ServerUrl": "https://visualizer.coffee"
+      }
+    },
+    {
+      "endpoint": "/plugins/visualizer.reaplugin/settings",
+      "method": "POST",
+      "body": {
+        "ServerUrl": "https://coffee.example/visualizer"
+      }
+    },
+    {
+      "endpoint": "/plugins/visualizer.reaplugin/settings",
+      "method": "POST",
+      "body": {
+        "Username": "new-user",
+        "Password": "new-secret",
+        "AutoUpload": true,
+        "LengthThreshold": 5,
+        "ServerUrl": "https://coffee.example/visualizer"
+      }
+    }
+  ],
+  "errors": [],
+  "checks": [
+    "stale verification dropped",
+    "save re-enabled after edit",
+    "HTTP warning",
+    "401 surfaced",
+    "TLS surfaced",
+    "legacy ServerUrl disabled",
+    "normalized trailing slash preserved"
+  ],
+  "result": "pass"
+}

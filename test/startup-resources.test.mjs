@@ -107,6 +107,14 @@ test('core startup does not wait for Visualizer verification', () => {
     assert.match(app, /Promise\.all\(\[historyInit, profileManager\.init\(\)\]\)/);
 });
 
+test('startup never sends unbound legacy Visualizer credentials', () => {
+    const app = read('src/modules/app.js');
+    const init = app.slice(app.indexOf('async function initVisualizer()'), app.indexOf('// Resolves as soon as history.initHistory()'));
+    assert.match(init, /removeItem\('visualizerUsername'\)/);
+    assert.match(init, /removeItem\('visualizerPassword'\)/);
+    assert.doesNotMatch(init, /verifyVisualizerCredentials|atob\(/);
+});
+
 test('expanded chart closes only from explicit controls', () => {
     const app = read('src/modules/app.js');
     assert.match(app, /backBtn\.addEventListener\('click', close\)/);
