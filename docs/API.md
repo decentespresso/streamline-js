@@ -137,6 +137,17 @@ render the Warmer button and the non‑GHC control column.
 
 ### Scale
 
+`GET /api/v1/scale/info` describes the currently connected scale. Its optional
+`firmwareVersion` is an opaque string; `batteryLevel` is an optional integer
+percentage or `null`. Missing or null metadata stays unknown. A host without
+this endpoint may return 404, 405 or 501; 503 means no connected scale.
+
+The inline Preferred control remains available for every scale. Skale devices
+add a Settings popup only when the host exposes `skalePoweredByUsbByDevice`.
+That key requires a Decaid release containing [decentespresso/decaid#745](https://github.com/decentespresso/decaid/pull/745),
+which is still open. There is no legacy USB-setting fallback. The switch is a
+manual USB-power declaration; the UI hides the battery level while enabled.
+
 ```bash
 curl -X POST http://localhost:8080/api/v1/scale/tare
 curl -X POST http://localhost:8080/api/v1/scale/timer/start

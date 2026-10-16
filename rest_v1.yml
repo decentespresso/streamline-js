@@ -1104,7 +1104,7 @@ paths:
   /api/v1/scale/info:
     get:
       summary: Get connected scale information
-      description: Returns metadata for the currently connected scale.
+      description: Returns metadata for the currently connected scale. Missing fields mean unknown metadata; an unsupported scale may return an empty object.
       tags: [Scale]
       responses:
         "200":
@@ -1113,8 +1113,22 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ScaleInfo'
+        "404":
+          description: Scale information endpoint unavailable on an older host
+        "405":
+          description: Scale information GET method unavailable on an older host
+        "501":
+          description: Scale information not implemented by the host
         "503":
           description: No scale is connected
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error:
+                    type: string
 
   /api/v1/scale/tare:
     put:
