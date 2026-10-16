@@ -154,3 +154,28 @@ test('the fan numpad is labelled in degrees, not percent', () => {
     // attachSettingsNumpad applies to temperature fields.
     assert.match(settingsSource, /calibFanInput:\s*\{[^}]*unit: '°C'/);
 });
+
+// ── Settings the workflow owns ──────────────────────────────────────────────
+//
+// Flush temperature and flow are written through the workflow (settings.js
+// updateFlushSetting), and a DYE2 recipe applies its own values the same way. If the restore
+// still asserted what the user last saved here, opening this page would put a recipe's flush
+// temperature back to theirs.
+
+test('flush temperature and flow are never recorded', () => {
+    const record = adoptFromMachine(null, { de1: { flushTemp: 88, flushFlow: 4, fan: 45 } },
+        { de1: { flushTemp: 88, flushFlow: 4, fan: 45 } });
+    assert.deepEqual(record.de1, { fan: 45 });
+});
+
+test('a flush value already in an older record is not re-asserted', () => {
+    // The exclusion has to hold on the read side too: a record written before this page
+    // handed the two over to the workflow still carries them.
+    const stale = { de1: { flushTemp: 95, flushFlow: 6, fan: 45 } };
+    const differences = diffUserSettings(stale, { de1: { flushTemp: 88, flushFlow: 4, fan: 40 } });
+    assert.deepEqual(differences, [{ scope: 'de1', key: 'fan', saved: 45, actual: 40 }]);
+});
+
+test('the exclusion list names them', () => {
+    assert.deepEqual([...RESTORE_EXCLUDED_KEYS.de1], ['flushTemp', 'flushFlow']);
+});

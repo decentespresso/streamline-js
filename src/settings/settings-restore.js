@@ -25,8 +25,13 @@ export const RESTORE_SCOPES = Object.freeze(['de1', 'de1Advanced']);
 // Heater voltage is excluded: it describes the mains the machine is plugged
 // into rather than a preference, only takes effect after a machine restart, and
 // re-asserting a stale one from a tablet is the wrong kind of helpful.
+//
+// Flush temperature and flow are excluded because the workflow owns them: this page writes
+// them through it (updateFlushSetting), and a DYE2 recipe applies its own values the same
+// way. Re-asserting what the user last saved here would put a recipe's flush temperature
+// back to theirs on their next visit, undoing an apply they asked for.
 export const RESTORE_EXCLUDED_KEYS = Object.freeze({
-    de1: Object.freeze([]),
+    de1: Object.freeze(['flushTemp', 'flushFlow']),
     de1Advanced: Object.freeze(['heaterVoltage']),
 });
 

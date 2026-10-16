@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
 import { initScaling } from '../modules/scaling.js';
@@ -291,6 +291,13 @@ async function flushPendingChanges() {
         tasks.push(updateWorkflow({ hotWaterData: water }));
         if (isNum(water.volume)) persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, water.volume);
         if (isNum(water.targetTemperature)) persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, water.targetTemperature);
+    }
+    if (pendingChanges.workflow.rinseData) {
+        const rinse = pendingChanges.workflow.rinseData;
+        tasks.push(updateWorkflow({ rinseData: rinse }));
+        // The duration is edited on the main page rather than here, but it is in the staged
+        // block, so keep its record in step on the rare occasion it rides along.
+        if (isNum(rinse.duration)) persistSharedValue(FLUSH_DURATION_LAST_VALUE_KEY, rinse.duration);
     }
     const written = { de1: { ...pendingChanges.de1 }, de1Advanced: { ...pendingChanges.de1Advanced } };
     if (tasks.length) await Promise.all(tasks);
@@ -640,6 +647,21 @@ export function updateHotWaterSetting(key, value) {
     settingsCache.workflow.hotWaterData[key] = value;
     if (!pendingChanges.workflow.hotWaterData) pendingChanges.workflow.hotWaterData = { ...(settingsCache.workflow.hotWaterData) };
     pendingChanges.workflow.hotWaterData[key] = value;
+}
+
+// Update flush settings via workflow API
+//
+// Flush temperature and flow reach the DE1 either way (a workflow PUT with rinseData is
+// written to the machine by Decaid's updateWorkflowSettings), but only the workflow is
+// readable by anything else: a plugin reading the workflow saw the previous values, and a
+// DYE2 recipe could apply a flush temperature it could never record. The flush duration
+// keeps its own path (ui.js, the main page's Flush tile).
+export function updateFlushSetting(key, value) {
+    if (!settingsCache.workflow) settingsCache.workflow = {};
+    if (!settingsCache.workflow.rinseData) settingsCache.workflow.rinseData = {};
+    settingsCache.workflow.rinseData[key] = value;
+    if (!pendingChanges.workflow.rinseData) pendingChanges.workflow.rinseData = { ...(settingsCache.workflow.rinseData) };
+    pendingChanges.workflow.rinseData[key] = value;
 }
 
 
@@ -1248,8 +1270,14 @@ export function renderReaSettingsForm(settings) {
 }
 
 // Render Flush settings form
+//
+// The workflow owns these two now (see updateFlushSetting), so they are read from it, with
+// the machine's own values as the fallback for a workflow fetch that failed.
 export function renderFlushSettingsForm(settings) {
     console.log("rendering flush settings form with settings: ", settings);
+    const rinse = settingsCache.workflow?.rinseData || {};
+    const flushTemp = rinse.targetTemperature ?? settings?.flushTemp;
+    const flushFlow = rinse.flow ?? settings?.flushFlow;
     if (!settings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
@@ -1290,9 +1318,9 @@ export function renderFlushSettingsForm(settings) {
                         <div class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none flex items-center justify-center"
                              style="width: 130px;">
                             <input type="text" inputmode="numeric" pattern="[0-9]*" id="flushTempInput" aria-labelledby="flush-temp-label" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                   value="${settings.flushTemp !== undefined ? tempInputValue(settings.flushTemp) : ''}"
+                                   value="${flushTemp !== undefined ? tempInputValue(flushTemp) : ''}"
                                    step="5" min="${tempInputValue(5)}" max="${tempInputValue(95)}"
-                                   onchange="window.updateDe1Setting('flushTemp', window.tempInputToCelsius(this.value))">
+                                   onchange="window.updateFlushSetting('targetTemperature', window.tempInputToCelsius(this.value))">
                             <span class="ml-2" aria-hidden="true">${tempUnitLabel()}</span>
                         </div>
                         <button id="flush-temp-plus" aria-label="Increase flush temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -1321,9 +1349,9 @@ export function renderFlushSettingsForm(settings) {
                         <div class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none flex items-center justify-center"
                              style="width: 130px;">
                             <input type="text" inputmode="numeric" pattern="[0-9]*" id="flushFlowInput" aria-labelledby="flush-flow-label" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                   value="${settings.flushFlow !== undefined ? settings.flushFlow : ''}"
+                                   value="${flushFlow !== undefined ? flushFlow : ''}"
                                    step="1" min="1" max="8"
-                                   onchange="window.updateDe1Setting('flushFlow', parseFloat(this.value))">
+                                   onchange="window.updateFlushSetting('flow', parseFloat(this.value))">
                             <span class="ml-2 text-nowrap" aria-hidden="true">ml/s</span>
                         </div>
                         <button id="flush-flow-plus" aria-label="Increase flush flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -8010,6 +8038,10 @@ async function _preloadSettingsInternal() {
                     workflow.hotWaterData = mergeStagedOverFetched(
                         workflow.hotWaterData || {}, pendingChanges.workflow.hotWaterData);
                 }
+                if (pendingChanges.workflow.rinseData) {
+                    workflow.rinseData = mergeStagedOverFetched(
+                        workflow.rinseData || {}, pendingChanges.workflow.rinseData);
+                }
             }
             settingsCache.workflow = workflow;
         } else {
@@ -9440,6 +9472,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     };
     window.updateSteamSetting = updateSteamSetting;
     window.updateHotWaterSetting = updateHotWaterSetting;
+    window.updateFlushSetting = updateFlushSetting;
     window.flashPlusMinusButton = ui.flashPlusMinusButton;
     window.retryLoadSettings = () => {
         // One failed GET /ledStrip must not brick the Lighting page for the

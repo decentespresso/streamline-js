@@ -766,3 +766,82 @@ function lift(module, patterns) {
         assert.notEqual(getActiveItem(), null); // not its job to clear either
     });
 }
+
+// ── A recipe's machine settings on apply (dyeStrip.js) ───────────────────────
+//
+// DYE2's own apply writes every setting a recipe holds (dye2#23); the strip used to write
+// only the active mode's steam/hot-water value plus the flush time, so which page applied a
+// recipe decided whether it brewed at the right steam temperature, milk stop, hot-water
+// time/flow or flush temperature/flow.
+{
+    const body = lift('dyeStrip.js', [
+        /const RECIPE_MACHINE_FIELDS = \[[\s\S]*?\r?\n\];/,
+        /async function mergeRecipeLiveSettings\(wf, dv\) \{[\s\S]*?\r?\n\}/,
+    ]);
+
+    const build = () => {
+        const persisted = [];
+        const merge = new Function(
+            'persistSharedValue', 'STEAM_TEMP_LAST_VALUE_KEY', 'STEAM_DURATION_LAST_VALUE_KEY',
+            'STEAM_FLOW_LAST_VALUE_KEY', 'MILK_STOP_LAST_VALUE_KEY', 'HOT_WATER_TEMP_LAST_VALUE_KEY',
+            'HOT_WATER_VOLUME_LAST_VALUE_KEY', 'FLUSH_DURATION_LAST_VALUE_KEY',
+            `${body}\nreturn mergeRecipeLiveSettings;`
+        )(async (k, v) => persisted.push([k, v]), 'last-steam-temp', 'last-steam-duration',
+            'last-steam-flow', 'last-milk-stop', 'last-hot-water-temp', 'last-hot-water-volume',
+            'last-flush-duration');
+        return { merge, persisted };
+    };
+
+    const live = () => ({
+        steamSettings: { targetTemperature: 160, duration: 30, flow: 1.5, stopAtTemperature: 0 },
+        hotWaterData: { targetTemperature: 85, duration: 30, volume: 120, flow: 6 },
+        rinseData: { targetTemperature: 90, duration: 5, flow: 4 },
+    });
+    const everything = {
+        steamMode: 'time', steamTempC: 150, steamTimeS: 40, steamFlowMls: 1.2, steamStopAtTempC: 60,
+        hotWaterMode: 'vol', hotWaterTempC: 80, hotWaterTimeS: 20, hotWaterMl: 150, hotWaterFlowMls: 8,
+        flushTempC: 88, flushS: 8, flushFlowMls: 3,
+    };
+
+    test('every setting the recipe holds is applied, whatever the mode says', async () => {
+        const { merge } = build();
+        const wf = live();
+        await merge(wf, everything);
+        assert.deepEqual(wf.steamSettings, { targetTemperature: 150, duration: 40, flow: 1.2, stopAtTemperature: 60 });
+        assert.deepEqual(wf.hotWaterData, { targetTemperature: 80, duration: 20, volume: 150, flow: 8 });
+        assert.deepEqual(wf.rinseData, { targetTemperature: 88, duration: 8, flow: 3 });
+    });
+
+    test('a setting the recipe does not hold leaves the live value alone', async () => {
+        const { merge } = build();
+        const wf = live();
+        await merge(wf, { steamTimeS: 40 });
+        assert.deepEqual(wf.steamSettings, { targetTemperature: 160, duration: 40, flow: 1.5, stopAtTemperature: 0 });
+        assert.deepEqual(wf.hotWaterData, live().hotWaterData);
+        assert.deepEqual(wf.rinseData, live().rinseData);
+    });
+
+    test('a sub-object the live workflow has not got is not invented', async () => {
+        const { merge } = build();
+        const wf = { steamSettings: { duration: 30 } };
+        await merge(wf, everything);
+        assert.deepEqual(wf, { steamSettings: { duration: 40, targetTemperature: 150, flow: 1.2, stopAtTemperature: 60 } });
+    });
+
+    test('the remembered records follow, except a switch turned off', async () => {
+        const { merge, persisted } = build();
+        await merge(live(), { ...everything, steamStopAtTempC: 0 });
+        assert.deepEqual(Object.fromEntries(persisted), {
+            'last-steam-temp': 150, 'last-steam-duration': 40, 'last-steam-flow': 1.2,
+            'last-hot-water-temp': 80, 'last-hot-water-volume': 150, 'last-flush-duration': 8,
+        }, 'the milk stop at 0 is "off", not a target worth remembering');
+    });
+
+    test('a steam temperature of 0 is the heater off, and is not remembered either', async () => {
+        const { merge, persisted } = build();
+        const wf = live();
+        await merge(wf, { steamTempC: 0 });
+        assert.equal(wf.steamSettings.targetTemperature, 0, 'still applied');
+        assert.deepEqual(persisted, [], 'but not recorded as the value to switch back on to');
+    });
+}

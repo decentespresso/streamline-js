@@ -19,8 +19,9 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, getProfiles } from './api.js';
+import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
+import { profileAtBrewTemp } from './brew-temp.js';
 import { logger } from './logger.js';
 import { fitTextToBox } from './i18n.js';
 import { stripRightInset } from './header-strip-inset.js';
@@ -263,6 +264,13 @@ export async function applyRecipe(recipe) {
     // Steam / hot-water / flush are NOT in the stored workflow — live-merge them.
     const dv = recipe.dashboardVariables || {};
     await mergeRecipeLiveSettings(live, dv);
+    // A recipe's brewC moves the whole curve of whichever profile is now loaded: first
+    // step to brewC, the others by the same amount (brew-temp.js, as the Brew tile does).
+    // It has to run here, after the profile is resolved: applyStoredWorkflow replaces a
+    // stored profile with the tablet's own copy, so a shift DYE2 baked into the stored
+    // body would be lost, and a recipe naming no profile has nothing to bake it into.
+    // Idempotent — a profile already at brewC shifts by zero. See dye2#26.
+    if (dv.brewC != null && live.profile) live.profile = profileAtBrewTemp(live.profile, dv.brewC);
     const seq = ++applySeq;
     await withAutoSaveSuppressed(() => updateWorkflow(live));
     if (seq !== applySeq) return; // a newer tap owns the arming
@@ -403,34 +411,38 @@ async function applyRecipeLegacy(live, recipe) {
 // right after applying the recipe sees the new value as *drift* from the old
 // remembered one and immediately pushes the OLD value back over both the
 // workflow and the live machine — silently reverting the recipe's own change.
+// dashboardVariables name -> [workflow sub-object, field, remembered-value key, armed-only].
+// Every setting a recipe can hold, which is DYE2's own RECIPE_MACHINE_FIELDS (dev-api.ts)
+// read the other way round. The mode fields are not here: they only pick which value DYE2's
+// editor shows, and its own apply path writes every setting held, not just the active mode's.
+// Applying fewer here left a recipe brewing at the previous steam temperature, milk stop,
+// hot-water time or flow, or flush temperature or flow, purely because the strip applied it
+// rather than DYE2's dashboard.
+// The fourth entry is the KV record resyncIfDrifted compares against (null where there is no
+// record to keep); the fifth marks the two that remember a value only while it is above zero
+// -- 0 is the steam heater or the milk stop switched OFF, and remembering it would push "off"
+// back over a later target (api.js setTargetSteamTemp / setStopAtTemperature).
+const RECIPE_MACHINE_FIELDS = [
+    ['steamTempC',       'steamSettings', 'targetTemperature', STEAM_TEMP_LAST_VALUE_KEY,       true],
+    ['steamTimeS',       'steamSettings', 'duration',          STEAM_DURATION_LAST_VALUE_KEY,   false],
+    ['steamFlowMls',     'steamSettings', 'flow',              STEAM_FLOW_LAST_VALUE_KEY,       false],
+    ['steamStopAtTempC', 'steamSettings', 'stopAtTemperature', MILK_STOP_LAST_VALUE_KEY,        true],
+    ['hotWaterTempC',    'hotWaterData',  'targetTemperature', HOT_WATER_TEMP_LAST_VALUE_KEY,   false],
+    ['hotWaterTimeS',    'hotWaterData',  'duration',          null,                            false],
+    ['hotWaterMl',       'hotWaterData',  'volume',            HOT_WATER_VOLUME_LAST_VALUE_KEY, false],
+    ['hotWaterFlowMls',  'hotWaterData',  'flow',              null,                            false],
+    ['flushTempC',       'rinseData',     'targetTemperature', null,                            false],
+    ['flushS',           'rinseData',     'duration',          FLUSH_DURATION_LAST_VALUE_KEY,   false],
+    ['flushFlowMls',     'rinseData',     'flow',              null,                            false],
+];
+
 async function mergeRecipeLiveSettings(wf, dv) {
-    if (wf.steamSettings && (dv.steamTimeS != null || dv.steamFlowMls != null)) {
-        const ss = { ...wf.steamSettings };
-        if (dv.steamMode === 'time' && dv.steamTimeS != null) {
-            ss.duration = dv.steamTimeS;
-            await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, dv.steamTimeS);
-        }
-        if (dv.steamMode === 'flow' && dv.steamFlowMls != null) {
-            ss.flow = dv.steamFlowMls;
-            await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, dv.steamFlowMls);
-        }
-        wf.steamSettings = ss;
-    }
-    if (wf.hotWaterData && (dv.hotWaterMl != null || dv.hotWaterTempC != null)) {
-        const hw = { ...wf.hotWaterData };
-        if (dv.hotWaterMode === 'vol' && dv.hotWaterMl != null) {
-            hw.volume = dv.hotWaterMl;
-            await persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, dv.hotWaterMl);
-        }
-        if (dv.hotWaterMode === 'temp' && dv.hotWaterTempC != null) {
-            hw.targetTemperature = dv.hotWaterTempC;
-            await persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, dv.hotWaterTempC);
-        }
-        wf.hotWaterData = hw;
-    }
-    if (wf.rinseData && dv.flushS != null) {
-        wf.rinseData = { ...wf.rinseData, duration: dv.flushS };
-        await persistSharedValue(FLUSH_DURATION_LAST_VALUE_KEY, dv.flushS);
+    for (const [name, sub, field, key, positiveOnly] of RECIPE_MACHINE_FIELDS) {
+        // A sub-object the live workflow does not have is left alone rather than invented:
+        // the PUT would be a partial one on a host that may not merge it.
+        if (!wf[sub] || dv[name] == null) continue;
+        wf[sub] = { ...wf[sub], [field]: dv[name] };
+        if (key && (!positiveOnly || dv[name] > 0)) await persistSharedValue(key, dv[name]);
     }
 }
 
