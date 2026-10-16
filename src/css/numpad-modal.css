@@ -1,0 +1,479 @@
+/* Numpad -- the TCL skin's data-entry page, rendered on a top-layer <dialog>.
+   The dialog fills the viewport; inside it, .numpad-modal-scaled-inner is a fixed
+   1920x1200 design canvas fitted to the viewport by scaleNumpadCanvas() in
+   numpad-modal.js.
+
+   Geometry is ported straight from skin.tcl `streamline_entry_page_setup`
+   (skin.tcl:5020-5162), which lays the page out absolutely on dui's 2560x1600
+   canvas. Ours is 1920x1200 = exactly x0.75, so every coordinate below is the
+   TCL number times 0.75 and is noted as such.
+
+   Fonts follow a different chain. skin.tcl's names are decorative -- the real
+   size is the numeric argument to load_font (skin.tcl:270-300), which dui turns
+   into a Tk point size of int(fontm * N). Reference rendering is a 1920x1200
+   tablet at fontm 0.65, ~218dpi, so 1pt = 3px:
+
+       px = int(0.65 * N) * 3
+
+   That reproduces the two sizes already correct here (the hint and the
+   "Previous Values" label, both N=16 -> 30px), so it is used for the rest.
+   Weight comes from which .ttf load_font was pointed at, not from the name:
+   Inter-Bold40 is Inter-Regular (400), Inter-HeavyBold30 is SemiBold (600).
+
+   Light is the default theme; [data-theme="dark"] overrides below restore the
+   dark palette. */
+
+.numpad-modal-overlay {
+    border: none;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    overflow: hidden;
+}
+
+.numpad-modal-overlay::backdrop {
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(6px);
+}
+
+/* showModal() autofocuses the first button and Chrome treats that as
+   :focus-visible, painting a ring around CANCEL that reads as a border the TCL
+   page doesn't have. openModal() moves focus to the dialog, but the ring can
+   still land mid-open, so drop it outright: this is a full-screen touch keypad
+   whose controls are all large and labelled, and ESC still closes it. */
+.numpad-modal-overlay button:focus {
+    outline: none;
+}
+
+.numpad-modal-container {
+    width: 100%;
+    height: 100%;
+    background-color: white;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* The 1920x1200 design canvas. scaleNumpadCanvas() sets the full transform.
+   Anchored top-left rather than flex-centered: the canvas is wider than the
+   container on every tablet, and engines disagree on where an overflowing
+   centered flex item lands (Chrome centers it, some WebViews align it to the
+   start), which shifted the whole numpad right and pushed the keypad off screen. */
+.numpad-modal-scaled-inner {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1200px;
+    transform-origin: top left;
+}
+
+/* Wrappers exist only to group the markup -- the TCL page has no such nesting,
+   so they contribute no box and their children position against the canvas. */
+.numpad-modal-header,
+.numpad-modal-actions,
+.numpad-modal-content,
+.numpad-modal-left,
+.numpad-modal-right,
+.numpad-modal-input-section {
+    display: contents;
+}
+
+/* skin.tcl:5038 -- title anchored nw at 100,96, Inter-HeavyBold40 (N=32, Bold) */
+.numpad-modal-title {
+    position: absolute;
+    left: 75px;
+    top: 72px;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    font-size: 60px;
+    line-height: 1;
+    color: #121212;
+}
+
+/* skin.tcl:5051 -- rect 104 298 2464 302 (4px thick), in datacard_box_line_color */
+.numpad-modal-header-divider {
+    position: absolute;
+    left: 78px;
+    top: 223.5px;
+    width: 1770px;
+    height: 3px;
+    background-color: #A5A5A5;
+    z-index: 1;
+}
+
+/* skin.tcl:5052 -- rect 1278 302 1282 1600, splits the page in half */
+.numpad-modal-divider {
+    position: absolute;
+    left: 958.5px;
+    top: 226.5px;
+    width: 3px;
+    height: 973.5px;
+    background-color: #A5A5A5;
+    z-index: 1;
+}
+
+/* skin.tcl:5040 -- hint centred at 646,430 in the left half */
+.numpad-modal-input-label {
+    position: absolute;
+    left: 0;
+    top: 307.5px;
+    width: 960px;
+    text-align: center;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 400;
+    font-size: 30px;
+    line-height: 30px;
+    color: #666;
+}
+
+/* skin.tcl:5045 -- rect 345 494 949 738, 4px outline in datacard_entry_box_color */
+.numpad-modal-input-box {
+    position: absolute;
+    left: 258.75px;
+    top: 370.5px;
+    width: 453px;
+    height: 183px;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+.numpad-modal-input-box * {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    pointer-events: none;
+}
+
+.numpad-modal-input-border {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 3px solid #1867D6;
+    border-radius: 14px;
+    box-sizing: border-box;
+}
+
+.numpad-modal-input-cursor {
+    display: inline-block;
+    width: 3px;
+    height: 0.75em;
+    background-color: #1867d6;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin: 0 3px;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+/* skin.tcl:5047 -- value centred at 648,616, Inter-HeavyBold50 (N=40, SemiBold) */
+.numpad-modal-input-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 600;
+    font-size: 78px;
+    line-height: 1;
+    white-space: nowrap;
+    color: #121212;
+    display: flex;
+    align-items: center;
+}
+
+/* TCL renders value+suffix as one string in one font
+   (streamline_data_entry_page_value_formatted, skin.tcl:5009). */
+.numpad-unit-text {
+    font-size: 78px;
+    font-weight: 600;
+    color: #121212;
+    margin-left: 6px;
+}
+
+/* skin.tcl:5048 -- rect 150 854 1150 858, the line under the entry box */
+.numpad-previous-divider {
+    position: absolute;
+    left: 112.5px;
+    top: 640.5px;
+    width: 750px;
+    height: 3px;
+    background-color: #A5A5A5;
+}
+
+/* skin.tcl:5042 -- "Previous Values" centred at 636,990; the block below it
+   holds that label plus the pills, so it starts half a line-height above. */
+.numpad-modal-previous-values {
+    position: absolute;
+    left: 0;
+    top: 724.5px;
+    width: 960px;
+}
+
+.numpad-modal-previous-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.numpad-modal-previous-title {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 400;
+    font-size: 30px;
+    line-height: 36px;
+    height: 36px;
+    color: #666;
+    text-align: center;
+    margin: 0;
+}
+
+/* skin.tcl:5153-5156 -- 340x160 at cols 261/672, rows 1078/1297,
+   Inter-HeavyBold35 (N=16, Regular), 2px outline.
+   skin.tcl:5141 sets radius 100, and dui's radius is the corner circle's
+   DIAMETER (dui.tcl:8476 spans x0 -> x0+radius), so the CSS radius is 50
+   canvas px = 37.5 here. Half the height is 60, so these are rounded
+   rectangles, NOT the stadium pills the keypad keys are. */
+.numpad-modal-previous-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 44.25px;
+    margin-top: 48px;
+    margin-left: 195.75px;
+}
+
+.numpad-previous-row {
+    display: flex;
+    gap: 53.25px;
+}
+
+.numpad-modal-previous-btn {
+    width: 255px;
+    height: 120px;
+    padding: 0;
+    border-radius: 37.5px;
+    background: #FFFFFF;
+    border: 1.5px solid #121212;
+    cursor: pointer;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 30px;
+    font-weight: 400;
+    color: #121212;
+    transition: background-color 0.2s;
+}
+
+.numpad-modal-previous-btn:active {
+    background-color: #f3f4f6;
+}
+
+/* skin.tcl:5081-5089 -- keys are 300x200 at cols 1423/1770/2121,
+   rows 448/718/987/1259. The TCL pitches vary by ~3px between columns; the
+   gaps below are the average, so the block's outer edges land exactly.
+   Labels are Inter-Bold40 -- which load_font points at Inter-Regular (N=39). */
+.numpad-modal-numpad {
+    position: absolute;
+    left: 1067.25px;
+    top: 336px;
+    display: grid;
+    grid-template-columns: repeat(3, 225px);
+    grid-template-rows: repeat(4, 150px);
+    column-gap: 36.75px;
+    row-gap: 52.75px;
+}
+
+.numpad-modal-numpad-btn {
+    width: 225px;
+    height: 150px;
+    background-color: #c9c9c9;
+    border: none;
+    border-radius: 75px;
+    padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 75px;
+    font-weight: 400;
+    color: #121212;
+    cursor: pointer;
+    transition: all 0.15s;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+/* skin.tcl:63 -- dataentry_button_color_flash1, the key-press flash */
+.numpad-modal-numpad-btn:active {
+    background-color: #888888;
+    transform: scale(0.96);
+}
+
+.numpad-modal-numpad-btn.numpad-decimal {
+    font-weight: 400;
+}
+
+/* skin.tcl:5097 -- the backspace key drops to Inter-Bold30 (N=24) for its
+   glyph; we draw an icon instead, sized to that 45px line. */
+.numpad-modal-numpad-btn .delete-icon-small {
+    width: 54px;
+    height: 45px;
+}
+
+.numpad-modal-numpad-btn .delete-icon-small path {
+    fill: #121212;
+}
+
+/* skin.tcl:5119 -- 1640 65 1850 225. skin.tcl:5113-5117 sets fill and outline
+   to the page background with width 0, so CANCEL is a bare text label with no
+   pill and no border -- only CONFIRM is a filled button. Label keeps the
+   inherited datacard_number_text_color, not the blue. */
+.numpad-modal-cancel {
+    position: absolute;
+    left: 1230px;
+    top: 48.75px;
+    width: 157.5px;
+    height: 120px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 600;
+    font-size: 30px;
+    color: #121212;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.2s;
+}
+
+.numpad-modal-cancel:active {
+    opacity: 0.55;
+}
+
+/* skin.tcl:5127 -- 1970 65 2460 225, filled with data_card_confirm_button */
+.numpad-modal-confirm {
+    position: absolute;
+    left: 1477.5px;
+    top: 48.75px;
+    width: 367.5px;
+    height: 120px;
+    padding: 0;
+    border-radius: 60px;
+    background-color: #385A92;
+    border: none;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 600;
+    font-size: 30px;
+    color: #FFFFFF;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background-color 0.2s;
+}
+
+.numpad-modal-confirm:active {
+    background-color: #2d4a72;
+}
+
+/* Dark Theme -- the palette skin.tcl declares at 128-167, not an approximation:
+   page data_card_background_color #17191E, text/labels data_card_text_color
+   #e8e8e8, rules datacard_box_line_color #3D4255, keys dataentry_button_color
+   #292C38 (pressed = dataentry_button_color_flash1 #333333), previous pills
+   data_card_previous_color #101117 over data_card_previous_outline_color
+   #121212, entry box datacard_entry_box_color #415996 over background_color
+   #0d0e14. CONFIRM is #385A92/#FFFFFF in both themes, so it needs no override. */
+[data-theme='dark'] .numpad-modal-overlay::backdrop {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+[data-theme='dark'] .numpad-modal-container {
+    background-color: #17191E;
+}
+
+[data-theme='dark'] .numpad-modal-title {
+    color: #E8E8E8;
+}
+
+[data-theme='dark'] .numpad-modal-divider,
+[data-theme='dark'] .numpad-modal-header-divider {
+    background-color: #3D4255;
+}
+
+[data-theme='dark'] .numpad-modal-input-label {
+    color: #E8E8E8;
+}
+
+[data-theme='dark'] .numpad-modal-input-box {
+    background-color: #0d0e14;
+}
+
+[data-theme='dark'] .numpad-modal-input-border {
+    border-color: #415996;
+}
+
+[data-theme='dark'] .numpad-modal-input-cursor {
+    background-color: #415996;
+}
+
+[data-theme='dark'] .numpad-modal-input-value {
+    color: #E8E8E8;
+}
+
+/* Matches the value it is part of -- TCL draws them as one string. */
+[data-theme='dark'] .numpad-unit-text {
+    color: #E8E8E8;
+}
+
+/* CANCEL has no pill, so its label carries the whole button. */
+[data-theme='dark'] .numpad-modal-cancel {
+    color: #E8E8E8;
+}
+
+[data-theme='dark'] .numpad-modal-previous-title {
+    color: #E8E8E8;
+}
+
+[data-theme='dark'] .numpad-previous-divider {
+    background-color: #3D4255;
+}
+
+[data-theme='dark'] .numpad-modal-previous-btn {
+    background-color: #101117;
+    border-color: #121212;
+    color: #E8E8E8;
+}
+
+[data-theme='dark'] .numpad-modal-previous-btn:active {
+    background-color: #1b1d29;
+}
+
+[data-theme='dark'] .numpad-modal-numpad-btn {
+    background-color: #292C38;
+    color: #E8E8E8;
+}
+
+/* skin.tcl:165 -- dataentry_button_color_flash1, the key-press flash */
+[data-theme='dark'] .numpad-modal-numpad-btn:active {
+    background-color: #333333;
+}
+
+[data-theme='dark'] .numpad-modal-numpad-btn:hover {
+    background-color: #2f333f;
+}
+
+[data-theme='dark'] .numpad-modal-numpad-btn .delete-icon-small path {
+    fill: #E8E8E8;
+}

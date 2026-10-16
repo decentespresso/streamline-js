@@ -1,0 +1,154 @@
+:root {
+    --text-primary: #121212;
+    --border-color: var(--border-primary); /* defined in main.css; its dark value is set there too */
+    --toggle-off-bg: #e8e8e8;
+    --toggle-off-border: #c9c9c9;
+    --toggle-off-knob: #c9c9c9;
+    --preset-active-color: #121212;
+}
+
+.preset-active {
+    color: var(--preset-active-color) !important;
+}
+
+/* main.css is linked after this file, so any dark token it also defines wins.
+   --text-primary and --button-grey live there; setting them here would read as
+   if it worked and do nothing. */
+[data-theme="dark"] {
+    --preset-active-color: #e8e8e8;
+    --mimoja-blue-v2: #415996;
+    --mimoja-blue: #415996; /* legacy alias of --mimoja-blue-v2; no remaining callers */
+    --low-contrast-white: #959595;
+    --dark-gray: #101217;
+    --green: #0CA581;
+    --toggle-off-bg: #2a2a2e;
+    --toggle-off-border: #4a4a52;
+    --toggle-off-knob: #5a5a64;
+}
+
+[data-theme="dark"] body {
+    background-color: #101217;
+    color: #E8E8E8;
+}
+
+[data-theme="dark"] header {
+    background-color: #17191e;
+    border-bottom-color: var(--border-primary);
+}
+
+[data-theme="dark"] aside {
+    background-color: var(--box-color); /* #17191E, Figma dark column */
+    border-right-color: var(--border-primary);
+}
+
+[data-theme="dark"] aside [role="separator"] {
+    border-color: var(--border-primary);
+}
+
+[data-theme="dark"] #shot-history-panel,
+[data-theme="dark"] #shot-data-panel {
+    border-color: var(--border-primary);
+}
+
+/* GHC column: match shot-history-panel border, recolor buttons + icons for dark mode */
+[data-theme="dark"] #ghc-controls {
+    border-left-color: var(--border-primary);
+}
+
+[data-theme="dark"] #ghc-controls button:not(#ghc-stop-btn) {
+    background-color: #6576A0;
+}
+
+[data-theme="dark"] #ghc-controls button img {
+    filter: brightness(0) invert(1);
+}
+
+[data-theme="dark"] #ghc-controls button:not(#ghc-stop-btn) span {
+    color: var(--text-primary); /* Figma dark #E8E8E8 */
+}
+
+/* Header profile actions: the Figma exports are near-black line art, so flip them
+   to the dark-theme foreground the same way the GHC icons are flipped. */
+[data-theme="dark"] #profile-select-btn img,
+[data-theme="dark"] #profile-edit-btn img {
+    filter: brightness(0) invert(1);
+}
+
+[data-theme="dark"] footer {
+    background-color: #101117;
+    border-top-color: var(--border-primary);
+}
+
+[data-theme="dark"] .btn-outline {
+    border-color: var(--mimoja-blue-v2);
+    color: var(--mimoja-blue-v2);
+}
+
+[data-theme="dark"] .btn {
+    background-color: #292c38;
+    color: white;
+}
+
+[data-theme="dark"] .btn:hover {
+    background-color: var(--button-primary-bg);
+}
+
+/* Colour is intentionally not set here: the cancel buttons set
+   text-[var(--text-primary)] themselves; the header buttons are handled below. */
+[data-theme="dark"] #sleep-button, [data-theme="dark"] .settings-button {
+    background-color: #101117; /* Buttons/Background.Secondary */
+}
+
+/* Header DYE / Settings / Sleep, dark: Figma 104:1591 (251:2217) has no stroke,
+   fill #101117 and Text/Primary #E8E8E8 labels. Border matches the fill so the
+   box size stays identical to light mode. */
+[data-theme="dark"] #dye-open-btn,
+[data-theme="dark"] #settings-btn,
+[data-theme="dark"] #sleep-button,
+[data-theme="dark"] .settings-button[data-plugin-surface] {
+    color: var(--text-primary);
+    border-color: #101117;
+}
+
+[data-theme="dark"] #confirm-profile-btn,
+[data-theme="dark"] #editor-save-btn {
+    background-color: var(--button-primary-bg); /* Buttons/Background.Active */
+    color: var(--button-primary-text);
+}
+
+/* Profile selector — dark palette conformance. Panel/header/chart dividers and
+   the action-button borders use border tokens in the markup itself. */
+[data-theme="dark"] #selected_profile_name {
+    color: var(--text-primary);
+}
+[data-theme="dark"] #reset-profile-cancel { border-color: var(--border-primary); }
+[data-theme="dark"] #add_profile svg path,
+[data-theme="dark"] #view_profile svg path,
+[data-theme="dark"] #search_profile svg path,
+[data-theme="dark"] #delete_profile svg path {
+    stroke: var(--text-primary);
+}
+
+/* Themed scrollbars app-wide in dark mode */
+[data-theme="dark"] {
+    scrollbar-color: #707485 transparent; /* thumb, track — Firefox + Chromium 121+; inherits to descendants */
+}
+[data-theme="dark"] ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-track {
+    background: transparent;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background-color: #707485;
+    border-radius: 8px;
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background-color: #8a8fa3;
+}
+
+/* Header profile name: Figma dark (251:2245) is Text/Primary; light stays action blue. */
+[data-theme="dark"] #profile-name {
+    color: var(--text-primary);
+}
