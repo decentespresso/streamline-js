@@ -165,6 +165,16 @@ export async function getDevices() {
     return response.json();
 }
 
+export async function getScaleInfo() {
+    const response = await fetch(`${API_BASE_URL}/scale/info`);
+    if (!response.ok) {
+        const error = new Error(`Failed to get scale info (${response.status})`);
+        error.status = response.status;
+        throw error;
+    }
+    return response.json();
+}
+
 /** Connected scale inventory, including the host-owned connection role. */
 export async function getScaleDevices() {
     const devices = await getDevices();

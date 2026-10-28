@@ -1848,3 +1848,5 @@ Brightness is limited to 20% while the battery is low. Turn off Dim the screen w
 Will apply when the display reconnects,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 Go to setting,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 Requested {requested}% · applied {applied}%,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Skale USB Power,,,Skale-USB-Stromversorgung,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Declare USB power manually and hide the battery level.,,,USB-Stromversorgung manuell festlegen und Akkustand ausblenden.,,,,,,,,,,,,,,,,,,,,,,,,,,,,
