@@ -1,6 +1,7 @@
 // Check of the fit math in src/modules/scaling.js (mirrored here — the module
 // touches the DOM at import time). Run: node test/scaling-fit.test.mjs
 import assert from 'node:assert';
+import { KEYBOARD_GAP, keyboardIsUp, keyboardLift, visibleBand } from '../src/modules/keyboard-fit.js';
 
 const DESIGN_W = 1920, DESIGN_H = 1200, MAX_STRETCH = 1.0;
 // Rigid part of the main page: 168 header + 150 profile/telemetry band +
@@ -134,3 +135,79 @@ function lift(shift, rectTop, rectBottom, visibleHeight) {
 }
 
 console.log('ok — scaling fit math');
+
+// ── Soft keyboard ──────────────────────────────────────────────────────────
+//
+// Decaid's activity is adjustResize, so the WebView shrinks when the keyboard
+// opens. #scaling-container is overflow:hidden and resets its scrollTop every
+// pass, so a focused field cannot be scrolled into view -- the canvas is lifted
+// under it instead. A full-screen overlay is a different problem: it is as tall
+// as the design canvas, so lifting it pushes its header off the top and leaves
+// the text under the keyboard, which is why it shrinks to visibleBand() instead.
+
+// A keyboard taking the bottom 45% of an 800px-tall screen.
+const KB_VISIBLE = 440;
+
+// A field flush with the keyboard reads as covered, so the lift leaves a gap.
+{
+    const field = { top: 500, bottom: 540 };
+    const lift = keyboardLift(field, KB_VISIBLE);
+    assert.equal(lift, 128, 'bottom 540 + 28 gap - 440 visible');
+    assert.ok(field.bottom - lift + KEYBOARD_GAP <= KB_VISIBLE, 'the field clears the keyboard');
+}
+
+// Already clear of it: no lift, so a tap on a field near the top never moves the page.
+for (const field of [{ top: 10, bottom: 50 }, { top: 300, bottom: 400 }, { top: 0, bottom: KB_VISIBLE - KEYBOARD_GAP }]) {
+    assert.equal(keyboardLift(field, KB_VISIBLE), 0);
+}
+assert.equal(keyboardLift(null, KB_VISIBLE), 0);
+
+// The lift never takes a field's own top off-screen: a field at the very bottom
+// of a tall page rises as far as it can and no further.
+{
+    const field = { top: 60, bottom: 790 };
+    assert.equal(keyboardLift(field, KB_VISIBLE), 32, 'capped at top - gap, not the 378 overlap');
+}
+
+// Each pass measures a rect that already includes the previous lift, so the
+// lifts converge instead of compounding.
+{
+    let shift = 0;
+    let field = { top: 500, bottom: 540 };
+    for (let pass = 0; pass < 4; pass++) {
+        const lift = keyboardLift({ top: field.top - shift, bottom: field.bottom - shift }, KB_VISIBLE);
+        shift += lift;
+    }
+    assert.equal(shift, 128, 'the second pass and after add nothing');
+}
+
+// What counts as the keyboard rather than a resize or a toolbar sliding away.
+assert.equal(keyboardIsUp(440, 440, 800), true);
+assert.equal(keyboardIsUp(800, 440, 800), true, 'a WebView that only shrinks visualViewport');
+assert.equal(keyboardIsUp(700, 700, 800), false, '12% is not a keyboard');
+assert.equal(keyboardIsUp(800, 800, 800), false);
+
+// visibleBand converts the screen into the design-space coordinates a fixed
+// child of the transformed #scaled-content is laid out in.
+{
+    const scale = 0.697917;
+    const band = visibleBand(KB_VISIBLE, scale, 0);
+    assert.equal(Math.round(band.top), 0);
+    assert.equal(Math.round(band.height), Math.round(KB_VISIBLE / scale), 'design px, not screen px');
+
+    // With the canvas lifted, the visible band starts further down the canvas.
+    const lifted = visibleBand(KB_VISIBLE, scale, -53.2136);
+    assert.equal(Math.round(lifted.top), 76);
+    assert.equal(Math.round(lifted.height), Math.round(band.height));
+
+    // The overlay covers exactly the screen: band top and bottom map back to 0
+    // and the visible height.
+    const screenTop = -53.2136 + lifted.top * scale;
+    const screenBottom = -53.2136 + (lifted.top + lifted.height) * scale;
+    assert.ok(Math.abs(screenTop) < 0.01);
+    assert.ok(Math.abs(screenBottom - KB_VISIBLE) < 0.01);
+}
+assert.equal(visibleBand(0, 1, 0), null);
+assert.equal(visibleBand(440, 0, 0), null);
+
+console.log('keyboard fit: ok');

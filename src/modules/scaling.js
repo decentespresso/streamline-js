@@ -1,3 +1,5 @@
+import { keyboardIsUp, keyboardLift } from './keyboard-fit.js';
+
 let isInitialScaleDone = false; // module-level: only first initScaling call adds .scaled
 
 export function initScaling() {
@@ -6,10 +8,9 @@ export function initScaling() {
     const designWidth = 1920;
     const designHeight = 1200;
     let baselineHeight = window.innerHeight;
-    // How far the canvas is currently lifted to clear the soft keyboard, and the
-    // breathing room left between the focused field and the keyboard's top edge.
+    // How far the canvas is currently lifted to clear the soft keyboard; the
+    // breathing room it leaves is KEYBOARD_GAP in keyboard-fit.js.
     let keyboardShift = 0;
-    const KEYBOARD_GAP = 12;
     // Signature of the last geometry actually written to the DOM. A soft keyboard
     // fires visualViewport resize every frame of its slide-in animation, and each
     // pass used to rewrite the transform and dispatch streamline:scaleupdate --
@@ -114,7 +115,11 @@ export function initScaling() {
         const activeEl = document.activeElement;
         const inputFocused = activeEl &&
             (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
-        const keyboardShrunk = inputFocused && Math.min(rawHeight, visibleHeight) < baselineHeight * 0.85;
+        // A full-screen overlay says so with data-keyboard-fit and shrinks itself
+        // to the visible band instead: lifting one only pushes its header off the
+        // top while its lower half stays under the keyboard.
+        const fitsItself = !!activeEl?.closest?.('[data-keyboard-fit]');
+        const keyboardShrunk = inputFocused && keyboardIsUp(rawHeight, visibleHeight, baselineHeight);
         const screenHeight = keyboardShrunk ? baselineHeight : rawHeight;
         if (!keyboardShrunk) baselineHeight = rawHeight;
 
@@ -124,15 +129,10 @@ export function initScaling() {
         // is overflow:hidden and the non-zoomed branch below resets its scrollTop to
         // 0 on every pass, so any scroll it managed was undone a frame later. Lift
         // the whole canvas in the transform instead, by exactly the overlap.
-        if (keyboardShrunk) {
-            const rect = activeEl.getBoundingClientRect();
-            const overlap = rect.bottom + KEYBOARD_GAP - visibleHeight;
-            if (overlap > 0) {
-                // rect already includes the shift applied last pass, so this is
-                // the extra lift needed, not the total. Never lift so far that
-                // the field's own top goes off-screen.
-                keyboardShift += Math.min(overlap, Math.max(0, rect.top - KEYBOARD_GAP));
-            }
+        if (keyboardShrunk && !fitsItself) {
+            // rect already includes the shift applied last pass, so keyboardLift
+            // returns the extra lift needed, not the total.
+            keyboardShift += keyboardLift(activeEl.getBoundingClientRect(), visibleHeight);
         } else {
             keyboardShift = 0;
         }
@@ -222,7 +222,7 @@ export function initScaling() {
         // out when the result is identical to the last pass so a keyboard's
         // per-frame resize storm doesn't re-write the transform or re-fire
         // streamline:scaleupdate, whose listeners do real layout work.
-        const geometry = `${screenWidth}|${screenHeight}|${canvasHeight}|${sx}|${sy}|${offsetX}|${offsetY}`;
+        const geometry = `${screenWidth}|${screenHeight}|${canvasHeight}|${sx}|${sy}|${offsetX}|${offsetY}|${keyboardShrunk ? visibleHeight : 0}`;
         if (geometry === lastGeometry) return;
         lastGeometry = geometry;
 
@@ -237,8 +237,16 @@ export function initScaling() {
 
         // `scale` kept for existing listeners; it is the horizontal factor, which is
         // what pointer-coordinate math against offsetWidth needs.
+        // visibleHeight and offsetY are what a `position: fixed` child of
+        // #scaled-content needs to cover the screen rather than the canvas: see
+        // visibleBand() in keyboard-fit.js.
         document.dispatchEvent(new CustomEvent('streamline:scaleupdate', {
-            detail: { scale: sx, scaleX: sx, scaleY: sy }
+            detail: {
+                scale: sx, scaleX: sx, scaleY: sy,
+                offsetX, offsetY, canvasHeight,
+                keyboardUp: keyboardShrunk,
+                visibleHeight: keyboardShrunk ? visibleHeight : canvasHeight * sy,
+            }
         }));
     }
 

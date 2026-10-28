@@ -52,6 +52,10 @@ export function openPluginOverlay(plugin, action, pageUrl, {
 
     const dialog = document.createElement('dialog');
     dialog.dataset.agentId = `plugin-overlay:${plugin.id}`;
+    // The dialog sits in the top layer, sized in vh, so it shrinks with the soft
+    // keyboard on its own. Without this, focus landing in the frame would make
+    // scaling.js lift the canvas behind it by the frame's whole height.
+    dialog.dataset.keyboardFit = '1';
     const full = action.size === 'full';
     dialog.style.cssText = `width:${full ? '100vw' : 'min(1100px,94vw)'};height:${full ? '100vh' : 'min(760px,90vh)'};max-width:none;max-height:none;padding:0;border:0;border-radius:${full ? 0 : 16}px;overflow:hidden;background:var(--bg,#fff);`;
     const frame = document.createElement('iframe');

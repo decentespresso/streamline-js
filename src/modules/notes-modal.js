@@ -1,4 +1,5 @@
 import { loadEasyMDE, loadStyle } from './vendor-loader.js';
+import { visibleBand } from './keyboard-fit.js';
 
 loadStyle('src/css/notes-modal.css').catch(() => {});
 
@@ -43,6 +44,11 @@ function buildModal() {
 
     overlayEl = document.createElement('div');
     overlayEl.className = 'notes-modal-overlay';
+    // scaling.js lifts the whole canvas to clear the soft keyboard, which is
+    // right for a field in a page and wrong for a full-screen editor: it would
+    // push this header off the top and leave the text under the keyboard
+    // anyway. fitToScreen() shrinks the overlay instead.
+    overlayEl.dataset.keyboardFit = '1';
 
     const container = document.createElement('div');
     container.className = 'notes-modal-container';
@@ -137,6 +143,40 @@ function buildModal() {
     }
 }
 
+// The overlay is `position: fixed` inside the transformed #scaled-content, so
+// its own `top: 0; height: 100%` is the design canvas rather than the screen.
+// While the keyboard is up that means the editor runs on underneath it, so take
+// the visible band from scaling.js and sit in exactly that.
+function fitToScreen(detail) {
+    if (!overlayEl) return;
+    const band = detail?.keyboardUp
+        ? visibleBand(detail.visibleHeight, detail.scaleY || detail.scale, detail.offsetY)
+        : null;
+    if (!band) {
+        overlayEl.style.top = '';
+        overlayEl.style.height = '';
+        return;
+    }
+    overlayEl.style.top = `${band.top}px`;
+    overlayEl.style.height = `${band.height}px`;
+}
+
+// The geometry as it stands now, in the shape scaleupdate reports it: the modal
+// can open with the keyboard already up (the user was typing in the field that
+// opened it), and that event only fires when something moves.
+function currentGeometry() {
+    const content = document.getElementById('scaled-content');
+    if (!content) return null;
+    const scale = getAppScale();
+    const offsetY = parseFloat((content.style.transform.match(/translate\([^,]+,\s*(-?[\d.]+)px\)/) || [])[1] || '0');
+    const visibleHeight = window.visualViewport?.height ?? window.innerHeight;
+    const canvasOnScreen = content.offsetHeight * scale;
+    return {
+        scale, scaleY: scale, offsetY, visibleHeight,
+        keyboardUp: visibleHeight < canvasOnScreen - 2,
+    };
+}
+
 function applyInverseScale() {
     if (!editorScaledEl || !editorWrapEl) return;
     const scale = getAppScale();
@@ -226,7 +266,8 @@ export function openNotesModal(currentText, onConfirm, options = {}) {
     if (scaleUpdateHandler) {
         document.removeEventListener('streamline:scaleupdate', scaleUpdateHandler);
     }
-    scaleUpdateHandler = () => {
+    scaleUpdateHandler = (event) => {
+        fitToScreen(event?.detail);
         applyInverseScale();
         easyMDE?.codemirror?.refresh();
     };
@@ -235,6 +276,7 @@ export function openNotesModal(currentText, onConfirm, options = {}) {
     // Wait a frame for the overlay to be visible and laid out,
     // then compute inverse scale and init EasyMDE
     requestAnimationFrame(() => {
+        fitToScreen(currentGeometry());
         applyInverseScale();
         setTimeout(async () => {
             const editor = await initEasyMDE();
@@ -265,6 +307,8 @@ function handleConfirm() {
 function closeModal() {
     if (!overlayEl) return;
     overlayEl.classList.remove('active');
+    overlayEl.style.top = '';
+    overlayEl.style.height = '';
     onConfirmCallback = null;
     if (scaleUpdateHandler) {
         document.removeEventListener('streamline:scaleupdate', scaleUpdateHandler);
