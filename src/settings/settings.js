@@ -38,6 +38,7 @@ import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
 import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
 import { parseSkinAnswer } from '../modules/plugin-surfaces.js';
+import { FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA, buildFeedbackDescription } from './feedback-report.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -2012,18 +2013,24 @@ export function renderFeedbackSettings() {
         { value: 'question', label: 'General Feedback', sub: 'Share thoughts or ideas'  },
     ];
 
-    const categoryCards = categories.map(({ value, label, sub }) => `
-        <button data-feedback-card="${value}"
-                aria-pressed="${value === 'bug'}"
-                onclick="window.selectFeedbackCategory('${value}')"
+    const card = (attr, handler, active) => ({ value, label, sub }) => `
+        <button ${attr}="${value}"
+                aria-pressed="${value === active}"
+                onclick="window.${handler}('${value}')"
                 class="flex flex-col items-start gap-[4px] p-[14px] rounded-[12px] border-2 transition-colors
-                       ${value === 'bug'
+                       ${value === active
                            ? 'bg-[var(--button-primary-bg)] border-[var(--mimoja-blue-v2)] text-white'
                            : 'bg-[var(--box-color)] border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}">
             <span class="text-[20px] font-bold leading-tight">${label}</span>
             <span class="text-[16px] opacity-75 leading-tight">${sub}</span>
         </button>
-    `).join('');
+    `;
+
+    const categoryCards = categories.map(card('data-feedback-card', 'selectFeedbackCategory', 'bug')).join('');
+    // Which part of the system the report is about. Every report is filed on
+    // Decaid's own repository whatever the answer, so this is what lets triage
+    // move a skin or plugin bug without guessing from the prose.
+    const areaCards = FEEDBACK_AREAS.map(card('data-feedback-area', 'selectFeedbackArea', FEEDBACK_DEFAULT_AREA)).join('');
 
     return `
         <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
@@ -2036,6 +2043,22 @@ export function renderFeedbackSettings() {
                 <input type="hidden" id="feedback-category" value="bug">
                 <div class="grid grid-cols-3 gap-[10px] w-full">
                     ${categoryCards}
+                </div>
+            </div>
+
+            <!-- Area -->
+            <div class="flex flex-col gap-[10px] w-full">
+                <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]" data-i18n-key="What is it about?">What is it about?</p>
+                <input type="hidden" id="feedback-area" value="${FEEDBACK_DEFAULT_AREA}">
+                <div class="grid grid-cols-3 gap-[10px] w-full">
+                    ${areaCards}
+                </div>
+                <div id="feedback-plugin-row" class="hidden flex-col gap-[8px] w-full">
+                    <p class="text-[var(--text-primary)] text-[19px]">Which plugin? Naming it is what lets the report reach whoever maintains it.</p>
+                    <select id="feedback-plugin"
+                            class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[54px] rounded-[54px] w-full text-[var(--text-primary)] text-[22px] px-[24px]">
+                        <option value="">Loading…</option>
+                    </select>
                 </div>
             </div>
 
@@ -8431,10 +8454,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         });
     };
 
-    window.selectFeedbackCategory = function(value) {
-        document.getElementById('feedback-category').value = value;
-        document.querySelectorAll('[data-feedback-card]').forEach(btn => {
-            const active = btn.dataset.feedbackCard === value;
+    // Both card rows light up the same way; only the attribute and the hidden
+    // input they drive differ.
+    const selectFeedbackCard = (selector, datasetKey, inputId, value) => {
+        const input = document.getElementById(inputId);
+        if (input) input.value = value;
+        document.querySelectorAll(selector).forEach(btn => {
+            const active = btn.dataset[datasetKey] === value;
             btn.setAttribute('aria-pressed', active);
             btn.classList.toggle('bg-[var(--button-primary-bg)]', active);
             btn.classList.toggle('border-[var(--mimoja-blue-v2)]', active);
@@ -8445,8 +8471,44 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         });
     };
 
+    window.selectFeedbackCategory = function(value) {
+        selectFeedbackCard('[data-feedback-card]', 'feedbackCard', 'feedback-category', value);
+    };
+
+    // The installed plugins, read when the user first says the report is about
+    // one: the feedback page should not cost a plugin list nobody asked for.
+    let feedbackPluginsLoaded = false;
+    async function fillFeedbackPlugins() {
+        const select = document.getElementById('feedback-plugin');
+        if (!select || feedbackPluginsLoaded) return;
+        feedbackPluginsLoaded = true;
+        try {
+            const plugins = (await getPlugins() || []).filter(p => p?.id).sort((a, b) =>
+                String(a.name || a.id).localeCompare(String(b.name || b.id)));
+            select.innerHTML = ['<option value="">Not sure / not listed</option>',
+                ...plugins.map(p => `<option value="${escapeHtml(p.id)}" data-version="${escapeHtml(p.version || '')}">`
+                    + `${escapeHtml(p.name || p.id)}${p.version ? ` ${escapeHtml(p.version)}` : ''}</option>`)].join('');
+        } catch (e) {
+            logger.warn('Feedback: plugin list unavailable:', e);
+            // The report still goes, just without naming the plugin.
+            feedbackPluginsLoaded = false;
+            select.innerHTML = '<option value="">Not sure / not listed</option>';
+        }
+    }
+
+    window.selectFeedbackArea = function(value) {
+        selectFeedbackCard('[data-feedback-area]', 'feedbackArea', 'feedback-area', value);
+        const row = document.getElementById('feedback-plugin-row');
+        if (row) {
+            row.classList.toggle('hidden', value !== 'plugin');
+            row.classList.toggle('flex', value === 'plugin');
+        }
+        if (value === 'plugin') fillFeedbackPlugins();
+    };
+
     window.submitFeedback = async function() {
         const category  = document.getElementById('feedback-category')?.value || 'bug';
+        const area      = document.getElementById('feedback-area')?.value || FEEDBACK_DEFAULT_AREA;
         const title     = (document.getElementById('feedback-title')?.value || '').trim();
         const desc      = (document.getElementById('feedback-description')?.value || '').trim();
         const attachSys = document.getElementById('feedback-attach-sysinfo')?.checked;
@@ -8458,7 +8520,19 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             return;
         }
 
-        const fullDesc = `**${title}**\n\n${desc}`;
+        // Decaid takes the first line of the description as the issue title, so
+        // the area tag rides there and the area itself goes in the body.
+        const pluginOption = document.getElementById('feedback-plugin')?.selectedOptions?.[0];
+        const fullDesc = buildFeedbackDescription({
+            area,
+            title,
+            description: desc,
+            plugin: {
+                skinVersion: APP_VERSION,
+                id: pluginOption?.value || '',
+                version: pluginOption?.dataset?.version || '',
+            },
+        });
 
         if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Submitting…'; }
         statusEl.innerHTML = '';
