@@ -129,13 +129,9 @@ export function initScaling() {
         // is overflow:hidden and the non-zoomed branch below resets its scrollTop to
         // 0 on every pass, so any scroll it managed was undone a frame later. Lift
         // the whole canvas in the transform instead, by exactly the overlap.
-        if (keyboardShrunk && !fitsItself) {
-            // rect already includes the shift applied last pass, so keyboardLift
-            // returns the extra lift needed, not the total.
-            keyboardShift += keyboardLift(activeEl.getBoundingClientRect(), visibleHeight);
-        } else {
-            keyboardShift = 0;
-        }
+        keyboardShift = keyboardShrunk && !fitsItself
+            ? keyboardLift(activeEl.getBoundingClientRect(), visibleHeight, keyboardShift)
+            : 0;
 
         // Width always fills. Vertically the canvas is elastic: the scale stays
         // uniform (no text stretch) and the canvas takes however many design rows
@@ -270,15 +266,24 @@ export function initScaling() {
     }
     setTimeout(updateScale, 250);
     
-    // Add resize listener with debounce to prevent excessive recalculations
-    let resizeTimer;
+    // A soft keyboard slides in over several hundred milliseconds and fires
+    // visualViewport resize on every frame of it. One pass per frame, coalesced,
+    // so the canvas follows the keyboard instead of jumping 150 ms late, plus one
+    // pass once it has settled because a WebView reports its final height a beat
+    // after the animation ends. updateScale returns early when the geometry has
+    // not moved, so the storm costs a string compare per frame.
+    let resizeFrame = 0;
+    let settleTimer = 0;
     const onResize = () => {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => {
-            updateScale();
-            updateRotationPrompt();
-            setTimeout(updateScale, 200);
-        }, 150);
+        if (!resizeFrame) {
+            resizeFrame = requestAnimationFrame(() => {
+                resizeFrame = 0;
+                updateScale();
+                updateRotationPrompt();
+            });
+        }
+        clearTimeout(settleTimer);
+        settleTimer = setTimeout(() => { settleTimer = 0; updateScale(); }, 250);
     };
     window.addEventListener('resize', onResize);
 

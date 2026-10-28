@@ -266,10 +266,23 @@ export function openNotesModal(currentText, onConfirm, options = {}) {
     if (scaleUpdateHandler) {
         document.removeEventListener('streamline:scaleupdate', scaleUpdateHandler);
     }
+    // A keyboard sliding in fires this on every frame. CodeMirror's refresh
+    // re-measures the whole document, so coalesce a burst into one and skip it
+    // entirely when the geometry it depends on has not moved.
+    let lastFit = '';
+    let refreshFrame = 0;
     scaleUpdateHandler = (event) => {
-        fitToScreen(event?.detail);
+        const detail = event?.detail;
+        const fit = `${detail?.keyboardUp ? 1 : 0}|${Math.round(detail?.visibleHeight || 0)}|${detail?.scaleY || detail?.scale || 0}|${Math.round(detail?.offsetY || 0)}`;
+        if (fit === lastFit) return;
+        lastFit = fit;
+        fitToScreen(detail);
         applyInverseScale();
-        easyMDE?.codemirror?.refresh();
+        if (refreshFrame) return;
+        refreshFrame = requestAnimationFrame(() => {
+            refreshFrame = 0;
+            easyMDE?.codemirror?.refresh();
+        });
     };
     document.addEventListener('streamline:scaleupdate', scaleUpdateHandler);
 

@@ -27,15 +27,22 @@ export function keyboardIsUp(rawHeight, visibleHeight, baselineHeight) {
     return Math.min(rawHeight, visibleHeight) < baselineHeight * KEYBOARD_SHRINK;
 }
 
-// The extra lift the canvas needs so `rect` (the focused field, in screen
-// coordinates, already including whatever lift is applied) clears the keyboard.
-// Never lifts a field's own top off the screen: seeing the end of what you typed
-// is worth less than seeing the field.
-export function keyboardLift(rect, visibleHeight, gap = KEYBOARD_GAP) {
+// The total lift the canvas needs so `rect` (the focused field, in screen
+// coordinates) clears the keyboard. `applied` is the lift already in the
+// transform, which rect therefore already includes, so the answer is absolute
+// and one pass settles it: measuring against the last answer instead converged
+// over three or four passes, and each pass wrote the transform and fired
+// streamline:scaleupdate at every listener.
+//
+// Never lifts a field's own top off the screen: seeing the end of what you
+// typed is worth less than seeing the field.
+export function keyboardLift(rect, visibleHeight, applied = 0, gap = KEYBOARD_GAP) {
     if (!rect) return 0;
-    const overlap = rect.bottom + gap - visibleHeight;
+    const top = rect.top + applied;
+    const bottom = rect.bottom + applied;
+    const overlap = bottom + gap - visibleHeight;
     if (overlap <= 0) return 0;
-    return Math.min(overlap, Math.max(0, rect.top - gap));
+    return Math.min(overlap, Math.max(0, top - gap));
 }
 
 // Where the visible screen is, in the design-space coordinates of a `position:

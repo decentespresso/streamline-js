@@ -5,7 +5,10 @@
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(6px);
+    /* No backdrop-filter: .notes-modal-container is opaque and fills the
+       overlay, so a blur here is only ever visible during the 0.3s slide-in,
+       while costing a full-screen offscreen pass on every frame the editor
+       repaints -- which a tablet pays for on every keystroke. */
     display: none;
     justify-content: center;
     align-items: center;

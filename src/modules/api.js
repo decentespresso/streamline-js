@@ -3333,14 +3333,26 @@ export async function updateSkins() {
     return response.json();
 }
 
+// Decaid answers a refused or failed submission with a JSON body that says why
+// -- "Failed to create GitHub issue" when GitHub refused it, a connection
+// message when the tablet has no route to github.com, "You must be logged in to
+// your Decent account", "Feedback service is not configured". Throwing the
+// status alone turned every one of those into "Error: HTTP 500" on screen, which
+// told the user nothing and told us nothing either.
 export async function submitFeedback(payload) {
     const res = await fetch(`${API_BASE_URL}/feedback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    const body = await res.json().catch(() => null);
+    if (!res.ok || body?.success === false) {
+        const reason = body?.errorMessage || body?.message || body?.error;
+        const error = new Error(reason ? `${reason} (HTTP ${res.status})` : `HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
+    }
+    return body || {};
 }
 
 // Stream a Derek answer through Decaid's relay. Calls onEvent({event, data})

@@ -151,34 +151,38 @@ const KB_VISIBLE = 440;
 // A field flush with the keyboard reads as covered, so the lift leaves a gap.
 {
     const field = { top: 500, bottom: 540 };
-    const lift = keyboardLift(field, KB_VISIBLE);
+    const lift = keyboardLift(field, KB_VISIBLE, 0);
     assert.equal(lift, 128, 'bottom 540 + 28 gap - 440 visible');
     assert.ok(field.bottom - lift + KEYBOARD_GAP <= KB_VISIBLE, 'the field clears the keyboard');
 }
 
 // Already clear of it: no lift, so a tap on a field near the top never moves the page.
 for (const field of [{ top: 10, bottom: 50 }, { top: 300, bottom: 400 }, { top: 0, bottom: KB_VISIBLE - KEYBOARD_GAP }]) {
-    assert.equal(keyboardLift(field, KB_VISIBLE), 0);
+    assert.equal(keyboardLift(field, KB_VISIBLE, 0), 0);
 }
-assert.equal(keyboardLift(null, KB_VISIBLE), 0);
+assert.equal(keyboardLift(null, KB_VISIBLE, 0), 0);
 
 // The lift never takes a field's own top off-screen: a field at the very bottom
 // of a tall page rises as far as it can and no further.
 {
     const field = { top: 60, bottom: 790 };
-    assert.equal(keyboardLift(field, KB_VISIBLE), 32, 'capped at top - gap, not the 378 overlap');
+    assert.equal(keyboardLift(field, KB_VISIBLE, 0), 32, 'capped at top - gap, not the 378 overlap');
 }
 
-// Each pass measures a rect that already includes the previous lift, so the
-// lifts converge instead of compounding.
+// The answer is absolute, not an increment: a rect measured with a lift already
+// applied, passed back as `applied`, gives the same total. One pass settles it,
+// which is what keeps a keyboard's resize storm from writing the transform and
+// firing streamline:scaleupdate three or four times.
 {
-    let shift = 0;
-    let field = { top: 500, bottom: 540 };
-    for (let pass = 0; pass < 4; pass++) {
-        const lift = keyboardLift({ top: field.top - shift, bottom: field.bottom - shift }, KB_VISIBLE);
-        shift += lift;
-    }
-    assert.equal(shift, 128, 'the second pass and after add nothing');
+    const field = { top: 500, bottom: 540 };
+    const once = keyboardLift(field, KB_VISIBLE, 0);
+    assert.equal(once, 128);
+    const again = keyboardLift({ top: field.top - once, bottom: field.bottom - once }, KB_VISIBLE, once);
+    assert.equal(again, once, 'measuring the lifted field returns the same lift, not more');
+    // And a field that moved further down the page while the keyboard stayed up
+    // gets a bigger lift, not a second increment on top of the old one.
+    const lower = keyboardLift({ top: 600 - once, bottom: 650 - once }, KB_VISIBLE, once);
+    assert.equal(lower, 238);
 }
 
 // What counts as the keyboard rather than a resize or a toolbar sliding away.
