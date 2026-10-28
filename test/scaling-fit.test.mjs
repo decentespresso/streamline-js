@@ -1,7 +1,7 @@
 // Check of the fit math in src/modules/scaling.js (mirrored here — the module
 // touches the DOM at import time). Run: node test/scaling-fit.test.mjs
 import assert from 'node:assert';
-import { KEYBOARD_GAP, keyboardIsUp, keyboardLift, visibleBand } from '../src/modules/keyboard-fit.js';
+import { KEYBOARD_GAP, SHRINK_ADOPT_MS, trackBaseline, keyboardLift, visibleBand } from '../src/modules/keyboard-fit.js';
 
 const DESIGN_W = 1920, DESIGN_H = 1200, MAX_STRETCH = 1.0;
 // Rigid part of the main page: 168 header + 150 profile/telemetry band +
@@ -185,11 +185,72 @@ assert.equal(keyboardLift(null, KB_VISIBLE, 0), 0);
     assert.equal(lower, 238);
 }
 
-// What counts as the keyboard rather than a resize or a toolbar sliding away.
-assert.equal(keyboardIsUp(440, 440, 800), true);
-assert.equal(keyboardIsUp(800, 440, 800), true, 'a WebView that only shrinks visualViewport');
-assert.equal(keyboardIsUp(700, 700, 800), false, '12% is not a keyboard');
-assert.equal(keyboardIsUp(800, 800, 800), false);
+// The canvas must never be re-scaled to fit a keyboard: the whole UI shrinking
+// is worse than a covered field, and a covered field can be moved instead. A
+// shrink that appeared while something was being typed into is a keyboard and
+// stays one until the window grows back -- on Android the keyboard often stays
+// up when focus moves to a button, and adopting then is the "the page shrank
+// when I tapped the title" bug.
+{
+    const W = 1340;
+    const start = { baselineHeight: 800, baselineWidth: W, shrunkSince: 0, keyboardLike: false, shrunk: false };
+    const t0 = 10_000;
+    const track = (state, over) => trackBaseline(state, { rawWidth: W, editing: false, now: t0, ...over });
+
+    // The keyboard arrives while the title is focused: the baseline holds, so the
+    // canvas keeps its size and only moves.
+    const kb = track(start, { rawHeight: 440, visibleHeight: 440, editing: true });
+    assert.equal(kb.baselineHeight, 800);
+    assert.equal(kb.shrunk, true);
+    assert.equal(kb.keyboardLike, true);
+
+    // Still typing much later: still 800.
+    assert.equal(track(kb, { rawHeight: 440, visibleHeight: 440, editing: true, now: t0 + 30_000 }).baselineHeight, 800);
+
+    // Focus leaves the field but the keyboard stays up -- tapping the description
+    // preview, or any button. This is what shrank the page on the tablet.
+    const blurred = track(kb, { rawHeight: 440, visibleHeight: 440, now: t0 + 700 });
+    assert.equal(blurred.baselineHeight, 800, 'a blur with the keyboard still up must not re-scale');
+    const muchLater = track(blurred, { rawHeight: 440, visibleHeight: 440, now: t0 + 60_000 });
+    assert.equal(muchLater.baselineHeight, 800, 'and it never becomes the window size by waiting');
+
+    // Growing back is immediate and clears the keyboard mark.
+    const back = track(muchLater, { rawHeight: 800, visibleHeight: 800, now: t0 + 61_000 });
+    assert.equal(back.baselineHeight, 800);
+    assert.equal(back.shrunk, false);
+    assert.equal(back.keyboardLike, false);
+    // A window larger than the baseline raises it.
+    assert.equal(track(start, { rawHeight: 1000, visibleHeight: 1000 }).baselineHeight, 1000);
+
+    // A shrink nobody ever typed into is a host resizing the WebView: adopted
+    // once it has held, so the canvas fits the window it actually has.
+    const idle = track(start, { rawHeight: 600, visibleHeight: 600 });
+    assert.equal(idle.baselineHeight, 800, 'not at once');
+    assert.equal(idle.keyboardLike, false);
+    assert.equal(track(idle, { rawHeight: 600, visibleHeight: 600, now: t0 + SHRINK_ADOPT_MS }).baselineHeight, 600);
+
+    // A change of width cannot be a keyboard: a rotation or a split-screen resize.
+    const narrower = track(kb, { rawHeight: 440, visibleHeight: 440, rawWidth: 800, editing: true });
+    assert.equal(narrower.baselineHeight, 440);
+    assert.equal(narrower.keyboardLike, false);
+
+    // An orientation change says so outright.
+    const rotated = track(kb, { rawHeight: 600, visibleHeight: 600, editing: true, force: true });
+    assert.equal(rotated.baselineHeight, 600);
+    assert.equal(rotated.shrunk, false);
+
+    // A WebView that shrinks only visualViewport still reads as a keyboard, and
+    // its layout window is never adopted as something smaller.
+    const vvOnly = track(start, { rawHeight: 800, visibleHeight: 440, editing: true });
+    assert.equal(vvOnly.baselineHeight, 800);
+    assert.equal(vvOnly.shrunk, true);
+
+    // A keyboard smaller than 15% of the screen -- a floating or split one -- used
+    // to fall through the old threshold and re-scale the canvas.
+    const small = track(start, { rawHeight: 720, visibleHeight: 720, editing: true });
+    assert.equal(small.baselineHeight, 800);
+    assert.equal(small.shrunk, true);
+}
 
 // visibleBand converts the screen into the design-space coordinates a fixed
 // child of the transformed #scaled-content is laid out in.

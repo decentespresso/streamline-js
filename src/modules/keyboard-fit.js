@@ -19,12 +19,60 @@
 // because it is touching the keyboard reads as covered.
 export const KEYBOARD_GAP = 28;
 
-// How much shrink counts as "the keyboard is up" rather than a window resize or
-// a browser toolbar sliding away.
-export const KEYBOARD_SHRINK = 0.85;
+// How long a smaller window has to persist, with nothing ever having been typed
+// into it, before it counts as the window really being smaller.
+export const SHRINK_ADOPT_MS = 1500;
 
-export function keyboardIsUp(rawHeight, visibleHeight, baselineHeight) {
-    return Math.min(rawHeight, visibleHeight) < baselineHeight * KEYBOARD_SHRINK;
+// The canvas must never be re-scaled to fit a soft keyboard: the whole UI
+// shrinking -- text, buttons, chart -- is far worse than a field being covered,
+// and a covered field can be dealt with by moving the canvas instead.
+//
+// So the baseline is the window as it is with no keyboard. It follows the window
+// up at once. It follows the window down only when the smaller size cannot be a
+// keyboard:
+//
+//  - `force`, an orientation change, where the window really changed shape;
+//  - a change in width, which a keyboard never causes and a rotation or a
+//    split-screen resize does;
+//  - a shrink that was never typed into, held for SHRINK_ADOPT_MS -- a host
+//    resizing the WebView while the user is reading.
+//
+// A shrink that appeared while an editable had focus is a keyboard and stays
+// one until the window grows back, even after the field is blurred: on Android
+// the keyboard often stays up when focus moves to a button, and adopting then
+// is exactly the "the page shrank when I tapped the title" bug.
+//
+// Keyed off any shrink at all rather than a 15% one, so a floating or split
+// keyboard cannot fall through and re-scale the canvas.
+export function trackBaseline(state, { rawHeight, rawWidth, visibleHeight, editing, now, force = false }) {
+    // The keyboard shows up as either of these, depending on the WebView, so the
+    // shorter one decides whether the screen lost room. Only the layout window
+    // (rawHeight) is ever adopted as the baseline: a visualViewport that shrank
+    // on its own is a keyboard or a pinch, never a smaller window.
+    const shortest = Math.min(rawHeight, visibleHeight ?? rawHeight);
+    const baseline = state?.baselineHeight || rawHeight;
+    const widthChanged = state?.baselineWidth !== undefined && rawWidth !== undefined
+        && rawWidth !== state.baselineWidth;
+    const adopt = () => ({
+        baselineHeight: rawHeight, baselineWidth: rawWidth,
+        shrunkSince: 0, keyboardLike: false, shrunk: shortest < rawHeight,
+    });
+
+    if (force || widthChanged) return adopt();
+    if (shortest >= baseline) {
+        return {
+            baselineHeight: Math.max(rawHeight, baseline), baselineWidth: rawWidth,
+            shrunkSince: 0, keyboardLike: false, shrunk: false,
+        };
+    }
+
+    const keyboardLike = !!state?.keyboardLike || editing;
+    const shrunkSince = state?.shrunkSince || now;
+    if (!keyboardLike && now - shrunkSince >= SHRINK_ADOPT_MS) return adopt();
+    return {
+        baselineHeight: baseline, baselineWidth: state?.baselineWidth ?? rawWidth,
+        shrunkSince, keyboardLike, shrunk: true,
+    };
 }
 
 // The total lift the canvas needs so `rect` (the focused field, in screen

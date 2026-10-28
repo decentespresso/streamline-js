@@ -1,4 +1,4 @@
-import { keyboardIsUp, keyboardLift } from './keyboard-fit.js';
+import { SHRINK_ADOPT_MS, trackBaseline, keyboardLift } from './keyboard-fit.js';
 
 let isInitialScaleDone = false; // module-level: only first initScaling call adds .scaled
 
@@ -7,7 +7,16 @@ export function initScaling() {
     const content = document.getElementById('scaled-content');
     const designWidth = 1920;
     const designHeight = 1200;
-    let baselineHeight = window.innerHeight;
+    // The window as it is with no keyboard. The canvas is always laid out for
+    // this height, never for the height a keyboard leaves: see trackBaseline.
+    let baseline = {
+        baselineHeight: window.innerHeight, baselineWidth: window.innerWidth,
+        shrunkSince: 0, keyboardLike: false, shrunk: false,
+    };
+    let adoptTimer = 0;
+    // Set by an orientation change: the window really did change shape, so the
+    // baseline follows it down without waiting.
+    let forceBaseline = false;
     // How far the canvas is currently lifted to clear the soft keyboard; the
     // breathing room it leaves is KEYBOARD_GAP in keyboard-fit.js.
     let keyboardShift = 0;
@@ -105,23 +114,33 @@ export function initScaling() {
     function updateScale() {
         if (!viewport || !content) return;
 
-        // Get actual viewport dimensions — guard against keyboard shrinking innerHeight
         const screenWidth = window.innerWidth;
         const rawHeight = window.innerHeight;
         // Some WebViews resize the window for the keyboard, others only shrink
         // visualViewport and leave innerHeight alone. Take whichever is smaller
-        // so both report the same "keyboard is up".
+        // so both report the same "the screen got shorter".
         const visibleHeight = window.visualViewport ? window.visualViewport.height : rawHeight;
         const activeEl = document.activeElement;
-        const inputFocused = activeEl &&
+        const editing = !!activeEl &&
             (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable);
-        // A full-screen overlay says so with data-keyboard-fit and shrinks itself
-        // to the visible band instead: lifting one only pushes its header off the
+        // A full-screen overlay says so with data-keyboard-fit and fits itself to
+        // what is left of the screen: lifting one only pushes its header off the
         // top while its lower half stays under the keyboard.
         const fitsItself = !!activeEl?.closest?.('[data-keyboard-fit]');
-        const keyboardShrunk = inputFocused && keyboardIsUp(rawHeight, visibleHeight, baselineHeight);
-        const screenHeight = keyboardShrunk ? baselineHeight : rawHeight;
-        if (!keyboardShrunk) baselineHeight = rawHeight;
+
+        baseline = trackBaseline(baseline, {
+            rawHeight, rawWidth: screenWidth, visibleHeight, editing,
+            now: Date.now(), force: forceBaseline,
+        });
+        forceBaseline = false;
+        // A shrink that was never typed into becomes the new window size once it
+        // has held; nothing else would re-run this to notice.
+        clearTimeout(adoptTimer);
+        if (baseline.shrunk && !baseline.keyboardLike) adoptTimer = setTimeout(updateScale, SHRINK_ADOPT_MS + 50);
+        // Always the full window, never what a keyboard left: the canvas does not
+        // re-scale for a keyboard, it moves (keyboardShift below).
+        const screenHeight = baseline.baselineHeight;
+        const keyboardShrunk = baseline.shrunk;
 
         // The canvas is deliberately kept at its pre-keyboard size above so the
         // chart and controls don't jump, which also means the keyboard can cover
@@ -304,6 +323,7 @@ export function initScaling() {
     // Also listen for orientation changes which can affect viewport dimensions
     window.addEventListener('orientationchange', () => {
         console.log('Orientation change event detected');
+        forceBaseline = true;
         // Multiple updates with increasing delays to handle Firefox and other browsers
         // that may take time to report correct viewport dimensions
         setTimeout(() => {
