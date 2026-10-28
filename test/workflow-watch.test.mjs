@@ -320,6 +320,10 @@ test('profile change detection: null and garbage are safe', () => {
 
 test('the edit guard outlasts the tile write debounce and is not duplicated as a literal', () => {
     assert.ok(WORKFLOW_EDIT_GUARD_MS > API_DEBOUNCE_MS);
+    // A settled tile value waits this long before Decaid hears it, and a cafe
+    // sharing a dial-in pays it on the sending machine (issue #174). A burst is
+    // one PUT at any value, so there is nothing to buy by waiting longer.
+    assert.ok(API_DEBOUNCE_MS <= 300, `tile writes must not wait longer than 300 ms (got ${API_DEBOUNCE_MS})`);
     assert.doesNotMatch(readFileSync(new URL('../src/modules/app.js', import.meta.url), 'utf8'), /WORKFLOW_EDIT_GUARD_MS\s*=\s*\d/);
     assert.doesNotMatch(readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8'), /API_DEBOUNCE_MS\s*=\s*\d/);
 });

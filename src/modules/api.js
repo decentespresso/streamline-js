@@ -819,7 +819,11 @@ export function connectShotStateWebSocket(onData) {
 // replaced, and reconnecting with a growing wait while the plugin is away.
 const pluginPushSlots = new Map();
 
-export function connectPluginPush(pluginId, endpoint, onPush) {
+// `onOpen(firstOpen)` fires on every open, so a caller can catch up on what was
+// pushed while the socket was down -- Decaid pushes only to the sockets open at
+// the time. The cap is 5 s, not a minute: the plugin runs on the same tablet and
+// a reload takes seconds, so a long wait only hides its changes (issue #174).
+export function connectPluginPush(pluginId, endpoint, onPush, onOpen) {
     let slot = pluginPushSlots.get(pluginId);
     if (!slot) {
         slot = createSocketSlot(`plugin ${pluginId} push`);
@@ -828,7 +832,13 @@ export function connectPluginPush(pluginId, endpoint, onPush) {
     return slot.replace(() => {
         const socket = new ReconnectingWebSocket(
             `${WS_PROTOCOL}//${reaHostname}:${REA_PORT}/ws/v1/plugins/${encodeURIComponent(pluginId)}/${encodeURIComponent(endpoint)}`,
-            [], { ...RECONNECT_POLICY.background, maxReconnectInterval: 60000 });
+            [], { ...RECONNECT_POLICY.background, maxReconnectInterval: 5000 });
+        let opened = false;
+        socket.onopen = () => {
+            const firstOpen = !opened;
+            opened = true;
+            try { onOpen?.(firstOpen); } catch (error) { logger.warn('Plugin push open handler failed:', error); }
+        };
         socket.onmessage = (event) => { try { onPush(event?.data); } catch (error) { logger.warn('Plugin push handler failed:', error); } };
         return socket;
     });

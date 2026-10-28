@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STRIP_BAR_MAX, stripLayout, STRIP_COLUMNS, stripReading, stripDotLevel, stripBarFraction, STRIP_MAX_CELLS, scaleDoseWeight, scaleDoseFor, fitOverlaySize, parseNumpadInput, fitNumpadValue, yieldForRatio, doseForRatio, parseSkinAnswer, skinPlugins, callableEndpoint, liveEndpoint, pushWants, RESERVED_ENDPOINTS, MAX_SURFACES,
+import { STRIP_BAR_MAX, stripLayout, STRIP_COLUMNS, stripReading, stripDotLevel, stripBarFraction, STRIP_MAX_CELLS, scaleDoseWeight, scaleDoseFor, fitOverlaySize, parseNumpadInput, fitNumpadValue, yieldForRatio, doseForRatio, parseSkinAnswer, skinPlugins, callableEndpoint, liveEndpoint, pushWants, createPushCoalescer, RESERVED_ENDPOINTS, MAX_SURFACES,
     nextStepSize, resolveStepSize, formatStepSize } from '../src/modules/plugin-surfaces.js';
 
 const ok = surfaces => parseSkinAnswer({ version: 1, surfaces }).surfaces;
@@ -570,6 +570,75 @@ test('pushWants: only {"what":"skin"} skips the workflow re-read', () => {
     assert.deepEqual(pushWants(undefined), both);
     assert.deepEqual(pushWants('null'), both);
     assert.deepEqual(pushWants('"skin"'), both);
+});
+
+// A plugin's push used to wait out the whole window before anything was read,
+// so a dose Decent Sync shared cost that window on top of everything else
+// (issue #174). The first push of a burst now runs at once and the window only
+// coalesces what lands behind it.
+function fakeTimers() {
+    let seq = 0;
+    const pending = new Map();
+    return {
+        setTimer: (fn) => { const id = ++seq; pending.set(id, fn); return id; },
+        clearTimer: (id) => pending.delete(id),
+        fire() { const fns = [...pending.values()]; pending.clear(); for (const fn of fns) fn(); },
+        pending: () => pending.size,
+    };
+}
+
+function coalescer() {
+    const timers = fakeTimers();
+    const runs = [];
+    const { push, reset } = createPushCoalescer({
+        run: (workflow) => runs.push(workflow),
+        windowMs: 300,
+        setTimer: timers.setTimer,
+        clearTimer: timers.clearTimer,
+    });
+    return { push, reset, runs, timers };
+}
+
+test('createPushCoalescer: the first push runs at once, the rest wait out the window', () => {
+    const c = coalescer();
+    c.push(true);
+    assert.deepEqual(c.runs, [true], 'read on the first message, not after the window');
+    c.push(true);
+    c.push(true);
+    assert.deepEqual(c.runs, [true], 'a burst behind it costs no extra read inside the window');
+    c.timers.fire();
+    assert.deepEqual(c.runs, [true, true], 'one trailing read for everything the window swallowed');
+    c.timers.fire();
+    assert.deepEqual(c.runs, [true, true], 'a window that swallowed nothing does not run again');
+    assert.equal(c.timers.pending(), 0, 'and does not leave a timer behind');
+});
+
+test('createPushCoalescer: a swallowed workflow push is not lost behind a skin-only one', () => {
+    const c = coalescer();
+    c.push(false);
+    assert.deepEqual(c.runs, [false]);
+    c.push(false);
+    c.push(true);  // a real workflow change, inside the window
+    c.timers.fire();
+    assert.deepEqual(c.runs, [false, true], 'the window ORs what it swallowed');
+
+    const skinOnly = coalescer();
+    skinOnly.push(true);
+    skinOnly.push(false);
+    skinOnly.timers.fire();
+    assert.deepEqual(skinOnly.runs, [true, false], 'and does not invent a workflow read');
+});
+
+test('createPushCoalescer: reset drops the open window and its queue', () => {
+    const c = coalescer();
+    c.push(true);
+    c.push(true);
+    c.reset();
+    assert.equal(c.timers.pending(), 0);
+    c.push(true);
+    assert.deepEqual(c.runs, [true, true], 'the next push after a reset is a first push again');
+    c.timers.fire();
+    assert.deepEqual(c.runs, [true, true], 'nothing was carried across the reset');
 });
 
 test('an empty surfaces list with live is a valid answer', () => {

@@ -10,7 +10,7 @@ import { getScaleReading, getEspressoEndedAt, getPlugins, callPluginEndpoint, co
 import { isMachineAsleep } from './screensaver-policy.js';
 import { logger } from './logger.js';
 import { getTranslation, fitTelemetry } from './i18n.js';
-import { parseSkinAnswer, skinPlugins, callableEndpoint, liveEndpoint, pushWants,
+import { parseSkinAnswer, skinPlugins, callableEndpoint, liveEndpoint, pushWants, createPushCoalescer,
     nextStepSize, resolveStepSize, formatStepSize, STEPSIZE_MAX, parseNumpadInput, fitNumpadValue, SURFACE_SIZES, SYNC_TILES, scaleDoseFor, fitOverlaySize } from './plugin-surfaces.js';
 import { setShotStrip } from './plugin-shot-strip.js';
 import { setMenuEntries, setMenuRunner } from './plugin-menu-items.js';
@@ -939,30 +939,37 @@ export async function refreshPluginSurfaces() {
 
 // Sockets a plugin asked for with `live`: one per plugin, only while the page is
 // visible. A message re-reads `skin` and asks the tiles to re-read the workflow
-// (the plugin may have changed it). A burst is one read: the wait starts at the
-// first message and is not pushed back by later ones, so a fast stream still
-// refreshes every PUSH_DEBOUNCE_MS.
+// (the plugin may have changed it). The first message of a burst is read at once
+// and the window only coalesces what follows it, so a fast stream still costs
+// one read per PUSH_DEBOUNCE_MS.
 const PUSH_DEBOUNCE_MS = 300;
 const liveSockets = new Map(); // plugin id -> endpoint
-let pushTimer = null;
 
-let pushWantsWorkflow = false;
-
-function onPush(data) {
-    if (pushWants(data).workflow) pushWantsWorkflow = true;
-    if (pushTimer) return;
-    pushTimer = setTimeout(() => {
-        pushTimer = null;
-        const workflow = pushWantsWorkflow;
-        pushWantsWorkflow = false;
+const pushes = createPushCoalescer({
+    windowMs: PUSH_DEBOUNCE_MS,
+    run: (workflow) => {
         refreshPluginSurfaces();
         if (workflow) document.dispatchEvent(new Event('streamline:workflow-refresh'));
-    }, PUSH_DEBOUNCE_MS);
+    },
+});
+
+function onPush(data) {
+    pushes.push(pushWants(data).workflow);
+}
+
+// Decaid pushes only to the sockets open at the time, and nothing re-read the
+// workflow as one came back, so a change pushed while a plugin reloaded waited
+// for the 20 s poll. Treated as a push, the first open excepted: that one is the
+// mount, which reads everything anyway.
+function onPushOpen(firstOpen) {
+    if (firstOpen) return;
+    pushes.push(true);
 }
 
 function closeLive() {
     for (const id of liveSockets.keys()) closePluginPush(id);
     liveSockets.clear();
+    pushes.reset();
 }
 
 function syncLive(wanted) {
@@ -972,7 +979,7 @@ function syncLive(wanted) {
     }
     for (const [id, endpoint] of wanted) {
         if (liveSockets.get(id) === endpoint) continue;
-        connectPluginPush(id, endpoint, onPush);
+        connectPluginPush(id, endpoint, onPush, onPushOpen);
         liveSockets.set(id, endpoint);
     }
 }

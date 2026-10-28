@@ -11,7 +11,12 @@
 import { profileFingerprint } from './dye-selection.js';
 
 // A tile press is pushed to Decaid after this debounce (ui.js imports it).
-export const API_DEBOUNCE_MS = 1000;
+// A burst still costs one PUT, the press-and-hold repeat included, because each
+// press restarts the wait: the number only buys how long a settled value waits.
+// It was 1000 ms, which Decent Sync paid for twice -- once on the machine that
+// set the dose, once reading it back on the other -- for nothing Decaid or the
+// plugins need (see issue #174).
+export const API_DEBOUNCE_MS = 300;
 // A press this recent has not reached Decaid yet: repainting from a read now
 // would reassign the variable the pending push is about to send. Derived from
 // the debounce so the two cannot drift apart.

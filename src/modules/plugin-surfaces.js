@@ -644,6 +644,45 @@ export function pushWants(data) {
     return { skin: true, workflow: !skinOnly };
 }
 
+// Runs `run` on the first push of a burst and at most once more per window,
+// so a change a plugin made shows at once instead of after the window, while a
+// fast stream still costs one run per window. `wantsWorkflow` is OR-ed across
+// the messages a window swallowed, so a skin-only push cannot drop the workflow
+// re-read a push behind it asked for.
+export function createPushCoalescer({ run, windowMs, setTimer = setTimeout, clearTimer = clearTimeout }) {
+    let timer = null;
+    let queued = false;
+    let queuedWorkflow = false;
+
+    function fire(wantsWorkflow) {
+        run(wantsWorkflow);
+        timer = setTimer(() => {
+            timer = null;
+            if (!queued) return;
+            const workflow = queuedWorkflow;
+            queued = false;
+            queuedWorkflow = false;
+            fire(workflow);
+        }, windowMs);
+    }
+
+    return {
+        push(wantsWorkflow) {
+            if (timer === null) { fire(Boolean(wantsWorkflow)); return; }
+            queued = true;
+            if (wantsWorkflow) queuedWorkflow = true;
+        },
+        // The page going hidden closes the sockets; a window left open would
+        // fire a run after the next open with nothing behind it.
+        reset() {
+            clearTimer(timer);
+            timer = null;
+            queued = false;
+            queuedWorkflow = false;
+        },
+    };
+}
+
 // -> the endpoint id when `plugin` declares it as a websocket, else null.
 export function liveEndpoint(plugin, live) {
     const id = live?.endpoint;
