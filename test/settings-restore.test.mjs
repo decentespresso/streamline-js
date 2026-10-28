@@ -3,11 +3,13 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
+    RESET_ON_CONNECT,
     RESTORE_EXCLUDED_KEYS,
     adoptFromMachine,
     diffUserSettings,
     restorePatches,
     settingValuesMatch,
+    splitDifferences,
 } from '../src/settings/settings-restore.js';
 
 // ── What gets recorded ──────────────────────────────────────────────────────
@@ -122,6 +124,67 @@ test('keeping an outside change adopts it, so it is asked about once', () => {
     assert.equal(next.de1.fan, 40);
     assert.equal(next.de1.tankTemp, 60, 'settings that matched are left alone');
     assert.deepEqual(diffUserSettings(next, machine), []);
+});
+
+// ── Which differences are written back ─────────────────────────────────────
+//
+// Nearly all of them are somebody's decision -- made in Decaid, in another
+// skin, on the machine, or by a plugin managing machines remotely -- and
+// writing the tablet's value back silently reverted it (issue #172). Only a
+// machine sitting on exactly what Decaid writes on connect lost the value to a
+// reset rather than to a choice.
+
+test('a setting changed elsewhere is kept, not written back', () => {
+    const { restore, adopt } = splitDifferences([
+        { scope: 'de1Advanced', key: 'steamPurgeMode', saved: 2, actual: 0 },
+        { scope: 'de1', key: 'fan', saved: 45, actual: 30 },
+        { scope: 'de1Advanced', key: 'refillKitSetting', saved: 1, actual: 0 },
+    ]);
+    assert.deepEqual(restore, [], 'nothing is asserted over a deliberate change');
+    assert.deepEqual(adopt.map(d => d.key), ['steamPurgeMode', 'fan', 'refillKitSetting']);
+});
+
+test('a value Decaid resets on connect is put back', () => {
+    // The refill kit set to auto (2), and the fan threshold Decaid asks for as
+    // 55: a real DE1 clamps that to 50, a simulated one reports 55 (decaid#1027
+    // and MMRItem.fanThreshold). Every one of them is a loss, not a choice.
+    assert.deepEqual([...RESET_ON_CONNECT.de1.fan], [50, 55]);
+    for (const actual of RESET_ON_CONNECT.de1.fan) {
+        const { restore, adopt } = splitDifferences([{ scope: 'de1', key: 'fan', saved: 45, actual }]);
+        assert.deepEqual(adopt, [], `fan ${actual} is the reset value`);
+        assert.deepEqual(restorePatches(restore), { de1: { fan: 45 } });
+    }
+    const kit = splitDifferences([
+        { scope: 'de1Advanced', key: 'refillKitSetting', saved: 1, actual: 2 },
+    ]);
+    assert.deepEqual(kit.adopt, []);
+    assert.deepEqual(restorePatches(kit.restore), { de1Advanced: { refillKitSetting: 1 } });
+});
+
+test('the reset exception covers only its own keys, and not a saved reset value', () => {
+    // steamPurgeMode is reset on connect too, but to the Workflow's value
+    // rather than a fixed one, so there is no reset value to recognise.
+    const { restore } = splitDifferences([
+        { scope: 'de1Advanced', key: 'steamPurgeMode', saved: 2, actual: 50 },
+        { scope: 'de1Advanced', key: 'fan', saved: 45, actual: 50 },  // fan lives in de1, not here
+    ]);
+    assert.deepEqual(restore, []);
+    // A user who chose the reset value themselves has no difference to sort at
+    // all, so the exception can never fight their own choice.
+    assert.deepEqual(diffUserSettings({ de1: { fan: 50 } }, { de1: { fan: 50 } }), []);
+});
+
+test('a restore of a reset value leaves the adopted change to the record', () => {
+    // One page load can see both: the write covers the reset key, and the
+    // read-back that follows adopts the rest.
+    const record = { de1: { fan: 45 }, de1Advanced: { steamPurgeMode: 2 } };
+    const machine = { de1: { fan: 50 }, de1Advanced: { steamPurgeMode: 0 } };
+    const { restore, adopt } = splitDifferences(diffUserSettings(record, machine));
+    assert.deepEqual(restorePatches(restore), { de1: { fan: 45 } });
+    assert.deepEqual(adopt.map(d => d.key), ['steamPurgeMode']);
+    // What the machine reports after that write is what gets recorded.
+    const next = adoptFromMachine(record, { de1: { fan: 45 }, de1Advanced: { steamPurgeMode: 0 } });
+    assert.deepEqual(diffUserSettings(next, { de1: { fan: 45 }, de1Advanced: { steamPurgeMode: 0 } }), []);
 });
 
 // ── The DE1's own ceiling on the fan threshold ──────────────────────────────

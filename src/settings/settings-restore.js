@@ -1,12 +1,9 @@
 // What Streamline last knows it put on the machine, kept so a value that
 // changes behind its back -- in Decaid's own UI, another skin, on the machine
-// itself, or lost to a reset or a firmware update -- can be spotted and the
-// user's own value put back.
+// itself, or lost to a reset or a firmware update -- can be spotted.
 //
 // The record is re-read from the machine after every write Streamline makes, so
-// anything it disagrees with afterwards came from outside this skin. That is
-// what makes re-applying safe: a change the user made here is never overwritten
-// by it.
+// anything it disagrees with afterwards came from outside this skin.
 //
 // Deliberately NOT the settingsBackup written by saveSettingsBackup(): that is a
 // snapshot of everything last fetched, which is chronically stale for fields the
@@ -14,9 +11,18 @@
 // values the user chose here are recorded, key by key, so nothing is ever
 // asserted on the machine that the user did not type.
 //
-// Nothing here writes to the machine; it only reports the difference. The caller
-// re-applies it: what the user chose in this skin takes priority over a value
-// changed in Decaid, in another skin, or on the machine itself.
+// A difference is nearly always someone's decision, so it is adopted as the new
+// remembered value and nothing is written back -- the rule the Workflow resync
+// already follows (decideResync, issue #109). Putting the tablet's value back
+// meant a fan threshold, purge mode or heater setting changed in Decaid, in
+// another skin or by a plugin managing machines remotely was silently reverted
+// the next time someone opened this page (issue #172).
+//
+// The exception is a machine sitting on exactly what Decaid writes when it
+// connects: that value was lost to the reset rather than chosen. See
+// RESET_ON_CONNECT below.
+//
+// Nothing here writes to the machine; it only sorts the differences.
 
 // Scopes map to the two machine-settings endpoints; `usb` and friends live in
 // de1, the MMR-backed values in de1Advanced.
@@ -102,6 +108,36 @@ export function diffUserSettings(record, machine) {
         }
     }
     return differences;
+}
+
+// What Decaid writes to the machine every time it connects, whatever the API
+// was told (decaid#1027): the fan threshold, and the refill kit to auto, which
+// the API reports as 2 (De1RefillKitSettings.auto). A machine found on one of
+// these lost the user's value to that reset, so it is put back; anything else
+// is somebody's decision and is adopted instead.
+//
+// The fan has two values because Decaid asks for 55 and a real DE1's register
+// write clamps it to 50 (MMRItem.fanThreshold, max 50) while a simulated one
+// reports the 55 back. Either reading is the reset, not a choice.
+//
+// decaid#1043 makes Decaid keep what was last written through the API, so this
+// exception can go once a release carrying it is what people run. It was merged
+// after v0.9.1-beta.1, so no release has it yet.
+export const RESET_ON_CONNECT = Object.freeze({
+    de1: Object.freeze({ fan: Object.freeze([50, 55]) }),
+    de1Advanced: Object.freeze({ refillKitSetting: Object.freeze([2]) }),
+});
+
+// Sorts the differences into the ones to write back and the ones to keep.
+export function splitDifferences(differences) {
+    const restore = [];
+    const adopt = [];
+    for (const difference of differences) {
+        const resets = RESET_ON_CONNECT[difference.scope]?.[difference.key] || [];
+        const lostToReset = resets.some(reset => settingValuesMatch(difference.key, reset, difference.actual));
+        (lostToReset ? restore : adopt).push(difference);
+    }
+    return { restore, adopt };
 }
 
 // The patch that restores the user's values, split by endpoint. Only the keys

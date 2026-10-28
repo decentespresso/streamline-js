@@ -31,7 +31,7 @@ import { haYamlBlocks } from '../modules/home-assistant.js';
 import { loadIro } from '../modules/vendor-loader.js';
 import { readSettingsLocation, writeSettingsLocation } from './settings-location.js';
 import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
-import { adoptFromMachine, diffUserSettings, restorePatches } from './settings-restore.js';
+import { adoptFromMachine, diffUserSettings, restorePatches, splitDifferences } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
          minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl } from './plugin-view.js';
@@ -719,13 +719,13 @@ async function saveSettingsBackup() {
     }
 }
 
-// ── Restore the user's own machine settings ────────────────────────────────
+// ── Keep track of the user's own machine settings ──────────────────────────
 //
 // Two halves: remember what the user saved here (syncMachineSettingsRecord),
-// and, when the machine later reports something else, put the user's values
-// straight back (checkMachineSettingsDrift). What the user chose in this skin
-// always wins, so the difference is applied rather than queried -- see
-// settings-restore.js for what is tracked and what is left alone.
+// and, when the machine later reports something else, decide what that means
+// (checkMachineSettingsDrift). A change made elsewhere is adopted, not undone;
+// only a value Decaid resets on connect is put back -- see settings-restore.js
+// for what is tracked, what is left alone and why.
 
 const USER_MACHINE_SETTINGS_KEY = 'userMachineSettings';
 
@@ -789,17 +789,30 @@ async function checkMachineSettingsDrift() {
     });
     if (!differences.length) return;
 
+    const { restore, adopt } = splitDifferences(differences);
+    if (adopt.length) {
+        logger.info(`Machine settings changed elsewhere, keeping: ${adopt.map(d => d.key).join(', ')}`);
+    }
+    if (!restore.length) {
+        // Nothing to write: the record takes the machine's values so the same
+        // change is not weighed again on the next visit. The page is already
+        // showing them, so there is nothing to repaint.
+        await syncMachineSettingsRecord();
+        return;
+    }
+
     // Only the keys that differ are written, and the caches are refreshed from
     // the machine afterwards so the page shows what the machine actually took
-    // rather than what was asked for.
-    const patches = restorePatches(differences);
+    // rather than what was asked for. The same read-back adopts whatever was
+    // changed elsewhere.
+    const patches = restorePatches(restore);
     try {
         const tasks = [];
         if (patches.de1) tasks.push(setDe1Settings(patches.de1));
         if (patches.de1Advanced) tasks.push(setDe1AdvancedSettings(patches.de1Advanced));
         await Promise.all(tasks);
         await syncMachineSettingsRecord();
-        // Silent on success: putting the user's own values back is not news.
+        // Silent on success: putting back a value Decaid reset is not news.
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     } catch (e) {
         logger.error('Failed to restore machine settings', e);
