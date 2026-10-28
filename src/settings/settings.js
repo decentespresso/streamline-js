@@ -37,6 +37,7 @@ import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl } from './plugin-view.js';
 import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
+import { parseSkinAnswer } from '../modules/plugin-surfaces.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -6694,9 +6695,16 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     // Sits on the description's own line, right-aligned in the same column as
     // the enable toggle and every other control -- the actions keep one edge,
     // and the button does not cost a row of its own.
+    //
+    // A button rather than a link: a plugin whose skin answer declares
+    // `settingsOpen` as an overlay gets its page in a dialog over Settings
+    // instead of taking the page away (setupPluginCard binds it). The href
+    // stays on the element as the fallback target, so a tap still navigates
+    // when the plugin asks for nothing.
     const openHtml = uiUrl ? `
-        <a href="${escapeHtml(uiUrl)}" class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold inline-flex items-center justify-center flex-shrink-0"
-           data-i18n-key="Open">Open</a>` : '';
+        <button type="button" data-role="plugin-open" data-plugin-url="${escapeHtml(uiUrl)}"
+           class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold inline-flex items-center justify-center flex-shrink-0"
+           data-i18n-key="Open">Open</button>` : '';
 
     // The generic on/off row. DYE2 replaces it with its own master switch
     // (PLUGIN_CARD_OVERRIDES.replacesToggle), which gates the dashboard header
@@ -6742,6 +6750,58 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
         </div>`;
 }
 
+// Open: the plugin's page in a dialog over Settings when its skin answer asks
+// for one, and the same-frame navigation it has always been otherwise.
+//
+// The declaration is read when the button is tapped, not when the card is
+// drawn: the Extensions list draws a card for every installed plugin, and
+// reading each one's `skin` answer to decide how to draw one button would cost
+// the page a request per plugin. A plugin with no `skin` endpoint is not asked
+// at all, so it pays nothing. Any failure, or no declaration, navigates --
+// which is what the button did before (issue #173).
+const SETTINGS_OPEN_READ_MS = 2000;
+
+function declaresSkinEndpoint(plugin) {
+    return Array.isArray(plugin?.api) && plugin.api.some(e => e?.type === 'http' && e?.id === 'skin');
+}
+
+async function readSettingsOpen(plugin) {
+    if (!plugin?.loaded || !declaresSkinEndpoint(plugin)) return null;
+    try {
+        const answer = await Promise.race([
+            callPluginEndpoint(plugin.id, 'skin', null, 'GET'),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), SETTINGS_OPEN_READ_MS)),
+        ]);
+        return parseSkinAnswer(answer).settingsOpen;
+    } catch (e) {
+        logger.debug(`Extensions: ${plugin.id} skin not read for Open:`, e?.message);
+        return null;
+    }
+}
+
+function bindPluginOpenButton(cardEl, plugin) {
+    const button = cardEl.querySelector('[data-role="plugin-open"]');
+    if (!button) return;
+    const pageUrl = button.dataset.pluginUrl;
+    if (!pageUrl) return;
+    button.addEventListener('click', async () => {
+        // Nothing is disabled while the answer is read: the read is a local
+        // request that normally takes milliseconds, and a second tap either
+        // navigates or is swallowed by the overlay's one-at-a-time guard.
+        const action = plugin ? await readSettingsOpen(plugin) : null;
+        if (!action) {
+            window.location.assign(pageUrl);
+            return;
+        }
+        const { openPluginOverlay } = await import('../modules/plugin-overlay.js');
+        openPluginOverlay(plugin, action, pageUrl, {
+            // The page may have changed the plugin's own settings, which this
+            // category draws; the dashboard's tile re-read has no meaning here.
+            afterClose: () => { if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory); },
+        });
+    });
+}
+
 // Wire the listeners a freshly-rendered card needs: the version-info fetch
 // and its install/approve-update buttons, the generic enable toggle (unless
 // an override replaces it), and the manifest's own settings schema, using the
@@ -6771,6 +6831,8 @@ function setupPluginCard(cardEl, pluginId, plugins) {
     cardEl.querySelector('.plugin-enable-toggle')?.addEventListener('change', function () {
         window.togglePlugin(pluginId, this.checked, this);
     });
+
+    bindPluginOpenButton(cardEl, vm.plugin);
 
     const schema = vm.settingsSchema;
     const keys = vm.settingsKeys;

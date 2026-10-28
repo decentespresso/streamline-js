@@ -11,7 +11,8 @@ import { isMachineAsleep } from './screensaver-policy.js';
 import { logger } from './logger.js';
 import { getTranslation, fitTelemetry } from './i18n.js';
 import { parseSkinAnswer, skinPlugins, callableEndpoint, liveEndpoint, pushWants, createPushCoalescer,
-    nextStepSize, resolveStepSize, formatStepSize, STEPSIZE_MAX, parseNumpadInput, fitNumpadValue, SURFACE_SIZES, SYNC_TILES, scaleDoseFor, fitOverlaySize } from './plugin-surfaces.js';
+    nextStepSize, resolveStepSize, formatStepSize, STEPSIZE_MAX, fitNumpadValue, SURFACE_SIZES, SYNC_TILES, scaleDoseFor } from './plugin-surfaces.js';
+import { openPluginOverlay, withContext } from './plugin-overlay.js';
 import { setShotStrip } from './plugin-shot-strip.js';
 import { setMenuEntries, setMenuRunner } from './plugin-menu-items.js';
 import { planTileModes, createCallQueue, tileHasBuiltinOption } from './plugin-modes.js';
@@ -90,21 +91,10 @@ async function readSurfaces(plugin) {
         // only logged here, at debug. Either way the plugin is just hidden, so
         // one broken plugin cannot affect the others.
         logger.debug(`Plugin surfaces: ${plugin.id} skin not read:`, error?.message);
-        return { surfaces: [], live: null };
+        return { surfaces: [], live: null, settingsOpen: null };
     }
 }
 
-// A menu item's context rides on the plugin page's URL as plain query parameters
-// (shotId, slot, profileId); only scalar values, so a page reads them with URLSearchParams.
-function withContext(url, context) {
-    if (!url || !context || typeof context !== 'object') return url;
-    const out = new URL(url, window.location.href);
-    for (const [key, value] of Object.entries(context)) {
-        if (value == null || typeof value === 'object') continue;
-        out.searchParams.set(key, String(value));
-    }
-    return out.toString();
-}
 
 // What a long-press menu item does: `open` shows the plugin's page (overlay or page)
 // with the menu's context in the URL; `call` posts the context to an endpoint the
@@ -114,7 +104,7 @@ function runMenuItem({ plugin, surface }, context) {
     if (action?.type === 'open') {
         const url = withContext(pluginUiUrl(plugin, API_BASE_URL, window.location.href, { view: action.view, returnPage: null }), context);
         if (!url) return;
-        if (action.presentation === 'overlay') openOverlay(plugin, action, url, null, context);
+        if (action.presentation === 'overlay') openPluginOverlay(plugin, action, url, overlayHooks({ context }));
         else window.location.assign(url);
     } else if (action?.type === 'call' && callableEndpoint(plugin, action.endpoint)) {
         callPluginEndpoint(plugin.id, action.endpoint, context)
@@ -173,11 +163,13 @@ function buildSaverButton(plugin, surface) {
             logger.warn('Screensaver button: display not restored:', error);
         }
         if (action.presentation === 'overlay') {
-            openOverlay(plugin, action, url, () => {
-                if (isMachineAsleep(currentMachineState) && isScreensaverActive()) {
-                    try { dimDisplay(); } catch (error) { logger.warn('Screensaver button: display not dimmed:', error); }
-                }
-            });
+            openPluginOverlay(plugin, action, url, overlayHooks({
+                onClose: () => {
+                    if (isMachineAsleep(currentMachineState) && isScreensaverActive()) {
+                        try { dimDisplay(); } catch (error) { logger.warn('Screensaver button: display not dimmed:', error); }
+                    }
+                },
+            }));
         } else {
             window.location.assign(url);
         }
@@ -185,153 +177,19 @@ function buildSaverButton(plugin, surface) {
     return button;
 }
 
-// The plugin's `ui` page in a dialog over the dashboard. The page must send
-// `{type:'streamline:ready'}` once it has loaded (a CSP `frame-ancestors` block
-// gives no event the skin could catch) and `{type:'streamline:close'}` to close.
-// No ready message in time: drop the dialog and go to the page, as `page` does.
-// The skin draws its own close button and closes on a backdrop tap, because key
-// events go to the frame once it is touched and a tablet has no Escape key.
-const OVERLAY_READY_MS = 3000;
-const OVERLAY_FIT_GRACE_MS = 300; // a `fit` page that is ready but sends no size gets the default window after this
-const NUMPAD_COOLDOWN_MS = 3000; // after a cancel, long enough to tap the overlay's close button
-let overlayOpen = false;
-
-function openOverlay(plugin, action, pageUrl, onClose, context) {
-    if (overlayOpen) return;
-    const theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    const src = withContext(pluginUiUrl(plugin, API_BASE_URL, null, { view: action.view, embedTheme: theme }), context);
-    if (!src) return;
-    overlayOpen = true;
-
-    const dialog = document.createElement('dialog');
-    dialog.dataset.agentId = `plugin-overlay:${plugin.id}`;
-    const full = action.size === 'full';
-    dialog.style.cssText = `width:${full ? '100vw' : 'min(1100px,94vw)'};height:${full ? '100vh' : 'min(760px,90vh)'};max-width:none;max-height:none;padding:0;border:0;border-radius:${full ? 0 : 16}px;overflow:hidden;background:var(--bg,#fff);`;
-    const frame = document.createElement('iframe');
-    // Scripts and forms run in the plugin's own origin; the frame cannot navigate the skin.
-    frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms');
-    frame.src = src;
-    frame.title = plugin.name || plugin.id;
-    frame.style.cssText = 'display:block;width:100%;height:100%;border:0;';
-    dialog.appendChild(frame);
-    const closeButton = document.createElement('button');
-    closeButton.type = 'button';
-    closeButton.textContent = '×';
-    closeButton.setAttribute('aria-label', 'Close');
-    closeButton.style.cssText = 'position:absolute;top:8px;right:8px;width:44px;height:44px;border-radius:22px;border:0;font-size:28px;line-height:1;cursor:pointer;background:rgba(0,0,0,.55);color:#fff;z-index:1;';
-    dialog.appendChild(closeButton);
-
-    // `fit`: the dialog is transparent, with the frame and close button hidden, until the
-    // page reports its size; a page that is ready but sends none gets the default window.
-    let revealed = !action.fit;
-    let graceTimer = null;
-    if (action.fit) {
-        dialog.style.background = 'transparent';
-        frame.style.visibility = 'hidden';
-        closeButton.style.visibility = 'hidden';
-    }
-    const reveal = () => {
-        revealed = true;
-        clearTimeout(graceTimer);
-        frame.style.visibility = '';
-        closeButton.style.visibility = '';
+// What the dashboard adds to an overlay: the skin's numpad for a page that asks
+// for one, and a re-read of the surfaces and the workflow once it closes, since
+// the page may have changed either.
+function overlayHooks({ context = null, onClose = null } = {}) {
+    return {
+        context,
+        onClose,
+        openNumpad: openPluginNumpad,
+        afterClose: () => {
+            refreshPluginSurfaces();
+            document.dispatchEvent(new Event('streamline:workflow-refresh'));
+        },
     };
-
-    let timer = null;
-    const frameOrigin = new URL(src, window.location.href).origin;
-    let lastNumpadCancelAt = 0;
-    // `fallback`: the overlay never became ready and the page is opened instead.
-    // onClose (re-dim) must not run then, or the page opens at saver brightness.
-    let finished = false;
-    const finish = (event, fallback = false) => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        clearTimeout(graceTimer);
-        window.removeEventListener('message', onMessage);
-        document.removeEventListener('streamline:espresso-start', onShotStart);
-        dialog.removeEventListener('close', finish);
-        if (dialog.open) dialog.close();
-        dialog.remove();
-        overlayOpen = false;
-        if (onClose && !fallback) onClose();
-        // The page may have changed the workflow; the tiles read it again.
-        refreshPluginSurfaces();
-        document.dispatchEvent(new Event('streamline:workflow-refresh'));
-    };
-    // `closeOnShot`: tell the page, then close, so a plugin page never covers a shot.
-    const onShotStart = () => {
-        document.removeEventListener('streamline:espresso-start', onShotStart);
-        try { frame.contentWindow?.postMessage({ type: 'streamline:espresso-start' }, frameOrigin); } catch { /* frame gone */ }
-        // The message is a queued task: tearing the frame down in this one would discard
-        // the page before it ran.
-        setTimeout(() => finish(), 80);
-    };
-    if (action.closeOnShot) document.addEventListener('streamline:espresso-start', onShotStart);
-    const onMessage = event => {
-        if (event.source !== frame.contentWindow) return;
-        const type = event.data?.type;
-        if (type === 'streamline:ready') {
-            clearTimeout(timer);
-            if (!revealed && !graceTimer) {
-                graceTimer = setTimeout(() => {
-                    dialog.style.background = 'var(--bg,#fff)'; // no size came: today's default window
-                    reveal();
-                }, OVERLAY_FIT_GRACE_MS);
-            }
-        }
-        else if (type === 'streamline:close') finish();
-        else if (type === 'streamline:size') {
-            // The page says how big its content is: the dialog fits it, so a small form is
-            // a small dialog over the dashboard. The page draws its own card; the dialog is
-            // transparent from here on. Sizes are held to the default dialog's limits.
-            if (event.origin !== frameOrigin || full) return;
-            const fitted = fitOverlaySize(event.data?.width, event.data?.height, window.innerWidth, window.innerHeight);
-            if (!fitted) return;
-            dialog.style.width = `${fitted.width}px`;
-            dialog.style.height = `${fitted.height}px`;
-            dialog.style.background = 'transparent';
-            // An iframe whose colour scheme differs from the page around it is painted opaque.
-            frame.style.colorScheme = 'normal';
-            frame.style.background = 'transparent';
-            reveal();
-        }
-        else if (type === 'streamline:numpad') {
-            // Only the page the overlay opened (not one the frame navigated to), only
-            // right after a tap, and not again straight after a cancel: a page must not
-            // be able to hold the numpad over the close button.
-            if (event.origin !== frameOrigin) return;
-            const reply = value => frame.contentWindow?.postMessage(
-                { type: 'streamline:numpad-result', id: ['string', 'number'].includes(typeof event.data?.id) ? event.data.id : null, value }, frameOrigin);
-            const input = parseNumpadInput(event.data);
-            if (!input || !navigator.userActivation?.isActive || Date.now() - lastNumpadCancelAt < NUMPAD_COOLDOWN_MS) {
-                reply(null);
-                return;
-            }
-            openPluginNumpad(plugin, 'overlay', input).then(value => {
-                if (value === null) lastNumpadCancelAt = Date.now();
-                reply(value);
-            });
-        }
-    };
-    window.addEventListener('message', onMessage);
-    dialog.addEventListener('close', finish);
-    closeButton.addEventListener('click', finish);
-    // A tap on the backdrop lands on the dialog itself, never on the frame.
-    dialog.addEventListener('click', event => { if (event.target === dialog) finish(); });
-    document.body.appendChild(dialog);
-    try {
-        dialog.showModal();
-    } catch (e) {
-        logger.warn('Plugin overlay could not open:', e);
-        finish();
-        return;
-    }
-    timer = setTimeout(() => {
-        logger.warn('Plugin overlay did not report ready, opening as a page:', plugin.id);
-        finish(null, true);
-        window.location.assign(pageUrl);
-    }, OVERLAY_READY_MS);
 }
 
 // The skin's stock full-screen numpad, for a plugin: resolves to the number the user
@@ -403,7 +261,7 @@ function bindAction(el, plugin, action, surface) {
     } else if (action?.type === 'open') {
         const url = pluginUiUrl(plugin, API_BASE_URL, window.location.href, { view: action.view, returnPage: null });
         if (url && action.presentation === 'overlay') {
-            el.addEventListener('click', () => openOverlay(plugin, action, url));
+            el.addEventListener('click', () => openPluginOverlay(plugin, action, url, overlayHooks()));
         } else if (url) {
             el.addEventListener('click', () => window.location.assign(url));
         }

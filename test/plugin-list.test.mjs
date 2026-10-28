@@ -286,12 +286,79 @@ test('a card with only custom-UI settings keeps Open, enable and version control
     assert.match(html, /plugin-enable-toggle" checked/);
     assert.match(html, /data-role="plugin-version-info"/);
     assert.doesNotMatch(html, /flowReadings|data-setting-key/);
-    const href = html.match(/<a href="([^"]+)"/)[1];
-    assert.equal(new URL(href).searchParams.get('returnTo'),
+    // Open is a button, not a link: a plugin whose skin answer declares
+    // `settingsOpen` gets a dialog over Settings instead of losing the page
+    // (issue #173). The URL rides on the element as the fallback target, and is
+    // still the full settings route, returnTo included.
+    assert.match(html, /<button type="button" data-role="plugin-open"/);
+    assert.doesNotMatch(html, /<a href="[^"]*plugins\/custom\.reaplugin\/ui/);
+    const fallbackUrl = html.match(/data-plugin-url="([^"]+)"/)[1].replace(/&amp;/g, '&');
+    assert.equal(new URL(fallbackUrl).searchParams.get('returnTo'),
         'http://localhost:24803/index.html?page=settings');
 
     plugin.settings.normal = { type: 'boolean', default: false };
     assert.match(render(plugin.id, [plugin]), /data-setting-key="normal"/);
+});
+
+// ── What a tap on Open does ────────────────────────────────────────────────
+//
+// The declaration is read on the tap, not when the card is drawn: the list
+// draws a card per installed plugin, so reading every plugin's `skin` answer
+// to decide how to draw one button would cost a request per plugin. A plugin
+// that declares no `skin` endpoint is never asked, and any failure navigates.
+
+test('Open reads the declaration only from a loaded plugin that serves skin', () => {
+    const match = source.match(/^async function readSettingsOpen\(plugin\) \{[\s\S]*?\r?\n\}/m);
+    const declares = source.match(/^function declaresSkinEndpoint\(plugin\) \{[\s\S]*?\r?\n\}/m);
+    assert.ok(match && declares, 'readSettingsOpen not found');
+    const calls = [];
+    const read = new Function('callPluginEndpoint', 'parseSkinAnswer', 'logger', 'setTimeout',
+        `${declares[0]}\n${match[0]}\nreturn readSettingsOpen;`)(
+        (id, endpoint, body, method) => { calls.push([id, endpoint, method]); return Promise.resolve({ version: 1, surfaces: [], settingsOpen: { type: 'open', presentation: 'overlay' } }); },
+        answer => ({ settingsOpen: answer?.settingsOpen || null }),
+        { debug() {} }, () => 0);
+
+    const ui = [{ id: 'ui', type: 'http' }];
+    const skin = [{ id: 'ui', type: 'http' }, { id: 'skin', type: 'http' }];
+    return Promise.all([
+        read({ id: 'a.reaplugin', loaded: true, api: skin }),
+        read({ id: 'b.reaplugin', loaded: true, api: ui }),       // no skin endpoint
+        read({ id: 'c.reaplugin', loaded: false, api: skin }),    // not loaded
+        read(null),
+    ]).then(([withSkin, noSkin, notLoaded, none]) => {
+        assert.deepEqual(withSkin, { type: 'open', presentation: 'overlay' });
+        assert.equal(noSkin, null);
+        assert.equal(notLoaded, null);
+        assert.equal(none, null);
+        assert.deepEqual(calls, [['a.reaplugin', 'skin', 'GET']], 'only the plugin that serves skin is asked');
+    });
+});
+
+test('a skin read that fails or declares nothing leaves Open navigating', () => {
+    const match = source.match(/^async function readSettingsOpen\(plugin\) \{[\s\S]*?\r?\n\}/m);
+    const declares = source.match(/^function declaresSkinEndpoint\(plugin\) \{[\s\S]*?\r?\n\}/m);
+    const build = (answer) => new Function('callPluginEndpoint', 'parseSkinAnswer', 'logger', 'setTimeout',
+        `${declares[0]}\n${match[0]}\nreturn readSettingsOpen;`)(
+        () => (answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer)),
+        a => ({ settingsOpen: a?.settingsOpen || null }),
+        { debug() {} }, () => 0);
+    const plugin = { id: 'a.reaplugin', loaded: true, api: [{ id: 'skin', type: 'http' }] };
+    return Promise.all([
+        build(new Error('bridge down'))(plugin),
+        build({ version: 1, surfaces: [] })(plugin),
+        build(null)(plugin),
+    ]).then(results => assert.deepEqual(results, [null, null, null]));
+});
+
+test('the fallback and the overlay share one read, and the overlay is loaded lazily', () => {
+    const bind = source.match(/^function bindPluginOpenButton\(cardEl, plugin\) \{[\s\S]*?\r?\n\}/m);
+    assert.ok(bind, 'bindPluginOpenButton not found');
+    // No declaration: today's navigation, to the URL on the element.
+    assert.match(bind[0], /if \(!action\) \{\s*\r?\n\s*window\.location\.assign\(pageUrl\);/);
+    // The dashboard's overlay module is imported on demand: the settings page
+    // must not pull it in just to draw a card.
+    assert.match(bind[0], /await import\('\.\.\/modules\/plugin-overlay\.js'\)/);
+    assert.match(bind[0], /openPluginOverlay\(plugin, action, pageUrl/);
 });
 
 test('a bridge ui URL is dropped from the end of a description', () => {

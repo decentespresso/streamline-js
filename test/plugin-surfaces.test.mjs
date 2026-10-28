@@ -20,7 +20,7 @@ test('the example answer from the proposal parses as written', () => {
 
 test('wrong shape, wrong version or no answer give no surfaces and never throw', () => {
     for (const raw of [null, undefined, 'x', 3, [], {}, { version: 2, surfaces: [] }, { version: 1 }, { version: 1, surfaces: 'x' }]) {
-        assert.deepEqual(parseSkinAnswer(raw), { surfaces: [], live: null });
+        assert.deepEqual(parseSkinAnswer(raw), { surfaces: [], live: null, settingsOpen: null });
     }
 });
 
@@ -643,7 +643,47 @@ test('createPushCoalescer: reset drops the open window and its queue', () => {
 
 test('an empty surfaces list with live is a valid answer', () => {
     assert.deepEqual(parseSkinAnswer({ version: 1, surfaces: [], live: { endpoint: 'changed' } }),
-        { surfaces: [], live: { endpoint: 'changed' } });
+        { surfaces: [], live: { endpoint: 'changed' }, settingsOpen: null });
+});
+
+// ── The Open button in Settings > Extensions ───────────────────────────────
+//
+// Not a surface: the settings page draws that button for every plugin with a
+// `ui` endpoint. A plugin that wants it to open a window over Settings instead
+// of navigating away says so here, as a whole `open` action, so it inherits the
+// action parser's validation (issue #173).
+
+const settingsOpen = raw => parseSkinAnswer({ version: 1, surfaces: [], settingsOpen: raw }).settingsOpen;
+
+test('settingsOpen keeps an overlay action, with its overlay options', () => {
+    assert.deepEqual(settingsOpen({ type: 'open', view: 'main', presentation: 'overlay' }),
+        { type: 'open', view: 'main', presentation: 'overlay' });
+    assert.deepEqual(settingsOpen({ type: 'open', view: 'setup', presentation: 'overlay', fit: true }),
+        { type: 'open', view: 'setup', presentation: 'overlay', fit: true });
+    assert.deepEqual(settingsOpen({ type: 'open', presentation: 'overlay', size: 'full', closeOnShot: true }),
+        { type: 'open', view: '', presentation: 'overlay', size: 'full', closeOnShot: true });
+});
+
+test('anything that is not an overlay open leaves the button as it was', () => {
+    // `page` is what the button already does, so there is nothing to record;
+    // the rest are malformed and must not become an overlay by accident.
+    for (const raw of [
+        { type: 'open', view: 'main' },                          // presentation defaults to page
+        { type: 'open', view: 'main', presentation: 'page' },
+        { type: 'open', view: 'main', presentation: 'window' },   // not a presentation the skin has
+        { type: 'call', endpoint: 'apply', presentation: 'overlay' },
+        { presentation: 'overlay' },
+        'overlay', 3, [], null, undefined,
+    ]) {
+        assert.equal(settingsOpen(raw), null, `must not opt in: ${JSON.stringify(raw)}`);
+    }
+});
+
+test('a bad view in an overlay settingsOpen drops the view, not the window', () => {
+    // Same rule as every other open action: an unusable view means the plugin's
+    // default page, and the action still stands.
+    assert.deepEqual(settingsOpen({ type: 'open', view: 'not a view', presentation: 'overlay' }),
+        { type: 'open', view: '', presentation: 'overlay' });
 });
 
 const strip = body => parseSkinAnswer({ version: 1, surfaces: [{ id: 's', kind: 'shot-strip', ...body }] }).surfaces[0];

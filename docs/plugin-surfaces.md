@@ -32,8 +32,10 @@ that does not validate is dropped, and the rest still shows.
   a chosen option. It is only a look; whatever the surface does when tapped is its action.
 - **Live updates.** Add `"live": { "endpoint": "changed" }` at the top level of the answer, where `changed` is a
   `websocket` endpoint of your manifest. While the page is visible (on any skin page, not only the dashboard) the skin
-  keeps that socket open, and any message on it (whatever its body) makes the skin read `skin` again after about
-  300 ms and re-read the workflow for the tiles. A stream of messages still refreshes about every 300 ms. If the
+  keeps that socket open, and any message on it (whatever its body) makes the skin read `skin` again and re-read
+  the workflow for the tiles. The first message of a burst is acted on at once; a 300 ms window then coalesces
+  whatever follows it, so a stream of messages still refreshes about every 300 ms. The skin also re-reads when that
+  socket reopens, so a message pushed while it was down (as while your plugin reloads) is not missed. If the
   user has just edited a tile, the tile re-read waits until the edit has settled (a few seconds) instead of
   being dropped. Use it for a value that moves (a scale weight) or when your plugin has just written the workflow.
   The message body may be JSON `{"what":"skin"}` to say that only your `skin` answer changed; the skin then does not
@@ -43,6 +45,15 @@ that does not validate is dropped, and the rest still shows.
   empty `surfaces` with `live` is valid. A push that re-reads the workflow (anything but `{"what":"skin"}`) also makes the DYE strip re-read its data.
   Messages should be sent when something changed, not on a timer faster than a second. Without `live`, or if the
   socket cannot open, the minute poll above still applies.
+- **The Open button in Settings > Extensions.** Add `"settingsOpen"` at the top level of the answer, a whole `open`
+  action, to have that button show your `ui` page in a dialog over Settings instead of navigating away from it:
+  `{"version":1,"surfaces":[],"settingsOpen":{"type":"open","view":"main","presentation":"overlay","fit":true}}`.
+  Only `presentation: "overlay"` does anything; `view`, `fit`, `size: "full"` and `closeOnShot` work as they do in
+  any `open` action, and the page gets the same messages and the same 3 s `streamline:ready` deadline as an overlay
+  on the dashboard. Without it, or on a plugin that declares no `skin` endpoint, the button keeps navigating to your
+  page with `returnTo`, exactly as before. The answer is read when the button is tapped, so a slow or failing read
+  just navigates. This is the only surface that works without a tile: a plugin whose page is its whole interface can
+  answer with empty `surfaces` and only `settingsOpen`.
 - Tile surfaces are placed from the label's measured size, so they are only drawn while the dashboard is visible;
   a read that finishes while it is hidden is drawn on the next refresh.
 
