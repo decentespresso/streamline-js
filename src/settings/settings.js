@@ -2095,10 +2095,10 @@ export function renderFeedbackSettings() {
             </div>
 
             <!-- Submit -->
-            <div class="flex flex-col gap-[12px] w-full">
+            <div class="flex flex-row items-center gap-[12px] w-full">
                 <button id="feedback-submit-btn"
                         onclick="window.submitFeedback()"
-                        class="bg-[var(--button-primary-bg)] h-[54px] px-[40px] rounded-[54px] text-white text-[22px] font-bold self-start" data-i18n-key="Submit">
+                        class="bg-[var(--button-primary-bg)] h-[54px] px-[40px] rounded-[54px] text-white text-[22px] font-bold" data-i18n-key="Submit">
                     Submit
                 </button>
                 <div id="feedback-status" class="text-[22px] leading-[1.4]"></div>
@@ -8548,7 +8548,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             statusEl.innerHTML = `
                 <span class="text-green-600 font-bold text-[24px]" data-i18n-key="Submitted!">Submitted!</span>
                 ${data.issueUrl ? `<a href="${data.issueUrl}"
-                   class="ml-3 text-[var(--mimoja-blue-v2)] underline text-[22px]">View issue</a>` : ''}`;
+                   class="text-[var(--mimoja-blue-v2)] underline text-[22px]">View issue</a>` : ''}`;
             document.getElementById('feedback-title').value = '';
             document.getElementById('feedback-description').value = '';
             const preview = document.getElementById('feedback-description-preview');
