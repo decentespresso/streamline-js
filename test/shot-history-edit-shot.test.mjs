@@ -50,13 +50,17 @@ function runHandler({ enabled, shots, currentShotIndex }) {
     return calls;
 }
 
-test('the info block is the tap target, not the arrows or the label', () => {
+test('the four text lines live in the info block, outside the arrows', () => {
     const idAt = html.indexOf('id="shot-history-info"');
     assert.ok(idAt > 0, 'the info block has a stable hook');
     const tag = html.slice(html.lastIndexOf('<div', idAt), html.indexOf('>', idAt) + 1);
     assert.match(tag, /aria-live="polite"/, 'it is the live info block, not the panel');
     assert.ok(!tag.includes('history-prev-btn') && !tag.includes('history-next-btn'),
         'the nav arrows are outside it');
+    const block = html.slice(html.indexOf('>', idAt), html.indexOf('id="shot-data-panel"', idAt));
+    for (const id of ['history-date', 'history-profile-name', 'history-dose-in', 'history-grind-size']) {
+        assert.ok(block.includes(`id="${id}"`), `${id} sits inside the info block`);
+    }
 });
 
 test('a tap opens edit-shot for the shot on screen, gated on DYE2', () => {
@@ -88,13 +92,23 @@ test('no shot on screen says so instead of opening an empty page', () => {
     assert.equal(calls.toasted[0][0], 'No shot selected');
 });
 
-test('the panel routes only info-area taps to the handler', () => {
+test('the panel routes only the four info lines to the handler', () => {
     const code = stripComments(historySrc);
+    const declAt = code.indexOf('const SHOT_HISTORY_EDIT_TAP_SELECTOR');
+    assert.ok(declAt > 0, 'the tap target has one named source of truth');
+    const decl = code.slice(declAt, code.indexOf(';', declAt));
+    const ids = [...decl.matchAll(/#([\w-]+)/g)].map(m => m[1]);
+    assert.deepEqual(ids,
+        ['history-date', 'history-profile-name', 'history-dose-in', 'history-grind-size'],
+        'exactly the four text lines, nothing else in the block');
+
     const start = code.indexOf('function setupHistoryLongPress()');
     const body = code.slice(start, code.indexOf('\n}\n', start));
-    assert.ok(body.includes("closest?.('#shot-history-info')"),
-        'an arrow tap bubbles to the panel and must be ignored');
-    assert.ok(body.indexOf('closest?') < body.indexOf('openShotInDye2()'),
+    assert.ok(body.includes('closest?.(SHOT_HISTORY_EDIT_TAP_SELECTOR)'),
+        'the guard uses that list');
+    assert.ok(!body.includes("'#shot-history-info'"),
+        'the block around the lines stays inert, so its gaps and padding do not open DYE2');
+    assert.ok(body.indexOf('closest?.') < body.indexOf('openShotInDye2()'),
         'the guard runs before the overlay opens');
 });
 

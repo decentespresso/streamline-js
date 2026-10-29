@@ -386,7 +386,12 @@ function refreshVisualizerAvailability() {
         .catch(() => { visualizerLoggedIn = false; }); // not installed, or unreachable
 }
 
-// Tap the shot-history info block -> DYE2's edit-shot page for the shot on screen.
+// The four text lines are the only tap target: DYE2's edit page opens from them, while
+// the block around them is layout and the arrows keep their own buttons.
+const SHOT_HISTORY_EDIT_TAP_SELECTOR =
+    '#history-date, #history-profile-name, #history-dose-in, #history-grind-size';
+
+// Tap a shot-history text line -> DYE2's edit-shot page for the shot on screen.
 // Gated on the DYE2 master switch, so with DYE2 off the panel keeps its long-press
 // menu only. DYE2 saves/deletes and comes back through the overlay's `return` URL;
 // the close hook then repaints this panel with whatever actually landed on the bridge.
@@ -422,9 +427,10 @@ function setupHistoryLongPress() {
     refreshDialInAvailability();
     refreshVisualizerAvailability();
     setupPressAndHold(panel, (event) => {
-        // Only the info block opens DYE2: an arrow tap bubbles here too, and the
-        // label is not a control. A long press is swallowed by setupPressAndHold.
-        if (!event?.target?.closest?.('#shot-history-info')) return;
+        // Only the four info lines open DYE2: an arrow tap bubbles here too, and the
+        // block's own padding is not a control. A long press is swallowed by
+        // setupPressAndHold.
+        if (!event?.target?.closest?.(SHOT_HISTORY_EDIT_TAP_SELECTOR)) return;
         openShotInDye2();
     }, () => {
         // Dial-in entries only appear when the plugin is installed and loaded, so
