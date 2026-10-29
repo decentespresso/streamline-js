@@ -40,7 +40,7 @@ const PAGES = {
         // Injected into the machine-status line by ui.js only while a shot step
         // is running; skipped on every other screen state.
         { sel: '#skip-step-indicator', title: 'Skip step', tip: 'Tap to end the current step and move straight to the next one.' },
-        { sel: '#shot-history-panel', title: 'Shot history', tip: 'Use the arrows to browse past shots.' },
+        { sel: '#shot-history-panel', title: 'Shot history', tip: 'Use the arrows to browse past shots. With DYE2 on, tap the shot details to edit them.' },
         { sel: '#sleep-button', title: 'Sleep', tip: 'Put the machine to sleep.' },
         { sel: '#settings-btn', title: 'Settings', tip: 'Open the settings page.' },
         { sel: '#fullscreen-toggle-btn', title: 'Fullscreen', tip: 'Toggle fullscreen mode.' },

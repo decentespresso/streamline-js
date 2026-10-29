@@ -742,7 +742,12 @@ function isSameOrigin(url) {
 
 // `params` adds query params (e.g. { id }) next to `return`. They travel in the URL because
 // sessionStorage is per-origin: in the cross-origin fallback below DYE2 cannot see ours.
-export function openPluginOverlay(page, params) {
+// `onClose(refresh)` runs when the overlay goes away: `refresh` is true when the plugin
+// navigated back to the sentinel return URL (it saved/deleted something), false for the
+// skin's own Close button. Only the caller that needs a repaint passes one.
+let overlayCloseHook = null;
+export function openPluginOverlay(page, params, onClose) {
+    overlayCloseHook = typeof onClose === 'function' ? onClose : null;
     const pluginUrl = `${PLUGIN_BASE}/${page}`;
     const query = (returnTo) => {
         const q = new URLSearchParams({ return: returnTo });
@@ -777,17 +782,22 @@ export function openPluginOverlay(page, params) {
         close.textContent = 'Close';
         close.style.cssText =
             'padding:8px 22px;border:2px solid var(--mimoja-blue-v2);color:var(--mimoja-blue-v2);border-radius:20px;font-weight:600;font-size:20px;cursor:pointer;';
-        close.addEventListener('click', closePluginOverlay);
+        close.addEventListener('click', () => closePluginOverlay(false));
         bar.appendChild(close);
         const frame = document.createElement('iframe');
         frame.id = 'dye-plugin-frame';
         frame.style.cssText = 'flex:1;width:100%;border:0;';
         // Same-origin load handler: when the plugin navigates back to our sentinel
-        // return URL, tear down the overlay and refresh the strip + controls.
+        // return URL, tear down the overlay and refresh the strip + controls. The plugin
+        // adds `dyeShot=<id>` for the shot it was showing on the way out (it may have moved
+        // off the one we opened), so the caller repaints the right row.
         frame.addEventListener('load', () => {
             let href = '';
             try { href = frame.contentWindow.location.href; } catch (e) { return; } // cross-origin, ignore
-            if (href.includes('dyeReturn=1')) closePluginOverlay(true);
+            if (!href.includes('dyeReturn=1')) return;
+            let editedShotId = null;
+            try { editedShotId = new URL(href).searchParams.get('dyeShot'); } catch (e) { /* ignore */ }
+            closePluginOverlay(true, editedShotId);
         });
         overlay.appendChild(bar);
         overlay.appendChild(frame);
@@ -798,13 +808,18 @@ export function openPluginOverlay(page, params) {
     overlay.style.display = 'flex';
 }
 
-function closePluginOverlay(refresh) {
+function closePluginOverlay(refresh, editedShotId) {
     const overlay = document.getElementById('dye-plugin-overlay');
     if (overlay) overlay.style.display = 'none';
+    const hook = overlayCloseHook;
+    overlayCloseHook = null;
     if (refresh) {
         // DYE2 may have applied a fav/recipe or edited the collections while open.
         loadDyeStripData().then(() => { if (currentMode !== 'P') renderStrip(currentMode); }).catch(() => {});
         refreshAfterApply();
+    }
+    if (hook) {
+        try { hook(!!refresh, editedShotId || null); } catch (e) { logger.warn('plugin overlay close hook failed', e); }
     }
 }
 

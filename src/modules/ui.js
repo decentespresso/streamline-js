@@ -854,8 +854,10 @@ export function setupPressAndHold(element, clickCallback, longPressCallback, opt
     element.addEventListener('pointercancel', endPress);
     element.addEventListener('pointerleave', endPress);
 
+    // The event lets a caller that owns a whole card tell a tap on a sub-region
+    // from a tap on one of its buttons, without a second press tracker.
     element.addEventListener('click', (event) => {
-        if (!suppressClick) return clickCallback();
+        if (!suppressClick) return clickCallback(event);
         suppressClick = false;
         clearTimeout(suppressClickReset);
         event.preventDefault();
