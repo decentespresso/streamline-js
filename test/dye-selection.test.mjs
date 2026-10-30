@@ -139,6 +139,14 @@ test('profileFingerprint: limiter {value:0}, null and absent hash the same; a re
     assert.notEqual(profileFingerprint(withLimiter({ value: 1.5, range: 0.6 })), missing);
 });
 
+test('profileFingerprint: key order does not affect identity (dye2#43)', () => {
+    const step = { name: 's', pump: 1, transition: 0, exit: null, volume: 1, seconds: 1, weight: 1, sensor: 'coffee', flow: 1, limiter: null };
+    const reorderedStep = Object.fromEntries(Object.entries(step).sort(([a], [b]) => a.length - b.length || a.localeCompare(b)));
+    const decaidOrder = { title: 'P', tank_temperature: 93, steps: [step] };
+    const jsonbOrder = { steps: [reorderedStep], title: 'P', tank_temperature: 93 };
+    assert.equal(profileFingerprint(decaidOrder), profileFingerprint(jsonbOrder));
+});
+
 test('profileDrifted: an item fingerprinted with a 0 limiter does not drift against a null limiter', () => {
     const zero = { ...profile, steps: [{ name: 'fill', limiter: { value: 0, range: 0.6 } }] };
     const none = { ...profile, steps: [{ name: 'fill', limiter: null }] };

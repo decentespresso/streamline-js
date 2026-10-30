@@ -19,6 +19,20 @@ export const SELECTION_KEY = 'streamline.dyeSelection';
 // and immediately clear the item auto-save is running for. The same goes for
 // target_weight / target_volume: the dashboard folds the yield into them, so a
 // yield change is dial-in, not a new profile (#147).
+// JSON.stringify calls the replacer again on whatever object IT returns, not the original,
+// so returning a key-sorted copy at every level makes the whole tree order-independent --
+// two profiles equal in content but not in key order (dye2#43: Decent Sync's jsonb storage
+// reorders keys, shorter first; Decaid's own toJson order is whatever Workflow wrote) now
+// fingerprint the same.
+function sortKeysReplacer(_key, value) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const sorted = {};
+        for (const k of Object.keys(value).sort()) sorted[k] = value[k];
+        return sorted;
+    }
+    return value;
+}
+
 export function profileFingerprint(profile) {
     if (!profile) return null;
     const steps = Array.isArray(profile.steps)
@@ -32,7 +46,7 @@ export function profileFingerprint(profile) {
         title: profile.title,
         tank_temperature: profile.tank_temperature,
         steps,
-    });
+    }, sortKeysReplacer);
 }
 
 /** Has the live workflow's profile moved away from the one `item` was armed on? */
