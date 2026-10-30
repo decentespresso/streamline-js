@@ -3228,7 +3228,7 @@ export function renderSteamSettings() {
                             <p class="leading-[1.2]" data-i18n-key="Steam Purge Mode">Steam Purge Mode</p>
                         </div>
                         <select class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[200px] text-white text-[24px] p-2"
-                                onchange="window.updateDe1Setting('steamPurgeMode', this.value)">
+                                onchange="window.updateDe1Setting('steamPurgeMode', Number(this.value))">
                             <option value="0" ${settingsCache.de1.steamPurgeMode === 0 ? 'selected' : ''} data-i18n-key="Normal">Normal</option>
                             <option value="1" ${settingsCache.de1.steamPurgeMode === 1 ? 'selected' : ''} data-i18n-key="Two Tap Stop">Two Tap Stop</option>
                         </select>

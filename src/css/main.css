@@ -158,6 +158,11 @@
 
 html, body {
     overflow: hidden;
+    /* Android 12+ WebViews play the stretch overscroll animation even on a page
+       that cannot scroll, so a drag anywhere reads as the whole UI rubber-banding
+       (#177, decaid#963). The skin letterboxes its own canvas and never scrolls
+       the root, so nothing here wants that gesture. */
+    overscroll-behavior: none;
 }
 
 * {

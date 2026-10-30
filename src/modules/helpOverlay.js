@@ -303,6 +303,7 @@ export function initializeHelpOverlay(button = null) {
         btn,
         () => (overlay ? close() : open()),
         () => setHidden(true),
+        { touchAction: 'none' }, // a drag on the button must not pan the page (#177)
     );
     if (!btn.isConnected) document.body.appendChild(btn);
 

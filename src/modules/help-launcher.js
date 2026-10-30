@@ -105,7 +105,10 @@ export function initHelpLauncher() {
         document.documentElement.classList.toggle('help-webview', !hidden && isInWebView());
         if (!hidden) syncHelpButton();
     };
-    setupPressAndHold(button, activate, () => setHidden(true));
+    // touchAction 'none': the default 'manipulation' still lets a drag that starts on
+    // the button pan the page, which in the WebView reads as the whole UI rubber-banding
+    // (#177). Tap and long-press are pointer events, so they are unaffected.
+    setupPressAndHold(button, activate, () => setHidden(true), { touchAction: 'none' });
 
     window.showHelpButton = () => setHidden(false);
     window.hideHelpButton = () => setHidden(true);
