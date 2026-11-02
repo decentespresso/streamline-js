@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { LEGACY_VISUALIZER_KEYS, LEGACY_VISUALIZER_PURGED_FLAG, legacyKeysToPurge } from '../src/modules/legacy-credentials-purge.js';
-import { hydrate, installMirror, createWriteGate, decideMerge, retryDelay, SYNCED_KEYS, SETTINGS_NAMESPACE, shouldReloadForRestore, RESTORE_HANDLED_KEYS } from '../src/modules/settingsSync.js';
+import { hydrate, installMirror, createWriteGate, decideMerge, retryDelay, SYNCED_KEYS, SETTINGS_NAMESPACE, shouldReloadForRestore, RESTORE_HANDLED_KEYS, PENDING_KEY, readPending, writePending, addPending, SYNCED_PREFIXES, isSynced, keysToMerge } from '../src/modules/settingsSync.js';
 
 // Stand-in for window.localStorage with a shared prototype to patch, matching
 // the browser's Storage/Storage.prototype split.
@@ -420,4 +420,179 @@ test('no reload while the machine is busy', () => {
 
 test('no second reload in the same session', () => {
     assert.equal(shouldReloadForRestore({ ...idle, alreadyReloaded: true, applied: { uiZoom: '1.2' } }), false);
+});
+
+
+// ── A change the gate could not push must outlive the session ────────────────
+// The reverting dark theme: the user picks dark while Decaid's webservice is
+// still starting, so the gate is shut and the push is only remembered in
+// memory. Leaving the skin threw that away, and the next boot read an older KV
+// value and applied it over the local one ("KV wins on conflict"). The dirty
+// set is now written down, so the next hydrate seeds the change instead.
+test('a change made while the gate was shut is remembered for the next boot', () => {
+    const { storage, proto } = makeStorage({ theme: 'light' });
+    const gate = createWriteGate({
+        push: () => {}, drop: () => {},
+        onDirty: key => addPending(storage, key),
+    });
+    installMirror(proto, gate.push, gate.drop);
+
+    storage.setItem('theme', 'dark');
+
+    assert.deepEqual([...readPending(storage)], ['theme']);
+    assert.equal(storage.getItem(PENDING_KEY), '["theme"]', 'survives as plain JSON in localStorage');
+});
+
+test('a remembered change wins the next session, where the dirty set is empty', async () => {
+    const { storage, proto } = makeStorage({ theme: 'dark' });   // chosen last session
+    writePending(storage, new Set(['theme']));
+    const gate = createWriteGate({ push: () => {}, drop: () => {} });
+    installMirror(proto, gate.push, gate.drop);
+
+    const pushed = [];
+    const dirty = new Set([...gate.dirtyKeys(), ...readPending(storage)]);
+    const { applied, seeded } = await hydrate(
+        storage, { theme: 'light' }, proto.setItem, (k, v) => pushed.push([k, v]), dirty,
+    );
+
+    assert.equal(storage.getItem('theme'), 'dark', 'the stale KV value must not revert it');
+    assert.deepEqual(applied, {});
+    assert.deepEqual(seeded, { theme: 'dark' });
+    assert.deepEqual(pushed, [['theme', 'dark']]);
+
+    writePending(storage, []);                       // consumed by the hydrate
+    assert.equal(storage.getItem(PENDING_KEY), null);
+});
+
+test('only synced keys are remembered, and garbage is ignored', () => {
+    const { storage } = makeStorage();
+    addPending(storage, 'reaHostname');               // never mirrored
+    assert.equal(readPending(storage).size, 0);
+    addPending(storage, 'theme');
+    addPending(storage, 'theme');                     // no duplicates
+    assert.deepEqual([...readPending(storage)], ['theme']);
+    storage.setItem(PENDING_KEY, 'not json');
+    assert.equal(readPending(storage).size, 0);
+});
+
+// ── No stock value may masquerade as a choice ────────────────────────────────
+// Recording the fallback is what put 'light' in KV for users who never picked
+// it: hydrate() then seeded that default and KV went on to win every conflict.
+test('the boot script paints the fallback theme without recording it', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const inline = html.match(/<script>[\s\S]*?<\/script>/)?.[0];
+    assert.ok(inline, 'inline boot script not found');
+    assert.match(inline, /setAttribute\(\s*\n?\s*'data-theme'/);
+    assert.doesNotMatch(html, /localStorage\.setItem\('theme'/, 'the fallback must not be persisted');
+});
+
+test('the theme toggle persists a user change only', () => {
+    const ui = readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8');
+    const body = ui.match(/export function initThemeToggle\(\) \{[\s\S]*?\n\}/)?.[0];
+    assert.ok(body, 'initThemeToggle not found');
+    const [beforeChange, afterChange] = body.split("addEventListener('change'");
+    assert.ok(afterChange, "the change listener is gone");
+    assert.doesNotMatch(beforeChange, /localStorage\.setItem/, 'the init path must not write');
+    assert.match(afterChange, /localStorage\.setItem\('theme', theme\)/);
+});
+
+
+// ── Settings-page toggles that used to live only on the device ───────────────
+test('the Grinder page sync toggles are mirrored to KV', () => {
+    // Keys come from grinder-runtime.js; assert against the source so renaming
+    // one there without updating SYNCED_KEYS fails here instead of in the field.
+    const runtime = readFileSync(new URL('../src/modules/grinder-runtime.js', import.meta.url), 'utf8');
+    const keys = [...(runtime.match(/const KEYS = \{([^}]*)\}/)?.[1] ?? '').matchAll(/'([^']+)'/g)].map(m => m[1]);
+    assert.deepEqual(keys, ['grinder-follow', 'grinder-send']);
+    for (const key of keys) assert.ok(SYNCED_KEYS.includes(key), `${key} is not mirrored to KV`);
+});
+
+// ── Key families: preferences whose key carries an id ────────────────────────
+test('a family key is mirrored, a near-miss is not', () => {
+    const { storage, proto } = makeStorage();
+    const pushed = [], dropped = [];
+    installMirror(proto, (k, v) => pushed.push([k, v]), k => dropped.push(k));
+
+    storage.setItem('plugin-stepsize:dose', '0.5');
+    storage.setItem('plugin-mode-presets:dye2:grind', '[1,2]');
+    storage.setItem('plugin-stepsizes', 'x');          // not the family
+    storage.setItem('plugin-mode-presets', 'x');       // prefix needs the colon
+    storage.removeItem('plugin-stepsize:dose');
+
+    assert.deepEqual(pushed, [['plugin-stepsize:dose', '0.5'], ['plugin-mode-presets:dye2:grind', '[1,2]']]);
+    assert.deepEqual(dropped, ['plugin-stepsize:dose']);
+    assert.equal(isSynced('plugin-stepsizes'), false);
+    assert.ok(SYNCED_PREFIXES.every(prefix => prefix.endsWith(':')), 'a prefix must end at a separator');
+});
+
+test('a family key in KV is restored, and one changed here is seeded', async () => {
+    const { storage, proto } = makeStorage({ 'plugin-stepsize:dose': '0.1' });
+    const pushed = [];
+    const remote = { 'plugin-stepsize:dose': '0.5', 'plugin-mode-presets:dye2:grind': '[3]' };
+
+    // Nothing enumerates the families, so hydrate has to pick them up from the
+    // snapshot (and from `dirty` for a change this device could not push).
+    assert.ok(keysToMerge(remote).has('plugin-mode-presets:dye2:grind'));
+    assert.ok(keysToMerge({}, new Set(['plugin-stepsize:yield'])).has('plugin-stepsize:yield'));
+
+    const { applied, seeded } = await hydrate(storage, remote, proto.setItem, (k, v) => pushed.push([k, v]));
+    assert.deepEqual(applied, remote, 'both restored over the local copy');
+    assert.deepEqual(seeded, {});
+    assert.equal(storage.getItem('plugin-mode-presets:dye2:grind'), '[3]');
+
+    // Same snapshot, but the step size was changed here while KV was unreachable.
+    const local = makeStorage({ 'plugin-stepsize:dose': '0.2' });
+    const pushed2 = [];
+    const { applied: applied2, seeded: seeded2 } = await hydrate(
+        local.storage, remote, local.proto.setItem, (k, v) => pushed2.push([k, v]),
+        new Set(['plugin-stepsize:dose']),
+    );
+    assert.deepEqual(seeded2, { 'plugin-stepsize:dose': '0.2' });
+    assert.deepEqual(applied2, { 'plugin-mode-presets:dye2:grind': '[3]' });
+    assert.deepEqual(pushed2, [['plugin-stepsize:dose', '0.2']]);
+});
+
+test('a family key is remembered as pending like any other', () => {
+    const { storage } = makeStorage();
+    addPending(storage, 'plugin-stepsize:dose');
+    addPending(storage, 'plugin-stepsizes');          // not the family
+    assert.deepEqual([...readPending(storage)], ['plugin-stepsize:dose']);
+});
+
+
+// Decaid keeps the key as the path spelled it, so an escaped character survives
+// into the ?full=1 listing. Found live: 'plugin-stepsize:dose' was stored as
+// 'plugin-stepsize%3Adose', which hydrate() could never match to its local twin.
+test('the KV snapshot reports keys under the name the skin wrote', async () => {
+    const source = readFileSync(new URL('../src/modules/api.js', import.meta.url), 'utf8');
+    const body = [
+        /export function decodeKVKey\(key\) \{[\s\S]*?\n\}/,
+        /export async function getKVAll\(namespace\) \{[\s\S]*?\n\}/,
+        /export async function getKVValue\(namespace, key\) \{[\s\S]*?\n\}/,
+    ].map(pattern => {
+        const match = source.match(pattern);
+        assert.ok(match, `no match for ${pattern}`);
+        return match[0].replace('export ', '');
+    }).join('\n');
+
+    const asked = [];
+    const run = (respond) => new Function('fetch', 'API_BASE_URL',
+        `${body}\nreturn getKVAll('streamlineSettings');`)(
+        async (url) => { asked.push(url); return respond(url); }, 'http://d/api/v1');
+
+    const stored = { 'plugin-stepsize%3Adose': '0.5', theme: 'dark' };
+    assert.deepEqual(
+        await run(() => ({ ok: true, json: async () => stored })),
+        { 'plugin-stepsize:dose': '0.5', theme: 'dark' },
+    );
+
+    // Older Decaid: a bare key array, each value fetched separately. The escaped
+    // name must not be escaped twice on the way back out.
+    asked.length = 0;
+    const perKey = await run(url => url.endsWith('?full=1')
+        ? { ok: true, json: async () => ['plugin-stepsize%3Adose'] }
+        : { ok: true, json: async () => '0.5' });
+    assert.deepEqual(perKey, { 'plugin-stepsize:dose': '0.5' });
+    assert.ok(asked.some(url => url.endsWith('/plugin-stepsize%3Adose')), asked.join(' '));
+    assert.ok(!asked.some(url => url.includes('%253A')), 'double-escaped');
 });

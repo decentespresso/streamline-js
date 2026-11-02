@@ -3,14 +3,20 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
+    MACHINE_SETTINGS_KEPT_FROM,
     RESET_ON_CONNECT,
     RESTORE_EXCLUDED_KEYS,
     adoptFromMachine,
+    decaidKeepsMachineSettings,
     diffUserSettings,
     restorePatches,
     settingValuesMatch,
     splitDifferences,
 } from '../src/settings/settings-restore.js';
+
+// A Decaid that still resets the fan threshold and the refill kit on connect,
+// which is what makes the exception apply at all.
+const OLD_DECAID = '0.9.0';
 
 // ── What gets recorded ──────────────────────────────────────────────────────
 //
@@ -139,24 +145,24 @@ test('a setting changed elsewhere is kept, not written back', () => {
         { scope: 'de1Advanced', key: 'steamPurgeMode', saved: 2, actual: 0 },
         { scope: 'de1', key: 'fan', saved: 45, actual: 30 },
         { scope: 'de1Advanced', key: 'refillKitSetting', saved: 1, actual: 0 },
-    ]);
+    ], OLD_DECAID);
     assert.deepEqual(restore, [], 'nothing is asserted over a deliberate change');
     assert.deepEqual(adopt.map(d => d.key), ['steamPurgeMode', 'fan', 'refillKitSetting']);
 });
 
-test('a value Decaid resets on connect is put back', () => {
+test('a value an older Decaid resets on connect is put back', () => {
     // The refill kit set to auto (2), and the fan threshold Decaid asks for as
     // 55: a real DE1 clamps that to 50, a simulated one reports 55 (decaid#1027
     // and MMRItem.fanThreshold). Every one of them is a loss, not a choice.
     assert.deepEqual([...RESET_ON_CONNECT.de1.fan], [50, 55]);
     for (const actual of RESET_ON_CONNECT.de1.fan) {
-        const { restore, adopt } = splitDifferences([{ scope: 'de1', key: 'fan', saved: 45, actual }]);
+        const { restore, adopt } = splitDifferences([{ scope: 'de1', key: 'fan', saved: 45, actual }], OLD_DECAID);
         assert.deepEqual(adopt, [], `fan ${actual} is the reset value`);
         assert.deepEqual(restorePatches(restore), { de1: { fan: 45 } });
     }
     const kit = splitDifferences([
         { scope: 'de1Advanced', key: 'refillKitSetting', saved: 1, actual: 2 },
-    ]);
+    ], OLD_DECAID);
     assert.deepEqual(kit.adopt, []);
     assert.deepEqual(restorePatches(kit.restore), { de1Advanced: { refillKitSetting: 1 } });
 });
@@ -167,7 +173,7 @@ test('the reset exception covers only its own keys, and not a saved reset value'
     const { restore } = splitDifferences([
         { scope: 'de1Advanced', key: 'steamPurgeMode', saved: 2, actual: 50 },
         { scope: 'de1Advanced', key: 'fan', saved: 45, actual: 50 },  // fan lives in de1, not here
-    ]);
+    ], OLD_DECAID);
     assert.deepEqual(restore, []);
     // A user who chose the reset value themselves has no difference to sort at
     // all, so the exception can never fight their own choice.
@@ -179,12 +185,50 @@ test('a restore of a reset value leaves the adopted change to the record', () =>
     // read-back that follows adopts the rest.
     const record = { de1: { fan: 45 }, de1Advanced: { steamPurgeMode: 2 } };
     const machine = { de1: { fan: 50 }, de1Advanced: { steamPurgeMode: 0 } };
-    const { restore, adopt } = splitDifferences(diffUserSettings(record, machine));
+    const { restore, adopt } = splitDifferences(diffUserSettings(record, machine), OLD_DECAID);
     assert.deepEqual(restorePatches(restore), { de1: { fan: 45 } });
     assert.deepEqual(adopt.map(d => d.key), ['steamPurgeMode']);
     // What the machine reports after that write is what gets recorded.
     const next = adoptFromMachine(record, { de1: { fan: 45 }, de1Advanced: { steamPurgeMode: 0 } });
     assert.deepEqual(diffUserSettings(next, { de1: { fan: 45 }, de1Advanced: { steamPurgeMode: 0 } }), []);
+});
+
+// ── Which Decaid resets them ────────────────────────────────────────────────
+//
+// decaid#1043 makes Decaid remember the fan threshold and the refill kit last
+// written through the API and write those back on connect, so from the first
+// release carrying it there is no reset to repair: a machine reading 50 or auto
+// was set to it, and putting the remembered value back would undo a deliberate
+// choice (issue #179).
+
+test('the exception stops at the Decaid that keeps those values itself', () => {
+    const fan = { scope: 'de1', key: 'fan', saved: 45, actual: 50 };
+    const kit = { scope: 'de1Advanced', key: 'refillKitSetting', saved: 1, actual: 2 };
+    const { restore, adopt } = splitDifferences([fan, kit], MACHINE_SETTINGS_KEPT_FROM);
+    assert.deepEqual(restore, [], 'nothing is written back on a Decaid that keeps them');
+    assert.deepEqual(adopt.map(d => d.key), ['fan', 'refillKitSetting']);
+});
+
+test('decaidKeepsMachineSettings draws the line at the release, not its betas', () => {
+    assert.equal(MACHINE_SETTINGS_KEPT_FROM, '0.9.1');
+    for (const version of ['0.9.1', 'v0.9.1', '0.9.1+3027', '0.9.2', '0.10.0', '1.0.0']) {
+        assert.equal(decaidKeepsMachineSettings(version), true, version);
+    }
+    // decaid#1043 landed after v0.9.1-beta.1, so the prereleases of the very
+    // release that carries it do not have it.
+    for (const version of ['0.9.1-beta.1', '0.9.0', '0.9.0-beta.2', '0.8.8']) {
+        assert.equal(decaidKeepsMachineSettings(version), false, version);
+    }
+});
+
+test('an unreadable Decaid version adopts rather than restores', () => {
+    // Adopting a difference never destroys a choice; restoring one can. /info
+    // failing is not a reason to risk the destructive half.
+    for (const version of [undefined, null, '', 'unknown', 'dev']) {
+        assert.equal(decaidKeepsMachineSettings(version), true, String(version));
+    }
+    const { restore } = splitDifferences([{ scope: 'de1', key: 'fan', saved: 45, actual: 50 }]);
+    assert.deepEqual(restore, []);
 });
 
 // ── The DE1's own ceiling on the fan threshold ──────────────────────────────

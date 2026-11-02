@@ -726,8 +726,8 @@ async function saveSettingsBackup() {
 // Two halves: remember what the user saved here (syncMachineSettingsRecord),
 // and, when the machine later reports something else, decide what that means
 // (checkMachineSettingsDrift). A change made elsewhere is adopted, not undone;
-// only a value Decaid resets on connect is put back -- see settings-restore.js
-// for what is tracked, what is left alone and why.
+// only a value an older Decaid resets on connect is put back -- see
+// settings-restore.js for what is tracked, what is left alone and why.
 
 const USER_MACHINE_SETTINGS_KEY = 'userMachineSettings';
 
@@ -791,7 +791,9 @@ async function checkMachineSettingsDrift() {
     });
     if (!differences.length) return;
 
-    const { restore, adopt } = splitDifferences(differences);
+    // Which differences count as a reset depends on the Decaid being talked to.
+    // preloadSettings() has already run, so appInfo is in the cache.
+    const { restore, adopt } = splitDifferences(differences, settingsCache.appInfo?.version);
     if (adopt.length) {
         logger.info(`Machine settings changed elsewhere, keeping: ${adopt.map(d => d.key).join(', ')}`);
     }

@@ -1,11 +1,11 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
-import { resolveStatusStateKey, isActionTailSubstate } from './machine-status-policy.js';
+import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from './machine-status-policy.js';
 import { openDB, getSetting } from './idb.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, formatScreensaverClockDate, formatScreensaverClockTime, screensaverClockPositionStyle } from './screensaver-clock.js';
 import { deriveSleepButtonAction, isWakePending, mayTapWakeMachine } from './screensaver-policy.js';
-import { isBengleMachine, isBengleModel } from './machine.js';
+import { isBengleMachine, isBengleModel, isRefillKitPresent } from './machine.js';
 import { STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
 import { API_DEBOUNCE_MS } from './workflow-watch.js';
 import { shouldUseNumpad } from './numpad-policy.js';
@@ -1688,9 +1688,8 @@ export function initThemeToggle() {
     const themeToggle = document.getElementById('theme-toggle');
     if (!themeToggle) return;
 
-    const applyTheme = (theme) => {
+    const paintTheme = (theme) => {
         document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
 
         // Dynamically import the chart module and apply theme if chart element exists
         if (document.getElementById('plotly-chart')) {
@@ -1702,13 +1701,17 @@ export function initThemeToggle() {
         }
     };
 
+    // Paint only: persisting the fallback would record a stock 'light' as a
+    // deliberate choice, and settingsSync would seed it over the durable copy
+    // in Decaid's KV. Only the change handler below writes.
     const currentTheme = localStorage.getItem('theme') || 'light';
     themeToggle.checked = currentTheme === 'dark';
-    applyTheme(currentTheme);
+    paintTheme(currentTheme);
 
     themeToggle.addEventListener('change', function() {
         const theme = this.checked ? 'dark' : 'light';
-        applyTheme(theme);
+        paintTheme(theme);
+        localStorage.setItem('theme', theme);
     });
 }
 
@@ -2933,6 +2936,35 @@ function heatingStatusParts(raw) {
 // target vanished a second after every render.
 const SKIP_STEP_GLYPH = '<span id="skip-step-indicator" class="skip-step-icon-box header-icon-btn cursor-pointer"><span class="pe-icon-mask skip-step-glyph" aria-hidden="true"></span></span>';
 
+// Retry for a refill kit that has stopped with the tank still full. Same shape
+// as the skip-step glyph above: the markup lives in the status line, which the
+// 1s counter re-renders wholesale, so the handler is bound after every render
+// rather than once. 'Retry' and 'Out of water' are both already translated.
+const REFILL_RETRY_ID = 'refill-retry-indicator';
+
+function refillRetryMarkup() {
+    return ` <span id="${REFILL_RETRY_ID}" role="button" tabindex="0" class="text-[var(--status-clickable-color)] cursor-pointer">| ${getTranslation('Retry')}</span>`;
+}
+
+function bindRefillRetryHandler() {
+    const retry = document.getElementById(REFILL_RETRY_ID);
+    if (!retry) return;
+    const send = (e) => {
+        e.stopPropagation();
+        logger.info('Refill kit retry tapped');
+        // The same request de1app's start_refill_kit sends: decaid turns
+        // needsWater into the firmware's Refill request (De1StateEnum.refill).
+        setMachineState(MachineState.NEEDS_WATER).catch(error => {
+            logger.error('Failed to retry the refill kit:', error);
+        });
+    };
+    retry.onclick = send;
+    // A span with role=button gets no click from the keyboard on its own.
+    retry.onkeydown = (e) => {
+        if (e.key === 'Enter' || e.key === ' ') send(e);
+    };
+}
+
 function bindSkipStepHandler() {
     const skipIndicator = document.getElementById('skip-step-indicator');
     if (!skipIndicator) return;
@@ -3117,7 +3149,13 @@ export function updateMachineStatus(data) {
     // Handle Needs Water state - takes priority
     if (isNeedsWaterState) {
         const outOfWaterText = getTranslation('Out of water') || 'Out of water';
-        setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-red-color)]">${outOfWaterText}</span>`);
+        // With a refill kit this state also covers the kit having stopped with
+        // water still in the tank, and the machine then waits to be told to try
+        // again -- with nothing here to tell it, staff had to start something at
+        // the group head to get out (issue #178).
+        const retry = offerRefillRetry(state, isRefillKitPresent()) ? refillRetryMarkup() : '';
+        setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-red-color)]">${outOfWaterText}</span>${retry}`);
+        if (retry) bindRefillRetryHandler();
         logger.debug('DEBUG: Out of water state - Set machine status with red styling');
     } else if (isEspressoPreparingForShot) {
         logger.debug('Entering isEspressoPreparingForShot condition');
@@ -3786,7 +3824,12 @@ export function showGhcControls() {
 
     const status = document.getElementById('machine-status');
     if (status) {
-        status.style.right = '100px'; // 172px GHC + 20px gap
+        // No right override here: the status line's own positioning container
+        // already ends at the GHC column's left edge when these controls are
+        // shown, so the old `right: 100px` counted the GHC width a second time
+        // and left the line short of the telemetry row beneath it -- the Retry
+        // offered in needsWater sat inboard of the scale's own Retry (#178).
+        // right-[44px] from the markup now anchors both layouts to one edge.
         status.style.width = 'auto';  // size to content; right edge stays anchored, box grows leftward
     }
 
@@ -3814,7 +3857,6 @@ export function hideGhcControls() {
 
     const status = document.getElementById('machine-status');
     if (status) {
-        status.style.right = '';
         status.style.width = '';
     }
 

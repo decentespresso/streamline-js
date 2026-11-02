@@ -13,18 +13,12 @@
     </script>
     <script>
         (function() {
-            const storedTheme = localStorage.getItem('theme');
-            if (storedTheme) {
-                document.documentElement.setAttribute('data-theme', storedTheme);
-            // } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-            //     // Check for system preference if no theme is stored
-            //     document.documentElement.setAttribute('data-theme', 'dark');
-            //     localStorage.setItem('theme', 'dark');
-            } else {
-                // Default to light if no preference is stored or detected
-                document.documentElement.setAttribute('data-theme', 'light');
-                localStorage.setItem('theme', 'light');
-            }
+            // Paint only — never write the fallback back to localStorage. A stock
+            // 'light' recorded here is indistinguishable from a deliberate choice,
+            // and settingsSync.hydrate() would seed it into Decaid's KV, where it
+            // then wins over the dark theme the user really picked.
+            document.documentElement.setAttribute(
+                'data-theme', localStorage.getItem('theme') || 'light');
         })();
     </script>
     <link rel="icon" type="image/png" href="//fast.decentespresso.com/favicon-32x32.png" sizes="32x32">

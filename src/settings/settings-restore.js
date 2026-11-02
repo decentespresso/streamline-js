@@ -18,9 +18,9 @@
 // another skin or by a plugin managing machines remotely was silently reverted
 // the next time someone opened this page (issue #172).
 //
-// The exception is a machine sitting on exactly what Decaid writes when it
-// connects: that value was lost to the reset rather than chosen. See
-// RESET_ON_CONNECT below.
+// The one exception is a machine sitting on exactly what Decaid writes when it
+// connects, on a Decaid old enough to overwrite it: that value was lost to the
+// reset rather than chosen. See RESET_ON_CONNECT below.
 //
 // Nothing here writes to the machine; it only sorts the differences.
 
@@ -110,30 +110,55 @@ export function diffUserSettings(record, machine) {
     return differences;
 }
 
-// What Decaid writes to the machine every time it connects, whatever the API
-// was told (decaid#1027): the fan threshold, and the refill kit to auto, which
-// the API reports as 2 (De1RefillKitSettings.auto). A machine found on one of
+// What a Decaid older than MACHINE_SETTINGS_KEPT_FROM writes to the machine
+// every time it connects, whatever the API was told (decaid#1027): the fan
+// threshold, and the refill kit to auto, which the API reports as 2
+// (De1RefillKitSettings.auto). On those versions a machine found on one of
 // these lost the user's value to that reset, so it is put back; anything else
 // is somebody's decision and is adopted instead.
 //
 // The fan has two values because Decaid asks for 55 and a real DE1's register
 // write clamps it to 50 (MMRItem.fanThreshold, max 50) while a simulated one
 // reports the 55 back. Either reading is the reset, not a choice.
-//
-// decaid#1043 makes Decaid keep what was last written through the API, so this
-// exception can go once a release carrying it is what people run. It was merged
-// after v0.9.1-beta.1, so no release has it yet.
 export const RESET_ON_CONNECT = Object.freeze({
     de1: Object.freeze({ fan: Object.freeze([50, 55]) }),
     de1Advanced: Object.freeze({ refillKitSetting: Object.freeze([2]) }),
 });
 
+// decaid#1043 makes Decaid remember the fan threshold and refill kit last
+// written through the API, per machine, and write those back on connect
+// (_setDe1DefaultsFor, machine_settings_store.dart). First release carrying it.
+export const MACHINE_SETTINGS_KEPT_FROM = '0.9.1';
+
+// Does this Decaid keep those two values itself? If it does, a machine reading
+// 50 or auto was set to it or never changed, and putting the remembered value
+// back would undo a deliberate choice -- the very thing issue #172 was about.
+//
+// An unknown or unparseable version counts as keeping them: adopting a
+// difference never destroys a choice, while restoring one can.
+export function decaidKeepsMachineSettings(version) {
+    const [core, pre] = String(version || '').trim().replace(/^v/i, '').split('+')[0].split('-');
+    const nums = core.split('.').map(part => parseInt(part, 10));
+    if (!Number.isInteger(nums[0])) return true;
+    const wanted = MACHINE_SETTINGS_KEPT_FROM.split('.').map(Number);
+    for (let i = 0; i < wanted.length; i++) {
+        const d = (nums[i] || 0) - wanted[i];
+        if (d !== 0) return d > 0;
+    }
+    // Exactly MACHINE_SETTINGS_KEPT_FROM: the release has it, its prereleases
+    // do not -- decaid#1043 landed after v0.9.1-beta.1.
+    return !pre;
+}
+
 // Sorts the differences into the ones to write back and the ones to keep.
-export function splitDifferences(differences) {
+// `decaidVersion` is what GET /info reports as `version`; see
+// decaidKeepsMachineSettings for what an absent one means.
+export function splitDifferences(differences, decaidVersion) {
     const restore = [];
     const adopt = [];
+    const resetsStillHappen = !decaidKeepsMachineSettings(decaidVersion);
     for (const difference of differences) {
-        const resets = RESET_ON_CONNECT[difference.scope]?.[difference.key] || [];
+        const resets = resetsStillHappen ? RESET_ON_CONNECT[difference.scope]?.[difference.key] || [] : [];
         const lostToReset = resets.some(reset => settingValuesMatch(difference.key, reset, difference.actual));
         (lostToReset ? restore : adopt).push(difference);
     }

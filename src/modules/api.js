@@ -1302,6 +1302,14 @@ export async function getKVKeys(namespace) {
     return response.json(); // array of key strings
 }
 
+// Decaid stores a key exactly as the request path spelled it, so a key we had
+// to escape on the way in ('plugin-stepsize:dose' -> 'plugin-stepsize%3Adose')
+// is listed escaped. Undo that, or the caller never matches it to the name it
+// wrote (settingsSync.hydrate would silently skip the key).
+export function decodeKVKey(key) {
+    try { return decodeURIComponent(key); } catch { return key; }
+}
+
 // Whole namespace in one request. `?full=1` is newer than the plain key list —
 // an older Decaid ignores it and answers with the key array, so fall back to
 // fetching each key rather than failing the caller.
@@ -1309,9 +1317,13 @@ export async function getKVAll(namespace) {
     const response = await fetch(`${API_BASE_URL}/store/${encodeURIComponent(namespace)}?full=1`);
     if (!response.ok) throw new Error(`KV getAll failed: ${response.status}`);
     const body = await response.json();
-    if (!Array.isArray(body)) return body || {};
     const out = {};
-    for (const key of body) out[key] = await getKVValue(namespace, key);
+    if (!Array.isArray(body)) {
+        for (const [key, value] of Object.entries(body || {})) out[decodeKVKey(key)] = value;
+        return out;
+    }
+    // getKVValue escapes what it is given, so ask for the decoded name.
+    for (const key of body.map(decodeKVKey)) out[key] = await getKVValue(namespace, key);
     return out;
 }
 

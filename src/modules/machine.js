@@ -55,10 +55,18 @@ export function isBengleMachine() {
 // not as the 2 that was written. So a read of 0/1 is a detection result, even
 // though the write semantics are force-off/force-on.
 //
-// It matters because a plumbed machine refills itself, so the tank level rides
-// the refill threshold and a level-based low-water warning is noise
-// (streamline-js#60). Recorded from the same machine-info fetch that resolves
-// the model, in loadInitialData, so it also re-runs on a machine swap.
+// It matters because a plumbed machine refills itself, so a level-based
+// low-water warning is noise (streamline-js#60), and because this state's
+// "Out of water" also covers a kit that has stopped (streamline-js#178).
+//
+// Not because the level rides the refill threshold, which is what this comment
+// used to say: two DE1XXLs with kits idle well above it (14-21 mm against
+// refill levels of 5 and 10 mm) and a fill started at about 14 mm with the
+// refill level at 5, so the kit fills to a target of its own. #60's answer is
+// unchanged -- the warning is the machine's own state to raise.
+//
+// Recorded from the same machine-info fetch that resolves the model, in
+// loadInitialData, so it also re-runs on a machine swap.
 
 let refillKitPresent = null;
 
