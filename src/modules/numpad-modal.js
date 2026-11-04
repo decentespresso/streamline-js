@@ -360,7 +360,7 @@ const fieldConfig = {
     'drink-out': { title: 'DRINK OUT', unit: 'g', defaultValue: '40', label: 'Input value between 1–200' },
     'temperature': { title: 'TEMPERATURE', unit: '°c', defaultValue: '93', label: 'Input value between 70–110' },
     'grind': { title: 'GRIND', unit: '', defaultValue: '1', label: 'Input value between 0–9999' },
-    'steam-duration': { title: 'STEAM DURATION', unit: 's', defaultValue: '30', label: 'Input value 0–120 (0 = steam timer off)' },
+    'steam-duration': { title: 'STEAM DURATION', unit: 's', defaultValue: '30', label: 'Input value 0–255 (0 = steam timer off)' },
     'steam-flow': { title: 'STEAM FLOW', unit: 'ml/s', defaultValue: '1.0', label: 'Input value between 0.1–10.0' },
     'flush': { title: 'FLUSH', unit: 's', defaultValue: '5', label: 'Input value 0–60 (0 = no flush)' },
     'hot-water-vol': { title: 'HOT WATER VOL', unit: 'ml', defaultValue: '50', label: 'Input value 0–500 (0 = no limit)' },

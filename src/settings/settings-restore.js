@@ -110,6 +110,48 @@ export function diffUserSettings(record, machine) {
     return differences;
 }
 
+// Keys Streamline just asked for that the machine, read back afterwards, does
+// not hold. adoptFromMachine records the machine's answer so a refused write
+// does not later read as an outside change; this is how the refusal itself is
+// surfaced. A key the machine does not report is skipped, as in diffUserSettings.
+export function rejectedWrites(written, machine) {
+    const rejected = [];
+    for (const scope of RESTORE_SCOPES) {
+        const actual = machine?.[scope];
+        if (!actual) continue;
+        for (const [key, asked] of Object.entries(written?.[scope] || {})) {
+            if (isExcluded(scope, key)) continue;
+            if (asked === undefined || asked === null) continue;
+            if (actual[key] === undefined) continue;
+            if (!settingValuesMatch(key, asked, actual[key])) {
+                rejected.push({ scope, key, asked, actual: actual[key] });
+            }
+        }
+    }
+    return rejected;
+}
+
+// A numeric setting the machine reports outside the range this page offers for
+// it. Lives here rather than in settings.js because it is a decision about a
+// value, not about markup, and this module is already DOM-free and covered.
+//
+// The page shows the real number and marks it, instead of clamping the display:
+// a clamped display would claim the machine holds something it does not. Both
+// reported sightings were real machine state -- a steam flow of 0 against a
+// 0.4-2.5 range, hot water at 40 against 50-95 -- and hiding them is how they
+// went unexplained for so long. Editing already clamps (the +/- steppers and
+// the numpad both do), so one tap on + is the fix; nothing new is needed to
+// resolve it, only to see it.
+//
+// A value that is absent or unparseable is NOT out of range: nothing known is
+// nothing to flag.
+export function isOutOfRange(value, min, max) {
+    if (!Number.isFinite(value)) return false;
+    if (Number.isFinite(min) && value < min) return true;
+    if (Number.isFinite(max) && value > max) return true;
+    return false;
+}
+
 // What a Decaid older than MACHINE_SETTINGS_KEPT_FROM writes to the machine
 // every time it connects, whatever the API was told (decaid#1027): the fan
 // threshold, and the refill kit to auto, which the API reports as 2

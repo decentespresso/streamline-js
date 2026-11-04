@@ -26,6 +26,23 @@
     <link href="src/css/dark-mode.css" rel="stylesheet" type="text/css" />
     <link href="src/css/main.css" rel="stylesheet" type="text/css" />
     <script src="src/modules/reconnecting-websocket.js" defer></script>
+    <!-- The boot module graph is 82 files but only 4 levels deep, so the big
+         second-level modules are not even requested until app.js has been
+         fetched and parsed. These eight are the largest of them (~583K of the
+         ~935K below the entry points); preloading starts them in the first wave
+         instead of the second, which matters on the tablet's WebView far more
+         than on a desktop against localhost.
+         ponytail: the biggest eight only. The other ~74 average under 5K each,
+         so a line apiece would buy little and rot as imports move. These are
+         core modules that are not going anywhere. -->
+    <link rel="modulepreload" href="src/modules/ui.js">
+    <link rel="modulepreload" href="src/modules/api.js">
+    <link rel="modulepreload" href="src/modules/profileManager.js">
+    <link rel="modulepreload" href="src/modules/chart.js">
+    <link rel="modulepreload" href="src/modules/plugin-surfaces.js">
+    <link rel="modulepreload" href="src/modules/history.js">
+    <link rel="modulepreload" href="src/modules/idb.js">
+    <link rel="modulepreload" href="src/modules/scaling.js">
     <!-- First module in: installs the localStorage→KV mirror and starts the
          hydrate fetch before anything reads a preference. -->
     <script src="src/modules/settingsSync.js" type="module"></script>

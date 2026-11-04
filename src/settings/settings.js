@@ -10,7 +10,7 @@ import { loadPage } from '../modules/router.js'; // Singular and correctly forma
 import { logger } from '../modules/logger.js';
 import { isBengleMachine, setMachineModel } from '../modules/machine.js';
 import { brightnessNotices, QUEUED_NOTICE, LOW_BATTERY_NOTICE, GO_TO_SETTING_LABEL, LOW_BATTERY_SETTING_CATEGORY, REQUESTED_APPLIED_TEMPLATE, requestedBrightnessReadout } from '../modules/brightness-notice.js';
-import { resolveSteamStopMode, applyMilkProbeGate } from '../modules/steam-mode.js';
+import { resolveSteamStopMode, applyMilkProbeGate, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP } from '../modules/steam-mode.js';
 import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { wakeProfileChoices } from '../modules/wake-profile.js';
@@ -31,7 +31,7 @@ import { haYamlBlocks } from '../modules/home-assistant.js';
 import { loadIro } from '../modules/vendor-loader.js';
 import { readSettingsLocation, writeSettingsLocation } from './settings-location.js';
 import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
-import { adoptFromMachine, diffUserSettings, restorePatches, splitDifferences } from './settings-restore.js';
+import { adoptFromMachine, diffUserSettings, isOutOfRange, normalizeSettingValue, rejectedWrites, restorePatches, splitDifferences } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
          minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl } from './plugin-view.js';
@@ -64,13 +64,24 @@ const SETTINGS_NUMPAD_CONFIGS = {
     'sensor-cal-pressure-measured':    { title: 'MEASURED BAR',      unit: 'bar',  min: 0, max: 20,  fieldType: 'settings-sensor-cal-pressure-measured' },
     'sensor-cal-flow-measured':        { title: 'MEASURED FLOW',     unit: 'ml/s', min: 0, max: 20,  fieldType: 'settings-sensor-cal-flow-measured' },
     steamCalibTempInput:     { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 135, max: 170,  fieldType: 'settings-steam-calib-temp' },
+    // min 0 so the numpad can express Off; anything typed below
+    // STEAM_ENABLED_MIN_TEMP lands as Off rather than as a temperature.
     steamTempInput:          { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 0,   max: 170,  fieldType: 'settings-steam-temp' },
-    steamDurationInput:      { title: 'STEAM DURATION',      unit: 'sec',  min: 10,  max: 120,  fieldType: 'settings-steam-duration' },
+    // 255 is the DE1's own ceiling, not a UI preference: TargetSteamLength is a
+    // single byte on the wire (unified_de1.parsing.dart reads it with getUint8),
+    // so anything above 255 cannot be held by the machine at all.
+    steamDurationInput:      { title: 'STEAM DURATION',      unit: 'sec',  min: 0,   max: 255,  fieldType: 'settings-steam-duration' },
     steamFlowInput:          { title: 'STEAM FLOW',          unit: 'ml/s', min: 0.4, max: 2.5,  fieldType: 'settings-steam-flow' },
     hotWaterTempInput:       { title: 'HOT WATER TEMP',      unit: '°C',   min: 50,  max: 95,   fieldType: 'settings-hw-temp' },
     hotWaterVolumeInput:     { title: 'HOT WATER VOLUME',    unit: 'ml',   min: 10,  max: 500,  fieldType: 'settings-hw-volume' },
     hotWaterDurationInput:   { title: 'HOT WATER DURATION',  unit: 'sec',  min: 5,   max: 120,  fieldType: 'settings-hw-duration' },
-    hotWaterFlowInput:       { title: 'HOT WATER FLOW',      unit: 'ml/s', min: 0.1, max: 8,    fieldType: 'settings-hw-flow' },
+    // 1-10 ml/s. Decaid does not validate this field at all -- it passes
+    // hotWaterData.flow straight to the DE1's hotWaterFlowRate MMR -- and its
+    // own two reference points disagree: the hot-water form slider is 1.0-8.0
+    // (hot_water_form.dart) while HotWaterData.defaults() ships flow 10, above
+    // that slider's own max. 10 is the ceiling that makes Decaid's default a
+    // legal value instead of something this page flags on a factory machine.
+    hotWaterFlowInput:       { title: 'HOT WATER FLOW',      unit: 'ml/s', min: 1,   max: 10,   fieldType: 'settings-hw-flow' },
     heaterPh1FlowInput:      { title: 'HEATER WARMUP FLOW',  unit: 'ml/s', min: 0,   max: 10,   fieldType: 'settings-heater-ph1' },
     heaterPh2FlowInput:      { title: 'HEATER TEST FLOW',    unit: 'ml/s', min: 0,   max: 10,   fieldType: 'settings-heater-ph2' },
     heaterIdleTempInput:     { title: 'IDLE TEMPERATURE',    unit: '°C',   min: 0,   max: 99,   fieldType: 'settings-heater-idle-temp' },
@@ -624,6 +635,30 @@ function updateSettingsContentArea(category) {
     }
 }
 
+
+// The range hint that sits beside a numeric settings label, and the one place
+// that decides how a value outside that range is shown.
+//
+// Normally the muted hint the Figma settings pattern specifies (20px, 60%
+// opacity, beside the blue label). When the machine reports a value the range
+// does not contain, the hint turns red and names the offending value, so the
+// page never silently shows a number it claims is impossible -- see
+// isOutOfRange in settings-restore.js for why it is shown rather than clamped.
+//
+// Figma has no error state for a settings field (its Style Guide carries
+// Action/Background/Buttons/Text/Border/Status.Ongoing and no danger token),
+// so this reuses the red these settings pages already use for their
+// "Failed to load settings" state.
+function rangeHint(min, max, unit, value, decimals = 0) {
+    const fmt = n => Number(n).toFixed(decimals);
+    const suffix = unit ? ` ${unit}` : '';
+    const range = `${fmt(min)} – ${fmt(max)}${suffix}`;
+    if (!isOutOfRange(value, min, max)) {
+        return `<span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${range}</span>`;
+    }
+    return `<span class="text-[20px] font-normal text-red-500" data-out-of-range="true">${range} · ${getTranslation('machine reports')} ${fmt(value)}${suffix}</span>`;
+}
+
 // Helper function to check if settings are loaded
 function areSettingsLoaded() {
     return settingsCache.rea !== null &&
@@ -768,6 +803,17 @@ async function syncMachineSettingsRecord(written = {}) {
         settingsCache.de1Advanced = de1Advanced;
         const existing = await readUserMachineSettings();
         await writeUserMachineSettings(adoptFromMachine(existing, { de1, de1Advanced }, written));
+        // Only the save path passes `written`, so every other caller stays silent.
+        // The read-back happens in the same breath as the write (see flushPendingChanges),
+        // so a machine that needs a moment, or a reboot, also lands here: report what
+        // was observed, not a diagnosis.
+        for (const r of rejectedWrites(written, { de1, de1Advanced })) {
+            logger.warn(`Machine still reports ${r.key} as ${JSON.stringify(r.actual)} after a write asking for ${JSON.stringify(r.asked)}`);
+            const label = r.key === 'usb' ? 'USB Charger Mode' : r.key;
+            const state = normalizeSettingValue(r.key, r.actual);
+            const shown = state === true ? 'on' : state === false ? 'off' : String(state);
+            ui.showToast(`Your machine still reports ${label} as ${shown}`, 5000, 'error');
+        }
     } catch (e) {
         // A failed read-back leaves the record as it was: better to ask about a
         // difference later than to record a value the machine never confirmed.
@@ -1470,14 +1516,15 @@ export function renderFanThresholdSettings(settings) {
     `;
 }
 
-// Render USB Charger settings — combines USB charger toggle + Smart Charging controls
+// Render the Smart Charging page: charging mode, night mode and live status.
+// No manual USB switch -- see the note in the markup below.
 export function renderUsbChargerModeSettings(settings) {
     const reaSettings = settingsCache.rea;
     if (!settings || !reaSettings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
                 <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                    <p class="leading-[1.2]">USB</p>
+                    <p class="leading-[1.2]" data-i18n-key="Smart Charging">${getTranslation('Smart Charging')}</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
             </div>
@@ -1488,18 +1535,9 @@ export function renderUsbChargerModeSettings(settings) {
     const nightModeEnabled = reaSettings.nightModeEnabled || false;
     const sleepTime = reaSettings.nightModeSleepTime ?? 1320;
     const morningTime = reaSettings.nightModeMorningTime ?? 420;
-    const chargingState = reaSettings.chargingState;
     // Native time picker (dropdown + spinner) follows color-scheme, not our
     // CSS vars — match it to the active theme so it renders dark.
     const pickerScheme = (localStorage.getItem('theme') || 'light') === 'dark' ? 'dark' : 'light';
-
-    const phaseLabels = {
-        inactive: 'Inactive',
-        normal: 'Normal',
-        hovering: 'Hovering',
-        chargingToMax: 'Charging to Max',
-        sleeping: 'Sleeping'
-    };
 
     // Sleep/Morning share one row — they're both night-mode params, so nesting
     // them keeps the page short instead of two full-height stacked sections.
@@ -1540,55 +1578,25 @@ export function renderUsbChargerModeSettings(settings) {
         </div>
     ` : '';
 
-    const statusSection = chargingState ? `
-        <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
-
-        <div class="content-stretch flex flex-col items-start relative w-full">
-            <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
-                    <p class="leading-[1.2]" data-i18n-key="Charging Status">Charging Status</p>
-                </div>
-                <div class="grid grid-cols-2 gap-x-8 gap-y-4 w-full text-[22px] text-[var(--text-primary)]">
-                    <span class="font-semibold" data-i18n-key="Battery">Battery</span>
-                    <span>${chargingState.batteryPercent ?? '--'}%${chargingState.isEmergency ? ' (emergency)' : ''}</span>
-                    <span class="font-semibold" data-i18n-key="Phase">Phase</span>
-                    <span>${getTranslation(phaseLabels[chargingState.currentPhase] || chargingState.currentPhase || '--')}</span>
-                    <span class="font-semibold">USB</span>
-                    <span>${getTranslation(chargingState.usbChargerOn ? 'ON' : 'OFF')}</span>
-                </div>
-            </div>
-        </div>
-    ` : '';
 
     return `
         <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
 
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                <p class="leading-[1.2]">USB</p>
+                <p class="leading-[1.2]" data-i18n-key="Smart Charging">${getTranslation('Smart Charging')}</p>
             </div>
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div class="flex items-center justify-between gap-[24px] w-full">
-                <div class="flex flex-col gap-[4px]">
-                    <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
-                        <p class="leading-[1.2]" id="usbChargerModeLabel" data-i18n-key="USB Charger Mode">USB Charger Mode</p>
-                    </div>
-                </div>
-                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                    <!-- Default on: an unset usb value means the machine never had
-                         the setting written, and USB power is on out of the box. -->
-                    <input type="checkbox" id="usbChargerModeToggle"
-                           class="sr-only peer"
-                           ${(settings.usb === false || settings.usb === 'disable') ? '' : 'checked'}
-                           onchange="window.updateDe1Setting('usb', this.checked ? 'enable' : 'disable')">
-                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                </label>
-            </div>
-
-            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
-
+            <!-- No manual USB switch here. Decaid's battery controller owns the DE1's
+                 allowUSBCharging register: it writes setUsbChargerMode(decision) on a
+                 60s loop from Charging Mode and the battery level, re-asserts "off"
+                 every 5 minutes while a managed mode says don't charge, and forces it
+                 ON below 15% and whenever Charge-to-100% transitions to charging
+                 (reaprime battery_controller.dart / charging_logic.dart). A toggle
+                 here could not hold its value in ANY mode, so it only ever lied about
+                 the machine. Charging Mode below is the control; the live state is in
+                 Charging Status. -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
                     <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
@@ -1635,7 +1643,6 @@ export function renderUsbChargerModeSettings(settings) {
                 </label>
             </div>
 
-            ${statusSection}
         </div>
     `;
 }
@@ -3000,8 +3007,8 @@ window.onMilkProbeUpdate = function(present, temperatureC) {
 export function renderSteamSettings() {
     if (!settingsCache.de1 && !settingsCache.workflow) {
         return `
-            <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="content-stretch flex flex-col gap-[45px] items-start relative w-full">
+                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
                     <p class="leading-[1.2]">${getTranslation('Steam')} ${getTranslation('Settings')}</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
@@ -3010,7 +3017,16 @@ export function renderSteamSettings() {
     }
 
     const steamSettings = settingsCache.workflow?.steamSettings || {};
-    const targetTemp = steamSettings.targetTemperature ?? 150;
+    // 0 is the heater switched off, not a temperature. Showing it would put a
+    // value outside the range this page advertises into the field (the same
+    // class of bug as the out-of-range values reported for hot water), so the
+    // stepper keeps showing the temperature we would switch back ON to and
+    // greys out while the master toggle below is off -- exactly what
+    // renderCalibSteamSettings already does with the same remembered value.
+    const steamHeaterOn = (steamSettings.targetTemperature ?? 150) > 0;
+    const targetTemp = steamHeaterOn
+        ? steamSettings.targetTemperature
+        : (lastEnabledSteamCalibTemp ?? 150);
     const duration = steamSettings.duration ?? 60;
     const flow = steamSettings.flow ?? 0.9;
     const stopTemp = steamSettings.stopAtTemperature ?? 0;
@@ -3022,15 +3038,33 @@ export function renderSteamSettings() {
     const stopMode = getEffectiveSteamStopMode(probe.present); // 'off' | 'time' | 'temperature'
     const milkTarget = stopTemp > 0 ? Math.round(stopTemp) : 60;
 
-    // Steam-stop segmented button (mimics the gatewayMode segmented control).
+    // Steam-stop segmented control, per the settings pattern in Figma
+    // (v3_Master Settings_Example 5, "Setting Tabs Multi-Choice"): one
+    // full-width row of equal segments that share their borders -- the design
+    // overlaps them by 1px rather than spacing them out, so a -1px left margin
+    // on every segment after the first collapses the seam.
+    //
+    // Height stays at this page's own 96px, NOT the design's 160 scaled by the
+    // 0.75 the type follows: component boxes in this codebase are not on that
+    // ratio (the toggle is 100x50 against the design's 104.8x62.88), and these
+    // segments sit beside 69px steppers, which a 120px row towers over.
     // A disabled button (Milk Temp with no probe) renders grayed and inert.
-    const stopSegBtn = (value, label, disabled = false) => {
+    // ponytail: the seam and the end radii are inline styles, not new Tailwind
+    // classes -- rounded-l-*/-ml-px are not in the generated app.css and
+    // src/css/app.css is not hand-editable (AGENTS.md). Inline style is already
+    // the escape hatch used elsewhere on this page (the 130px value boxes).
+    const SEG_BASE = `flex-1 h-[96px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center text-center relative transition-colors duration-200`;
+    const SEG_INACTIVE = 'bg-[var(--box-color)] border border-[var(--border-primary)] text-[#b6c3d7]';
+    const segSeam = (first, last) =>
+        `border-radius:${first ? '10px' : '0'} ${last ? '10px' : '0'} ${last ? '10px' : '0'} ${first ? '10px' : '0'};${first ? '' : 'margin-left:-1px;'}`;
+    const stopSegBtn = (value, label, disabled = false, first = false, last = false) => {
         if (disabled) {
-            return `<button class="flex-1 h-[96px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-not-allowed transition-colors duration-200 bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7] opacity-40"
+            return `<button class="${SEG_BASE} cursor-not-allowed ${SEG_INACTIVE} opacity-40" style="${segSeam(first, last)}"
                     aria-pressed="false" aria-disabled="true" disabled data-i18n-key="${label}">${getTranslation(label)}</button>`;
         }
         const active = stopMode === value;
-        return `<button class="flex-1 h-[96px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-pointer transition-colors duration-200 ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+        // z-index keeps the active segment's solid fill over its neighbours' shared border.
+        return `<button class="${SEG_BASE} cursor-pointer ${active ? 'bg-[var(--button-primary-bg)] text-white z-10' : SEG_INACTIVE}" style="${segSeam(first, last)}"
                     aria-pressed="${active}"
                     onclick="window.setSteamStopMode('${value}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
     };
@@ -3041,8 +3075,8 @@ export function renderSteamSettings() {
     };
 
     return `
-        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+        <div class="content-stretch flex flex-col gap-[45px] items-start relative w-full">
+            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
                 <p class="leading-[1.2]">${getTranslation('Steam')} ${getTranslation('Settings')}</p>
             </div>
 
@@ -3050,9 +3084,9 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Steam temperature">Steam temperature</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(0)}, ${tempInputValue(135)} – ${tempInputValue(165)} ${tempUnitLabel()}</span>
+                            ${rangeHint(tempInputValue(STEAM_ENABLED_MIN_TEMP), tempInputValue(STEAM_ENABLED_MAX_TEMP), tempUnitLabel(), steamHeaterOn ? tempInputValue(targetTemp) : undefined)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3061,11 +3095,19 @@ export function renderSteamSettings() {
                                     <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
                             </button>
+                            <!-- Off is a state of this field, not a number: below the enabled floor the
+                                 slot reads "Off" in place of a temperature and the master toggle follows.
+                                 The input stays in the DOM either way so the numpad keeps its target. -->
                             <div class="flex items-center justify-center" style="width: 130px;">
+                                ${steamHeaterOn ? `
                                 <input type="text" inputmode="numeric" pattern="[0-9]*" id="steamTempInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${tempInputValue(targetTemp)}" step="1" min="${tempInputValue(0)}" max="${tempInputValue(165)}"
-                                       onchange="window.updateSteamSetting('targetTemperature', Math.round(window.tempInputToCelsius(this.value)))">
+                                       value="${tempInputValue(targetTemp)}" step="1"
+                                       onchange="window.setSteamTempFromInput(this.value)">
                                 <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">${tempUnitLabel()}</span>
+                                ` : `
+                                <input type="hidden" id="steamTempInput" value="${tempInputValue(targetTemp)}">
+                                <p class="text-center text-[var(--text-primary)] text-[24px] font-bold w-full" data-i18n-key="Off">${getTranslation('Off')}</p>
+                                `}
                             </div>
                             <button aria-label="Increase steam temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustSteamTemp(1);">
@@ -3075,15 +3117,21 @@ export function renderSteamSettings() {
                             </button>
                         </div>
                     </div>
-                    <p class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] leading-[1.2]" data-i18n-key="The lowest setting turns the steam heater off">The lowest setting turns the steam heater off</p>
                 </div>
             </div>
 
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+            <!-- Steam heater master switch -->
+            ${steamHeaterToggleRow((steamSettings.targetTemperature ?? 150) > 0)}
+
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Eco steam -->
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
-                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Eco steam">Eco steam</p>
-                    <p class="text-[20px] font-normal opacity-60 leading-[1.2]" data-i18n-key="After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.">After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.</p>
+                    <p class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] leading-[1.2]" data-i18n-key="After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.">After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.</p>
                 </div>
                 <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                     <input type="checkbox" id="eco-steam-toggle"
@@ -3095,13 +3143,15 @@ export function renderSteamSettings() {
                 </label>
             </div>
 
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Steam Flow -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow">Flow</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">0.4 – 2.5 ml/s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.steamFlowInput.min, SETTINGS_NUMPAD_CONFIGS.steamFlowInput.max, 'ml/s', flow, 1)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3127,15 +3177,17 @@ export function renderSteamSettings() {
                 </div>
             </div>
 
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Steam Stop mode -->
             <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
-                <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Steam Stop">Steam Stop</p>
                 </div>
-                <div class="flex gap-[16px] w-full">
-                    ${stopSegBtn('off', 'Off')}
-                    ${stopSegBtn('time', 'Time')}
-                    ${bengle ? stopSegBtn('temperature', 'Milk Temp', !probe.present) : ''}
+                <div class="flex w-full">
+                    ${stopSegBtn('off', 'Off', false, true, false)}
+                    ${stopSegBtn('time', 'Time', false, false, !bengle)}
+                    ${bengle ? stopSegBtn('temperature', 'Milk Temp', !probe.present, false, true) : ''}
                 </div>
                 <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${stopDescriptions[stopMode]}">${getTranslation(stopDescriptions[stopMode])}</p>
                 ${bengle && !probe.present ? `
@@ -3148,7 +3200,7 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Stop at Milk Temperature (°C)">Stop at Milk Temperature (°C)</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(30)} – ${tempInputValue(80)} ${tempUnitLabel()}</span>
                         </div>
@@ -3188,9 +3240,9 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="${stopMode === 'temperature' ? 'Max duration (seconds)' : 'Duration (seconds)'}">${getTranslation(stopMode === 'temperature' ? 'Max duration (seconds)' : 'Duration (seconds)')}</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">10 – 120 s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.steamDurationInput.min, SETTINGS_NUMPAD_CONFIGS.steamDurationInput.max, 's', duration)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3200,10 +3252,18 @@ export function renderSteamSettings() {
                                 </svg>
                             </button>
                             <div class="flex items-center justify-center" style="width: 130px;">
+                                ${duration === 0 ? `
+                                <!-- 0s is no steam timer: steam runs until stopped. The main page
+                                     shows this as the open-ended symbol (ui.formatSteamDuration),
+                                     so this page must not show a bare "0" for the same state. -->
+                                <input type="hidden" id="steamDurationInput" value="0">
+                                <p class="text-center text-[var(--text-primary)] text-[24px] font-bold w-full" aria-label="${getTranslation('No steam timer')}">${ui.formatSteamDuration(0)}</p>
+                                ` : `
                                 <input type="text" inputmode="numeric" pattern="[0-9]*" id="steamDurationInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${duration}" step="5" min="10" max="120"
+                                       value="${duration}" step="5"
                                        onchange="window.updateSteamSetting('duration', parseInt(this.value))">
                                 <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">s</span>
+                                `}
                             </div>
                             <button aria-label="Increase steam duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustSteamDuration(5);">
@@ -4384,9 +4444,9 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Target Temperature (°C)">Target Temperature (°C)</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(50)} – ${tempInputValue(95)} ${tempUnitLabel()}</span>
+                            ${rangeHint(tempInputValue(SETTINGS_NUMPAD_CONFIGS.hotWaterTempInput.min), tempInputValue(SETTINGS_NUMPAD_CONFIGS.hotWaterTempInput.max), tempUnitLabel(), tempInputValue(targetTemp))}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4416,9 +4476,9 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Volume">Volume</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">10 – 500 ml</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterVolumeInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterVolumeInput.max, 'ml', volume)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water volume" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4448,9 +4508,9 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Duration (seconds)">Duration (seconds)</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">5 – 120 s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterDurationInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterDurationInput.max, 's', duration)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4480,9 +4540,9 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow">Flow</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">0.1 – 8.0 ml/s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.max, 'ml/s', flow, 1)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4511,7 +4571,7 @@ export function renderHotWaterSettings() {
             <!-- Stop Hot Water at Weight (needs a scale connected to take effect) -->
             <div class="flex items-center justify-between gap-[24px] w-full">
                 <div class="flex flex-col gap-[4px]">
-                    <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                    <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Stop at Weight">Stop at Weight</p>
                         <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Requires a connected scale">Requires a connected scale</span>
                     </div>
@@ -4531,7 +4591,7 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow Multiplier">Flow Multiplier</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">Lookahead for stop-at-weight</span>
                         </div>
@@ -5153,6 +5213,22 @@ export function renderCalibVoltageSettings() {
 // real temperature and switching on returns to it.
 let lastEnabledSteamCalibTemp = null;
 
+// Shared "Steam heater" on/off row (Quick Adjustments -> Steam and Calibration -> Steam).
+// Carries no page sizing; each page's container sets the width.
+function steamHeaterToggleRow(heaterOn) {
+    return `
+        <div class="flex items-center justify-between gap-[20px] w-full">
+            <p class="font-bold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="Steam heater">${getTranslation('Steam heater')}</p>
+            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                <input type="checkbox" class="sr-only peer" id="steamHeaterToggle" ${heaterOn ? 'checked' : ''}
+                       onchange="window.setSteamHeaterOn(this.checked)">
+                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+            </label>
+        </div>
+    `;
+}
+
 export function renderCalibSteamSettings() {
     const workflowTemp = settingsCache.workflow?.steamSettings?.targetTemperature ?? 155;
     const heaterOn = workflowTemp > 0;
@@ -5200,15 +5276,7 @@ export function renderCalibSteamSettings() {
                         Set steam temperature (135-170°C)
                     </p>
                 </div>
-                <div class="flex items-center justify-between gap-[20px] w-[590px]">
-                    <p class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="Steam heater">Steam heater</p>
-                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                        <input type="checkbox" class="sr-only peer" id="steamHeaterToggle" ${heaterOn ? 'checked' : ''}
-                               onchange="window.setSteamHeaterOn(this.checked)">
-                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                    </label>
-                </div>
+                <div class="w-[590px]">${steamHeaterToggleRow(heaterOn)}</div>
             </div>
         </div>
     `;
@@ -7726,7 +7794,7 @@ function getCategoryTitle(category) {
         case 'flush': return 'Flush Settings';
         case 'de1': return 'DE1 Settings';
         case 'fanthreshold': return 'Fan Threshold Settings';
-        case 'usbchargermode': return 'USB Charger Settings';
+        case 'usbchargermode': return 'Smart Charging';
         case 'cupwarmer': return 'Cup Warmer';
         case 'ledstrip': return 'Lighting';
         case 'machineinfo': return 'Machine Info';
@@ -9262,7 +9330,8 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         const input = document.getElementById('hotWaterFlowInput');
         if (input) {
             let newValue = parseFloat(input.value) + change;
-            newValue = Math.max(0.1, Math.min(8, newValue));
+            newValue = Math.max(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.min,
+                                Math.min(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.max, newValue));
             input.value = newValue.toFixed(1);
             input.dispatchEvent(new Event('change'));
         }
@@ -9422,7 +9491,11 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         const current = settingsCache.workflow?.steamSettings?.targetTemperature ?? 0;
         let value = 0;
         if (on) {
-            value = lastEnabledSteamCalibTemp ?? (current > 0 ? current : 150);
+            // Must land at or above the enabled floor: re-arming to a remembered
+            // value below it would leave the heater off and the toggle fighting
+            // the user.
+            const remembered = lastEnabledSteamCalibTemp ?? (current > 0 ? current : 150);
+            value = Math.min(STEAM_ENABLED_MAX_TEMP, Math.max(STEAM_ENABLED_MIN_TEMP, remembered));
         } else if (current > 0) {
             lastEnabledSteamCalibTemp = current;
         }
@@ -9430,37 +9503,64 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
-    // 0 is off, 135-165 is the enabled range (rest_v1.yml SteamSettings), and
-    // nothing in between is a real setting -- Decaid reads anything under the
-    // range as off. So the buttons step between off and the bottom of the range
-    // instead of walking the user through 134 meaningless degrees. The floor
-    // used to be 135 with a label promising that "below 130" turned the heater
-    // off, which the buttons could not reach at all.
+    // Off is one end of this control, not a separate switch: stepping below the
+    // enabled floor turns the heater off (and flips the master toggle, which
+    // renders from the same value), stepping up from off re-arms at the
+    // remembered temperature. Both directions go through setSteamHeaterOn so
+    // there is still a single writer for the off/on transition.
+    //
+    // Driven by the staged workflow value rather than by parsing the box,
+    // because while off the box shows the word "Off" and has no number in it.
+    //
+    // Steps are in DISPLAY units (one press = 1 °C or 1 °F); only the value
+    // written to the workflow is converted back to Celsius.
+    function steamTempC() {
+        return settingsCache.workflow?.steamSettings?.targetTemperature ?? 0;
+    }
+
     window.adjustSteamTemp = function(change) {
-        const input = document.getElementById('steamTempInput');
-        if (!input) return;
-        const off = tempInputValue(0);
-        const min = tempInputValue(135);
-        const current = parseInt(input.value, 10);
-        let newValue;
-        if (current <= off) {
-            newValue = change > 0 ? min : off;              // off -> bottom of range
-        } else {
-            newValue = current + change;
-            if (newValue < min) newValue = off;             // below the range -> off
-            else newValue = Math.min(tempInputValue(165), newValue);
+        if (steamTempC() < STEAM_ENABLED_MIN_TEMP) {
+            if (change > 0) window.setSteamHeaterOn(true);  // off -> remembered temperature
+            return;                                         // already off; stepping down is a no-op
         }
-        input.value = newValue;
-        input.dispatchEvent(new Event('change'));
+        const nextDisplay = tempInputValue(steamTempC()) + change;
+        if (nextDisplay < tempInputValue(STEAM_ENABLED_MIN_TEMP)) {
+            window.setSteamHeaterOn(false);                 // stepped below the floor -> off
+            return;
+        }
+        const capped = Math.min(tempInputValue(STEAM_ENABLED_MAX_TEMP), nextDisplay);
+        updateSteamSetting('targetTemperature', Math.round(tempInputToCelsius(capped)));
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
+    // Typed or numpad entry. Anything below the enabled floor -- including 0 --
+    // is Off rather than a temperature, which is also what Decaid does with it.
+    window.setSteamTempFromInput = function(raw) {
+        const display = parseFloat(raw);
+        if (!Number.isFinite(display)) {
+            if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+            return;                                         // unparseable: repaint, change nothing
+        }
+        const celsius = Math.round(tempInputToCelsius(display));
+        if (celsius < STEAM_ENABLED_MIN_TEMP) { window.setSteamHeaterOn(false); return; }
+        updateSteamSetting('targetTemperature', Math.min(STEAM_ENABLED_MAX_TEMP, celsius));
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+    };
+
+    // Staged value, not the box: at 0 the box is the no-timer symbol and the
+    // input behind it is hidden (so it carries no change handler to round-trip
+    // through). Crossing into or out of 0 swaps which element is rendered, so
+    // that transition -- and only that one -- repaints.
     window.adjustSteamDuration = function(change) {
+        const cfg = SETTINGS_NUMPAD_CONFIGS.steamDurationInput;
+        const previous = settingsCache.workflow?.steamSettings?.duration ?? 0;
+        const newValue = Math.max(cfg.min, Math.min(cfg.max, previous + change));
+        if (newValue === previous) return;
+        updateSteamSetting('duration', newValue);
         const input = document.getElementById('steamDurationInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(10, Math.min(120, newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
+        if (input) input.value = newValue;
+        if ((previous === 0) !== (newValue === 0) && activeSettingsCategory) {
+            updateSettingsContentArea(activeSettingsCategory);
         }
     };
 

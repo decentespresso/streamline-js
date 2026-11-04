@@ -1,5 +1,7 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
+import { AUTO_STEAM_BOUNDS } from './auto-steam-safety.js';
+const MAX_STEAM_DURATION_S = AUTO_STEAM_BOUNDS.duration.maximum;
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
 import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from './machine-status-policy.js';
 import { openDB, getSetting } from './idb.js';
@@ -1152,7 +1154,9 @@ function incrementSteam() {
     const steamPlusBtn = document.getElementById('steam-plus');
     if (steamPlusBtn) { flashPlusMinusButton(steamPlusBtn); }
     if (steamMode === 'time') {
-        currentSteamDuration += 1;
+        // 255 is the DE1's ceiling for TargetSteamLength (a single wire byte),
+        // the same bound Auto steam already enforces via AUTO_STEAM_BOUNDS.
+        if (currentSteamDuration < MAX_STEAM_DURATION_S) currentSteamDuration += 1;
     } else if (steamMode === 'temperature') {
         if (currentMilkStop < 80) currentMilkStop = Math.min(80, currentMilkStop + displayStepToCelsius(1));
     } else {

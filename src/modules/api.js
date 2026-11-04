@@ -6,9 +6,7 @@ import { createScaleSampleBuffer } from './calibrated-steam.js';
 import { clampAutoSteamSettings } from './auto-steam-safety.js';
 import { AUTO_STEAM_SESSION_KEY, readAutoSteamSession } from './auto-steam-session.js';
 import { openDB, getSetting, setSetting } from './idb.js';
-import { buildCalibrateBody, classifyCalState } from './loadcell-cal.js';
 import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-policy.js';
-import { splitNdjson, advanceFirmwareState, initialFirmwareState } from './firmware-progress.js';
 import { parseSse } from './derek-stream.js';
 import { assertDeclaredFields } from './workflow-fields.js';
 import { selectedRecipeSteamTemp } from './dye-selection.js';
@@ -22,6 +20,26 @@ export let reaHostname = localStorage.getItem('reaHostname') || window.location.
 export const REA_PORT = 8080;
 export let API_BASE_URL = `http://${reaHostname}:${REA_PORT}/api/v1`;
 export const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+// ponytail: in-flight dedupe, no TTL -- a caller can never be handed a value
+// older than its own call, so this is free correctness-wise. Boot has several
+// modules asking for /plugins, /devices and /workflow in the same tick (five
+// /plugins reads inside 16ms, measured); they now share one round trip.
+// Applied only to the small read-only GETs below, never to a write.
+const inFlightGets = new Map();
+function dedupedGet(key, request) {
+    let pending = inFlightGets.get(key);
+    if (!pending) {
+        pending = request().finally(() => inFlightGets.delete(key));
+        inFlightGets.set(key, pending);
+    }
+    // Each waiter gets its own copy: callers merge into these objects
+    // (workflow especially), and a shared one would couple them. JSON
+    // round-trip, not structuredClone -- these are JSON wire payloads, so it
+    // is lossless here, and structuredClone is Chromium 98 (see
+    // test/webview-compat.test.mjs; the tablets run older WebViews).
+    return pending.then(value => (value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value));
+}
 
 export const MachineState = {
     BOOTING: 'booting',
@@ -158,11 +176,13 @@ export function updateShotSettingsCache(newSettings) {
 }
 
 export async function getDevices() {
-    const response = await fetch(`${API_BASE_URL}/devices`);
-    if (!response.ok) {
-        throw new Error('Failed to get devices');
-    }
-    return response.json();
+    return dedupedGet('devices', async () => {
+        const response = await fetch(`${API_BASE_URL}/devices`);
+        if (!response.ok) {
+            throw new Error('Failed to get devices');
+        }
+        return response.json();
+    });
 }
 
 export async function getScaleInfo() {
@@ -193,13 +213,15 @@ export async function getGrinderDevices() {
 
 /** GET /grinder/info -> { deviceId, capabilities, observations?, controls?, surfaces? }, or null. */
 export async function getGrinderInfo() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/grinder/info`);
-        return response.ok ? await response.json() : null;
-    } catch (error) {
-        logger.debug('Grinder info unavailable:', error);
-        return null;
-    }
+    return dedupedGet('grinder/info', async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/grinder/info`);
+            return response.ok ? await response.json() : null;
+        } catch (error) {
+            logger.debug('Grinder info unavailable:', error);
+            return null;
+        }
+    });
 }
 
 /** PUT /devices/disconnect. Throws when Decaid refuses. */
@@ -242,17 +264,19 @@ export function connectGrinderSnapshot(onSnapshot, onOpen = null) {
 // reaprime's SensorInfo.toJson(). Returns [] (not a throw) on any failure so
 // callers can poll this without special-casing errors.
 export async function getSensors() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/sensors`);
-        if (!response.ok) {
-            logger.warn(`Failed to get sensors (status ${response.status})`);
+    return dedupedGet('sensors', async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/sensors`);
+            if (!response.ok) {
+                logger.warn(`Failed to get sensors (status ${response.status})`);
+                return [];
+            }
+            return await response.json();
+        } catch (error) {
+            logger.warn('Error fetching sensors:', error);
             return [];
         }
-        return await response.json();
-    } catch (error) {
-        logger.warn('Error fetching sensors:', error);
-        return [];
-    }
+    });
 }
 
 // How long we are willing to hold a caller on a scan before answering from the
@@ -387,6 +411,9 @@ export async function getScaleCalibrationState() {
 }
 
 async function pollScaleCalibration(command) {
+    // ponytail: loaded on demand. Load-cell calibration is a Bengle-only
+    // Settings flow, so its helpers have no business on the boot graph.
+    const { classifyCalState } = await import('./loadcell-cal.js');
     const deadline = Date.now() + CAL_POLL_TIMEOUT_MS;
     for (;;) {
         await new Promise((resolve) => setTimeout(resolve, CAL_POLL_INTERVAL_MS));
@@ -430,6 +457,7 @@ export async function calibrateScale(command, grams) {
         logger.info(`Scale calibration: ${command}${grams != null ? ` @ ${grams}g` : ''}`);
         if (command === 'abort') calAbortRequested = true;
         else calAbortRequested = false;
+        const { buildCalibrateBody } = await import('./loadcell-cal.js');
         const response = await fetch(`${API_BASE_URL}/machine/scaleCalibration`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -639,9 +667,8 @@ export function connectScaleWebSocket(onData, onReconnect, onDisconnect) {
     scaleWebSocket.onopen = () => {
         calibratedSteamSamples.clear();
         logger.info('Scale WebSocket (re)connected.');
-        if (onReconnect) {
-            onReconnect();
-        }
+        // Socket-open is not scale-connected: onReconnect fires only from the
+        // server's {"status":"connected"} frame below (replayed on open).
     };
 
     scaleWebSocket.onmessage = (event) => {
@@ -1756,6 +1783,16 @@ export const BRIGHTNESS_LAST_VALUE_KEY = 'last-brightness';
 // per-installation (not per-device) settings in one KV bucket.
 const SETTINGS_NAMESPACE = 'streamline-app';
 
+// ponytail: 2s read cache, write-through on persist. resyncDriftedShotSettings
+// re-runs the drift check on every shotSettings frame that moves a field, and
+// its 30s cooldown is RELEASED whenever a check found nothing to push -- so a
+// steam/hot-water tile being adjusted turned into one /store GET per field per
+// frame. A hit this fresh cannot be stale in a way that matters: the only other
+// writer is another device, and the very next frame re-checks it anyway.
+// Ceiling: a cross-device write is seen up to 2s late. Set to 0 to disable.
+const SHARED_VALUE_TTL_MS = 2000;
+const sharedValueCache = new Map(); // key -> { value, at }
+
 export async function persistLastValue(key, value) {
     try {
         await openDB();
@@ -1772,7 +1809,13 @@ export async function persistSharedValue(key, value) {
     persistLastValue(key, value);
     try {
         await setValueInStore(SETTINGS_NAMESPACE, key, value);
+        // Write-through, not invalidate: the value we just stored IS the
+        // freshest truth, so the next read must not pay a round trip for it.
+        sharedValueCache.set(key, { value, at: Date.now() });
     } catch (e) {
+        // A failed write leaves the store holding something we don't know --
+        // drop the entry rather than serve a value that never landed.
+        sharedValueCache.delete(key);
         logger.warn(`Failed to persist ${key} to KV store:`, e);
     }
 }
@@ -1782,8 +1825,16 @@ export async function persistSharedValue(key, value) {
 // has a record (or both failed) -- callers treat that as "the user never set
 // this", not as a value.
 export async function readSharedValue(key) {
+    const cached = sharedValueCache.get(key);
+    // null is a real answer here ("never set"), so presence is the test, not truthiness.
+    if (cached && Date.now() - cached.at < SHARED_VALUE_TTL_MS) return cached.value;
     try {
-        return await getValueFromStore(SETTINGS_NAMESPACE, key);
+        // dedupedGet as well as the TTL: the cache only fills once a response
+        // lands, so two reads of the same key issued in the same tick (boot
+        // runs several resync passes at once) would both miss it.
+        const value = await dedupedGet(`store:${key}`, () => getValueFromStore(SETTINGS_NAMESPACE, key));
+        sharedValueCache.set(key, { value, at: Date.now() });
+        return value;
     } catch (e) {
         logger.warn(`readSharedValue: KV lookup failed for ${key}, falling back to local cache:`, e);
         try {
@@ -2035,11 +2086,13 @@ export async function getReaSettings() {
 }
 
 export async function getMachineInfo() {
-    const response = await fetch(`${API_BASE_URL}/machine/info`);
-    if (!response.ok) {
-        throw new Error(`Failed to get machine info: ${response.statusText}`);
-    }
-    return response.json();
+    return dedupedGet('machine/info', async () => {
+        const response = await fetch(`${API_BASE_URL}/machine/info`);
+        if (!response.ok) {
+            throw new Error(`Failed to get machine info: ${response.statusText}`);
+        }
+        return response.json();
+    });
 }
 
 // Current machine state as a MachineSnapshot (same shape as the snapshot WS).
@@ -2673,6 +2726,9 @@ export async function getFirmwareCatalog() {
 // verification never confirmed, so it is NOT a success.
 async function consumeFirmwareStream(response, onProgress) {
     if (!response.body?.getReader) throw new Error('Firmware response did not provide a progress stream');
+    // ponytail: loaded on demand -- a firmware flash is a once-a-month
+    // Settings action, not something boot should carry.
+    const { splitNdjson, advanceFirmwareState, initialFirmwareState } = await import('./firmware-progress.js');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -2750,16 +2806,18 @@ export async function cancelFirmwareUpdate() {
 }
 
 export async function getPlugins() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/plugins`);
-        if (!response.ok) {
-            throw new Error(`Failed to get plugins: ${response.statusText}`);
+    return dedupedGet('plugins', async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/plugins`);
+            if (!response.ok) {
+                throw new Error(`Failed to get plugins: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            logger.error("Error in getPlugins:", error);
+            return null;
         }
-        return await response.json();
-    } catch (error) {
-        logger.error("Error in getPlugins:", error);
-        return null;
-    }
+    });
 }
 
 // `strict` reports failures instead of flattening them into {}. The lenient

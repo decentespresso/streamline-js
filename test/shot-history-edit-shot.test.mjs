@@ -23,13 +23,18 @@ function stripComments(src) {
 }
 
 function liftHandler() {
-    const start = historySrc.indexOf('function openShotInDye2()');
+    const start = historySrc.indexOf('async function openShotInDye2()');
     const end = historySrc.indexOf('\nfunction setupHistoryLongPress()', start);
     assert.ok(start > 0 && end > start, 'openShotInDye2 found');
-    return historySrc.slice(start, end);
+    // dyeStrip.js is imported on demand inside the handler -- it is ~90K and
+    // must stay off the boot graph. A Function body cannot resolve a module
+    // specifier, so drop that one line and keep injecting openPluginOverlay;
+    // the dynamic import itself is asserted on the source instead (below).
+    return historySrc.slice(start, end)
+        .replace(/^.*await import\('\.\/dyeStrip\.js'\);$/m, '');
 }
 
-function runHandler({ enabled, shots, currentShotIndex }) {
+async function runHandler({ enabled, shots, currentShotIndex }) {
     const calls = { opened: [], toasted: [], refreshed: [] };
     const fn = new Function(
         'isDye2Enabled', 'openPluginOverlay', 'showToast', 'getTranslation', 'logger',
@@ -46,7 +51,7 @@ function runHandler({ enabled, shots, currentShotIndex }) {
         currentShotIndex,
         id => { calls.refreshed.push(id); return Promise.resolve(); }
     );
-    handler();
+    await handler();
     return calls;
 }
 
@@ -63,11 +68,11 @@ test('the four text lines live in the info block, outside the arrows', () => {
     }
 });
 
-test('a tap opens edit-shot for the shot on screen, gated on DYE2', () => {
-    const off = runHandler({ enabled: false, shots: [{ id: 'shot-a' }], currentShotIndex: 0 });
+test('a tap opens edit-shot for the shot on screen, gated on DYE2', async () => {
+    const off = await runHandler({ enabled: false, shots: [{ id: 'shot-a' }], currentShotIndex: 0 });
     assert.equal(off.opened.length, 0, 'DYE2 off: the info block is inert');
 
-    const on = runHandler({ enabled: true, shots: [{ id: 'shot-a' }, { id: 'shot-b' }], currentShotIndex: 1 });
+    const on = await runHandler({ enabled: true, shots: [{ id: 'shot-a' }, { id: 'shot-b' }], currentShotIndex: 1 });
     assert.equal(on.opened.length, 1, 'DYE2 on: one overlay opens');
     const [page, params, onClose] = on.opened[0];
     assert.equal(page, 'edit-shot');
@@ -85,11 +90,29 @@ test('a tap opens edit-shot for the shot on screen, gated on DYE2', () => {
     assert.deepEqual(on.refreshed.slice(-1), ['shot-other'], 'the live shot wins over the opened one');
 });
 
-test('no shot on screen says so instead of opening an empty page', () => {
-    const calls = runHandler({ enabled: true, shots: [], currentShotIndex: -1 });
+test('no shot on screen says so instead of opening an empty page', async () => {
+    const calls = await runHandler({ enabled: true, shots: [], currentShotIndex: -1 });
     assert.equal(calls.opened.length, 0);
     assert.equal(calls.toasted.length, 1);
     assert.equal(calls.toasted[0][0], 'No shot selected');
+});
+
+// dyeStrip.js is ~90K and history.js is on the boot graph, so importing it for
+// the enabled gate put the whole strip module in every cold start. The gate now
+// comes from dye2-enabled.js and the strip itself loads on tap.
+test('history.js keeps dyeStrip.js off the boot graph', () => {
+    const code = stripComments(historySrc);
+    assert.ok(!/^\s*import[^;]*from '\.\/dyeStrip\.js'/m.test(code),
+        'no static import of dyeStrip.js');
+    assert.match(code, /await import\('\.\/dyeStrip\.js'\)/,
+        'openPluginOverlay arrives through a dynamic import');
+    assert.match(code, /import \{ isDye2Enabled \} from '\.\/dye2-enabled\.js'/,
+        'the gate comes from the small flag module');
+    // The gate must still run BEFORE the 90K import, or DYE2-off taps pay for it.
+    const start = code.indexOf('async function openShotInDye2()');
+    const body = code.slice(start, code.indexOf('\nfunction setupHistoryLongPress()', start));
+    assert.ok(body.indexOf('isDye2Enabled()') < body.indexOf("await import('./dyeStrip.js')"),
+        'DYE2 off costs no fetch at all');
 });
 
 test('the panel routes only the four info lines to the handler', () => {

@@ -31,10 +31,23 @@ const TRACKING = [
     /async function pushRemembered\(key, value, send\) \{[\s\S]*?\r?\n\}/,
 ];
 
+// Module state readSharedValue needs: the namespace it reads from, and its
+// short-lived read cache. Lifted with it everywhere -- without the namespace
+// the KV branch throws a ReferenceError that the function's own catch swallows,
+// so every test silently measured the IndexedDB fallback instead.
+const SHARED_VALUE_CACHE = [
+    /const SETTINGS_NAMESPACE = .*;/,
+    /const inFlightGets = new Map\(\);/,
+    /function dedupedGet\(key, request\) \{[\s\S]*?\r?\n\}/,
+    /const SHARED_VALUE_TTL_MS = .*;/,
+    /const sharedValueCache = new Map\(\);.*/,
+];
+
 // ── Milk stop + the shared KV resync rule (api.js) ───────────────────────────
 {
     const body = lift('api.js', [
         /export const MILK_STOP_LAST_VALUE_KEY = .*;/,
+        ...SHARED_VALUE_CACHE,
         /export async function readSharedValue\(key\) \{[\s\S]*?\r?\n\}/,
         ...TRACKING,
         /export async function resyncIfDrifted\(key, fetchedValue, pushFn\) \{[\s\S]*?\r?\n\}/,
@@ -175,6 +188,44 @@ const TRACKING = [
         await api.resyncIfDrifted('last-anything', undefined, async (v) => { pushed.push(v); });
         assert.deepEqual(pushed, []);
     });
+
+    // resyncDriftedShotSettings re-checks drift on every shotSettings frame that
+    // moves a field, and releases its cooldown whenever a check found nothing to
+    // push -- so an unguarded readSharedValue was one /store GET per field per
+    // frame. The cache is what keeps that at one round trip per field.
+    {
+        const buildCounted = (values) => {
+            const reads = [];
+            const api = new Function(
+                'logger', 'persistSharedValue', 'persistLastValue', 'updateWorkflow', 'getValueFromStore', 'openDB', 'getSetting', 'decideResync',
+                `const isAutoSteamActive = () => false; ${body}\nreturn { readSharedValue };`,
+            )(
+                { warn() {}, error() {} },
+                async () => {}, async () => {}, async () => {},
+                async (_ns, key) => { reads.push(key); return values[key] ?? null; },
+                async () => {}, async () => null, decideResync,
+            );
+            return { api, reads };
+        };
+
+        test('a repeated shared-value read inside the TTL costs one store round trip', async () => {
+            const { api, reads } = buildCounted({ 'last-steam-flow': 2.1 });
+            assert.equal(await api.readSharedValue('last-steam-flow'), 2.1);
+            assert.equal(await api.readSharedValue('last-steam-flow'), 2.1);
+            assert.equal(await api.readSharedValue('last-steam-flow'), 2.1);
+            assert.deepEqual(reads, ['last-steam-flow']);
+        });
+
+        test('each key is cached on its own, and a never-set key caches its null', async () => {
+            const { api, reads } = buildCounted({ 'last-steam-flow': 2.1 });
+            assert.equal(await api.readSharedValue('last-steam-flow'), 2.1);
+            // null is a real answer ("never set"), so it must cache too -- the
+            // boot resync asks for keys the user has never touched.
+            assert.equal(await api.readSharedValue('last-milk-stop'), null);
+            assert.equal(await api.readSharedValue('last-milk-stop'), null);
+            assert.deepEqual(reads, ['last-steam-flow', 'last-milk-stop']);
+        });
+    }
 }
 
 // ── Steam duration 0 = no timer; the heater is a separate switch (api.js) ───
@@ -182,6 +233,7 @@ const TRACKING = [
     const body = lift('api.js', [
         /export const STEAM_DURATION_LAST_VALUE_KEY = .*;/,
         /export const STEAM_TEMP_LAST_VALUE_KEY = .*;/,
+        ...SHARED_VALUE_CACHE,
         /export async function readSharedValue\(key\) \{[\s\S]*?\r?\n\}/,
         ...TRACKING,
         /export async function setTargetSteamTemp\(temp\) \{[\s\S]*?\r?\n\}/,

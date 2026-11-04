@@ -11,7 +11,7 @@ import { shouldReloadForLatestShot } from './history-pager.js';
 import * as shotData from './shotData.js';
 import * as profileManager from './profileManager.js';
 import * as api from './api.js';
-import { loadPage, initRouter, isSubPage, prefetchSettingsPage } from './router.js';
+import { loadPage, initRouter, isSubPage, prefetchSettingsPage, prefetchSubpages } from './router.js';
 import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
@@ -489,7 +489,18 @@ function handleDeviceWsData(data) {
 }
 
 function onScaleReconnect() {
-    logger.info('Scale WebSocket reconnected.');
+    // Decaid's {"status":"connected"} frame: the authoritative scale link signal,
+    // so a settled scale that sends no weight (Acaia at 0.0 g) still reads connected.
+    // ponytail: wiring only, no new test; scaleAutoRetryDecision stays covered in test/scale-connect.test.mjs.
+    logger.info('Scale connected (status frame).');
+    isScaleKnown = true;
+    if (!isScaleConnected) {
+        isScaleConnected = true;
+        window.onScaleConnectionChange?.(true);
+    }
+    clearScaleAutoRetry();
+    const info = document.getElementById('scale-info-container');
+    if (info) info.style.display = '';
 }
 
 function onScaleDisconnect() {
@@ -1098,9 +1109,8 @@ function handleScaleData(data) {
         }
     }
 
-    // Receiving any message means the websocket and BLE link are up.
-    // The timeout in api.js will trigger a disconnect if data stops flowing.
-
+    // Connected state comes from onScaleReconnect (status frame); a weight frame
+    // is only a belt-and-braces fallback here.
     if (currentWeight !== null && currentWeight !== undefined) {
         // We have a weight, so we are fully connected.
         if (!isScaleConnected) {
@@ -2405,6 +2415,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Pre-warm settings cache so the settings page opens without redirecting on slow Rea responses
         prefetchSettingsToIDB(initialWorkflow);
+
+        // Compile the three big subpage modules while the tablet is idle, so the
+        // first tap on Settings / Profiles / Edit doesn't pay for it. Boot is
+        // finished by here; the call schedules itself on idle from there.
+        prefetchSubpages();
 
         logger.info('App initialization finished successfully.');
 

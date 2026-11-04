@@ -9,6 +9,8 @@ import {
     adoptFromMachine,
     decaidKeepsMachineSettings,
     diffUserSettings,
+    isOutOfRange,
+    rejectedWrites,
     restorePatches,
     settingValuesMatch,
     splitDifferences,
@@ -260,4 +262,44 @@ test('the fan numpad is labelled in degrees, not percent', () => {
     // It was '%', which also made the numpad skip the °C/°F conversion that
     // attachSettingsNumpad applies to temperature fields.
     assert.match(settingsSource, /calibFanInput:\s*\{[^}]*unit: '°C'/);
+});
+
+test('rejectedWrites reports a usb enable the machine reports back as off', () => {
+    const found = rejectedWrites({ de1: { usb: 'enable' } }, { de1: { usb: false } });
+    assert.deepEqual(found, [{ scope: 'de1', key: 'usb', asked: 'enable', actual: false }]);
+});
+
+test('rejectedWrites ignores a value the machine reports identically', () => {
+    assert.deepEqual(rejectedWrites({ de1: { usb: 'enable' } }, { de1: { usb: true } }), []);
+});
+
+test('rejectedWrites skips a key the machine does not report', () => {
+    assert.deepEqual(rejectedWrites({ de1: { usb: 'enable' }, de1Advanced: { fooBar: 1 } }, { de1: {}, de1Advanced: {} }), []);
+});
+
+test('rejectedWrites tolerates a float the machine rounds within FLOAT_TOLERANCE', () => {
+    assert.deepEqual(rejectedWrites({ de1Advanced: { flushTemp: 80.001 } }, { de1Advanced: { flushTemp: 80 } }), []);
+});
+
+test('isOutOfRange flags the reported steam flow of 0 against a 0.4-2.5 range', () => {
+    assert.equal(isOutOfRange(0, 0.4, 2.5), true);
+});
+
+test('isOutOfRange flags hot water at 40 against a 50-95 range', () => {
+    assert.equal(isOutOfRange(40, 50, 95), true);
+});
+
+test('isOutOfRange flags a value above the maximum', () => {
+    // Decaid's own HotWaterData default is flow 10 while this skin offers 0.1-8,
+    // so this is the disagreement the hint has to surface rather than hide.
+    assert.equal(isOutOfRange(10, 0.1, 8), true);
+});
+
+test('isOutOfRange accepts the boundaries themselves', () => {
+    assert.equal(isOutOfRange(0.4, 0.4, 2.5), false);
+    assert.equal(isOutOfRange(2.5, 0.4, 2.5), false);
+});
+
+test('isOutOfRange treats an unknown value as nothing to flag', () => {
+    for (const v of [undefined, null, NaN, '']) assert.equal(isOutOfRange(v, 0.4, 2.5), false);
 });

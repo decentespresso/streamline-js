@@ -86,8 +86,24 @@ export const ECO_STEAM_TEMP = 136;
 /** Idle time before the boiler is parked (de1app steam_eco_delay_seconds 600). */
 export const ECO_STEAM_DELAY_MS = 10 * 60 * 1000;
 
-/** Lowest steam target that means "steam is armed" -- below it the heater is off. */
+/**
+ * Lowest steam target that means "steam is armed" -- below it the heater is off.
+ *
+ * 135 is NOT a UI preference: Decaid decides `steamEnabled` as
+ * `targetTemperature >= 135` (de1_controller.dart and
+ * de1_controller.defaults.dart, three sites) and writes targetSteamTemp 0 to
+ * the machine when that is false. Setting a lower floor here would create a
+ * band where this app shows an armed temperature while the machine's heater is
+ * actually off.
+ */
 export const STEAM_ENABLED_MIN_TEMP = 135;
+
+/**
+ * Highest steam target offered. The DE1's targetSteamTemp is a single wire byte
+ * so 170 fits; rest_v1.yml documents the supported enabled range as 135-160 for
+ * DE1 and 135-165 for Bengle, so a machine may clamp its own ceiling below this.
+ */
+export const STEAM_ENABLED_MAX_TEMP = 170;
 
 /**
  * May eco steam take the boiler down right now?

@@ -37,7 +37,7 @@ export const SETTINGS_TREE = {
     'machine': {
         name: 'Machine',
         subcategories: [
-            { id: 'usbchargermode', name: 'USB', settingsCategory: 'usbchargermode' },
+            { id: 'usbchargermode', name: 'Smart Charging', settingsCategory: 'usbchargermode' },
             { id: 'cupwarmer', name: 'Cup Warmer', settingsCategory: 'cupwarmer', i18nKey: 'Cup Warmer', bengleOnly: true },
             { id: 'ledstrip', name: 'Lighting', settingsCategory: 'ledstrip', i18nKey: 'Lighting', bengleOnly: true },
             { id: 'machineinfo', name: 'Machine Information', settingsCategory: 'machineinfo', i18nKey: 'Machine Info' }

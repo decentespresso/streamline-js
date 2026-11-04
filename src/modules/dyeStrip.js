@@ -27,6 +27,7 @@ import { stripRightInset } from './header-strip-inset.js';
 import { openContextMenu } from './context-menu.js';
 import { setupPressAndHold, setSteamTileModeIfSafe, setHotWaterTileMode, showToast } from './ui.js';
 import { settingsReady, SETTINGS_RESTORED_EVENT } from './settingsSync.js';
+import { DYE2_ENABLED_KEY, isDye2Enabled } from './dye2-enabled.js';
 import { recipeIdPatch, SELECTION_KEY, RETURN_PARAM, profileFingerprint, profileDrifted, profilePatchWithSteps, serializeSelection, resolveReturn, parseDyeReturn, changedFields, pluginRecordsDialIn, pluginHasEndpoint, keepPreviousOnFailure, resolveRecordsDialIn, armedSelectionId, selectionModified, recipeCellState, recipeStripCells, favStripCells } from './dye-selection.js';
 
 const AF_KEY = 'autoFavourites';
@@ -35,7 +36,9 @@ const MODE_KEY = 'streamline.dyeStripMode';
 // Master on/off for the whole DYE2 header UI (set in Extensions settings).
 // DEFAULT OFF: when this is not 'true' the header is byte-identical to stock
 // Streamline (profile favourites only, no toggle / DYE button / strip).
-const ENABLED_KEY = 'streamline.dye2Enabled';
+// Defined in dye2-enabled.js so history.js can read the flag without importing
+// this module; re-exported below, so existing importers are unaffected.
+const ENABLED_KEY = DYE2_ENABLED_KEY;
 const PLUGIN_BASE = `${API_BASE_URL}/plugins/dye2.reaplugin`; // …/api/v1/plugins/dye2.reaplugin
 const MAX_FAV_CELLS = 4; // + a trailing "VIEW ALL AUTO FAV" cell
 
@@ -1205,9 +1208,7 @@ function clearStripBounds() {
 
 // ─── Master enable/disable (gates the whole DYE2 header UI) ─────────────────────
 
-export function isDye2Enabled() {
-    try { return localStorage.getItem(ENABLED_KEY) === 'true'; } catch (e) { return false; }
-}
+export { isDye2Enabled };
 
 let wired = false; // one-time listener wiring, so re-enabling doesn't double-bind
 
