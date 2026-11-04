@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decideResync } from '../src/modules/resync-policy.js';
 import { profileAtBrewTemp } from '../src/modules/brew-temp.js';
-import { selectedRecipeSteamTemp } from '../src/modules/dye-selection.js';
+import { selectedRecipeSteam } from '../src/modules/dye-selection.js';
+import { isSteamOff, steamOffPatch, steamOnPatch, MIN_STEAM_DURATION_S } from '../src/modules/steam-mode.js';
 
 // Persistence of the user's main-page settings: the shared KV record that
 // outranks a drifted workflow (milk stop, plus the resync rule every tile value
@@ -228,55 +229,65 @@ const SHARED_VALUE_CACHE = [
     }
 }
 
-// ── Steam duration 0 = no timer; the heater is a separate switch (api.js) ───
+// ── Steam duration 0 = the heater off; one rule for every way in (api.js) ───
 {
     const body = lift('api.js', [
         /export const STEAM_DURATION_LAST_VALUE_KEY = .*;/,
+        /export const STEAM_FLOW_LAST_VALUE_KEY = .*;/,
         /export const STEAM_TEMP_LAST_VALUE_KEY = .*;/,
         ...SHARED_VALUE_CACHE,
         /export async function readSharedValue\(key\) \{[\s\S]*?\r?\n\}/,
         ...TRACKING,
         /export async function setTargetSteamTemp\(temp\) \{[\s\S]*?\r?\n\}/,
-        /async function steamHeaterFor\(duration\) \{[\s\S]*?\r?\n\}/,
+        /async function steamHeaterFor\(on\) \{[\s\S]*?\r?\n\}/,
         /export async function setTargetSteamDuration\(duration\) \{[\s\S]*?\r?\n\}/,
         /export async function setSteamHeaterEnabled\(enabled\) \{[\s\S]*?\r?\n\}/,
     ]);
 
-    // `remembered` is the KV record of the last enabled temperature; `machineTemp`
-    // is what the workflow currently holds.
-    const build = (remembered, machineTemp = 150, dye = {}) => {
+    // `remembered` is the KV record of the values to come back to (a bare number
+    // is the temperature, the common case); `machine` is what the workflow
+    // currently holds.
+    const build = (remembered, machine = { targetTemperature: 150 }, dye = {}) => {
+        const kv = typeof remembered === 'object' && remembered !== null ? remembered : { temp: remembered };
+        const stored = {
+            'last-steam-temp': kv.temp ?? null,
+            'last-steam-duration': kv.duration ?? null,
+            'last-steam-flow': kv.flow ?? null,
+        };
+        const steamSettings = typeof machine === 'number' ? { targetTemperature: machine } : machine;
         const kvWrites = [];
         const workflowWrites = [];
         const api = new Function(
             'logger', 'persistSharedValue', 'persistLastValue', 'updateWorkflow', 'getWorkflow', 'getValueFromStore', 'openDB', 'getSetting',
-            'localStorage', 'getKVValue', 'getDye2KvArray', 'DYE2_KV_NAMESPACE', 'selectedRecipeSteamTemp',
+            'localStorage', 'getKVValue', 'getDye2KvArray', 'DYE2_KV_NAMESPACE', 'selectedRecipeSteam',
+            'isSteamOff', 'steamOffPatch', 'steamOnPatch', 'MIN_STEAM_DURATION_S',
             `const isAutoSteamActive = () => false; ${body}\nreturn { setTargetSteamDuration, setSteamHeaterEnabled, setTargetSteamTemp };`,
         )(
             { warn() {}, error() {} },
             async (key, value) => { kvWrites.push([key, value]); },
             async () => {},
             async (patch) => { workflowWrites.push(patch); },
-            async () => ({ steamSettings: { targetTemperature: machineTemp } }),
-            async () => remembered,
+            async () => ({ steamSettings }),
+            async (_namespace, key) => stored[key] ?? null,
             async () => {},
-            async () => remembered,
+            async (key) => stored[key] ?? null,
             { getItem: () => (dye.enabled ? 'true' : null) },
             async () => dye.selection ?? null,
             async () => dye.recipes ?? null,
             'dye2.reaplugin',
-            selectedRecipeSteamTemp,
+            selectedRecipeSteam,
+            isSteamOff, steamOffPatch, steamOnPatch, MIN_STEAM_DURATION_S,
         );
         return { api, kvWrites, workflowWrites };
     };
 
-    test('duration 0 means no timer and leaves the heater alone', async () => {
-        // rest_v1.yml: SteamSettings.duration "does not control steam-heater
-        // preheating". 0 is "no timer, run until stopped", so the patch carries
-        // the duration only -- the heater has its own switch.
-        const { api, kvWrites, workflowWrites } = build(null, 150);
+    test('duration 0 switches the heater off and is never remembered as a duration', async () => {
+        // 0 has one meaning now: off. The last-* keys hold what we switch back
+        // ON to, so a 0 must not land in them.
+        const { api, kvWrites, workflowWrites } = build(null, { targetTemperature: 150, duration: 25 });
         await api.setTargetSteamDuration(0);
-        assert.deepEqual(workflowWrites, [{ steamSettings: { duration: 0 } }]);
-        assert.deepEqual(kvWrites, [['last-steam-duration', 0]]);
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 0, duration: 0 } }]);
+        assert.deepEqual(kvWrites, [['last-steam-temp', 150], ['last-steam-duration', 25]]);
     });
 
     test('a duration write from a heater-off machine sends no temperature', async () => {
@@ -285,17 +296,23 @@ const SHARED_VALUE_CACHE = [
         assert.deepEqual(workflowWrites, [{ steamSettings: { duration: 30 } }]);
     });
 
-    test('switching the heater off remembers the temperature and sends 0', async () => {
-        const { api, kvWrites, workflowWrites } = build(null, 150);
+    test('switching the heater off zeroes both and remembers both', async () => {
+        const { api, kvWrites, workflowWrites } = build(null, { targetTemperature: 150, duration: 45 });
         await api.setSteamHeaterEnabled(false);
-        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 0 } }]);
-        assert.deepEqual(kvWrites, [['last-steam-temp', 150]]);
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 0, duration: 0 } }]);
+        assert.deepEqual(kvWrites, [['last-steam-temp', 150], ['last-steam-duration', 45]]);
     });
 
-    test('switching the heater on restores the remembered temperature', async () => {
+    test('switching the heater on restores the remembered temperature and duration', async () => {
+        const { api, workflowWrites } = build({ temp: 150, duration: 45 }, 0);
+        await api.setSteamHeaterEnabled(true);
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 150, duration: 45 } }]);
+    });
+
+    test('switching on with no remembered duration uses the documented default', async () => {
         const { api, workflowWrites } = build(150, 0);
         await api.setSteamHeaterEnabled(true);
-        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 150 } }]);
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 150, duration: 30 } }]);
     });
 
     test('a temperature set outside Streamline while steam is on is not overridden (#143)', async () => {
@@ -304,21 +321,31 @@ const SHARED_VALUE_CACHE = [
         assert.deepEqual(workflowWrites, [{ steamSettings: {} }]);
     });
 
-    test('a selected recipe steam temperature beats the remembered one on re-arm', async () => {
-        const dye = { enabled: true, selection: { kind: 'recipe', id: '2' }, recipes: [{ id: '2', dashboardVariables: { steamTempC: 140 } }] };
-        const { api, workflowWrites } = build(150, 0, dye);
+    test('a selected recipe beats the remembered values on re-arm, per field', async () => {
+        const recipes = [{ id: '2', dashboardVariables: { steamTempC: 140, steamTimeS: 12 } }];
+        const dye = { enabled: true, selection: { kind: 'recipe', id: '2' }, recipes };
+        const { api, workflowWrites } = build({ temp: 150, duration: 45 }, 0, dye);
         await api.setSteamHeaterEnabled(true);
-        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 140 } }]);
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 140, duration: 12 } }]);
     });
 
-    test('DYE2 disabled or nothing selected falls back to the remembered temperature', async () => {
+    test('a recipe carrying only a temperature still gets the remembered duration', async () => {
         const recipes = [{ id: '2', dashboardVariables: { steamTempC: 140 } }];
-        const off = build(150, 0, { enabled: false, selection: { kind: 'recipe', id: '2' }, recipes });
+        const dye = { enabled: true, selection: { kind: 'recipe', id: '2' }, recipes };
+        const { api, workflowWrites } = build({ temp: 150, duration: 45 }, 0, dye);
+        await api.setSteamHeaterEnabled(true);
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 140, duration: 45 } }]);
+    });
+
+    test('DYE2 disabled or nothing selected falls back to the remembered values', async () => {
+        const recipes = [{ id: '2', dashboardVariables: { steamTempC: 140 } }];
+        const expected = [{ steamSettings: { targetTemperature: 150, duration: 45 } }];
+        const off = build({ temp: 150, duration: 45 }, 0, { enabled: false, selection: { kind: 'recipe', id: '2' }, recipes });
         await off.api.setSteamHeaterEnabled(true);
-        assert.deepEqual(off.workflowWrites, [{ steamSettings: { targetTemperature: 150 } }]);
-        const none = build(150, 0, { enabled: true, recipes });
+        assert.deepEqual(off.workflowWrites, expected);
+        const none = build({ temp: 150, duration: 45 }, 0, { enabled: true, recipes });
         await none.api.setSteamHeaterEnabled(true);
-        assert.deepEqual(none.workflowWrites, [{ steamSettings: { targetTemperature: 150 } }]);
+        assert.deepEqual(none.workflowWrites, expected);
     });
 
     test('a recipe steam temperature does not override a heater already on (#143)', async () => {
@@ -328,14 +355,14 @@ const SHARED_VALUE_CACHE = [
         assert.deepEqual(workflowWrites, [{ steamSettings: {} }]);
     });
 
-    test('with nothing remembered the machine keeps whatever temperature it has', async () => {
+    test('switching on a heater that is already on changes nothing', async () => {
         const { api, workflowWrites } = build(null, 150);
         await api.setSteamHeaterEnabled(true);
         assert.deepEqual(workflowWrites, [{ steamSettings: {} }]);
     });
 
-    test('an already-off machine has no temperature worth remembering', async () => {
-        const { api, kvWrites } = build(null, 0);
+    test('an already-off machine has nothing worth remembering', async () => {
+        const { api, kvWrites } = build(null, { targetTemperature: 0, duration: 0 });
         await api.setSteamHeaterEnabled(false);
         assert.deepEqual(kvWrites, []);
     });

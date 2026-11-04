@@ -9,7 +9,8 @@ import { openDB, getSetting, setSetting } from './idb.js';
 import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-policy.js';
 import { parseSse } from './derek-stream.js';
 import { assertDeclaredFields } from './workflow-fields.js';
-import { selectedRecipeSteamTemp } from './dye-selection.js';
+import { selectedRecipeSteam } from './dye-selection.js';
+import { isSteamOff, steamOffPatch, steamOnPatch, MIN_STEAM_DURATION_S } from './steam-mode.js';
 import {
     SAVER_BRIGHTNESS_KEY, SAVER_BRIGHTNESS_CUSTOM_KEY,
     resolveSaverBrightness, parseSaverBrightnessSetting,
@@ -1945,39 +1946,42 @@ export async function setTargetSteamTemp(temp) {
 
 // The steam-heater switch behind setSteamHeaterEnabled.
 //
-// The heater is switched off only by targetTemperature 0 (same rule the DE1
-// firmware path has always had: de1app binary.tcl zeroes the target below
-// 135C). Steam duration is a separate setting -- rest_v1.yml,
-// SteamSettings.duration: "This does not control steam-heater preheating" --
-// and 0 there means "no timer", so setTargetSteamDuration never calls this.
-// Off (argument 0) remembers the current temperature; on (anything else)
-// returns to it.
+// The heater is switched off by targetTemperature 0 (same rule the DE1 firmware
+// path has always had: de1app binary.tcl zeroes the target below 135C), and the
+// skin zeroes the duration with it so no surface can show a bare "0" that reads
+// as a very short steam time. This deliberately overrides rest_v1.yml, where
+// SteamSettings.duration 0 means "no timer": the skin no longer offers
+// unlimited steam, so 0 has only one meaning left.
 //
-// The temperature to come back to is read from the workflow at the moment we
-// switch off -- one GET, only on that transition. With no remembered value the
-// enable path sends no temperature at all rather than inventing one.
-async function steamHeaterFor(duration) {
-    if (duration === 0) {
-        const current = (await getWorkflow().catch(() => null))?.steamSettings?.targetTemperature;
-        if (current > 0) await persistSharedValue(STEAM_TEMP_LAST_VALUE_KEY, current);
-        return { targetTemperature: 0 };
+// The values to come back to are read at the moment we switch off -- one GET,
+// only on that transition -- with the shared last-* keys as the fallback and a
+// selected DYE2 recipe winning over both, per field.
+async function steamHeaterFor(on) {
+    const current = (await getWorkflow().catch(() => null))?.steamSettings ?? {};
+    if (!on) {
+        if (current.targetTemperature > 0) await persistSharedValue(STEAM_TEMP_LAST_VALUE_KEY, current.targetTemperature);
+        if (current.duration > 0) await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, current.duration);
+        return steamOffPatch();
     }
     // Re-arm only from off. A temperature already above 0 was set by the user or
     // another app since we last remembered one, and is not ours to put back (#143).
-    const current = (await getWorkflow().catch(() => null))?.steamSettings?.targetTemperature;
-    if (current > 0) return {};
-    // A selected DYE2 recipe that carries a steam temperature wins over the
-    // remembered one (same DYE2 gate as recipeHoldsDial in profileManager.js).
+    if (!isSteamOff(current.targetTemperature)) return {};
+    // A selected DYE2 recipe's own steam settings win over the remembered ones
+    // (same DYE2 gate as recipeHoldsDial in profileManager.js).
+    let recipe = {};
     if (localStorage.getItem('streamline.dye2Enabled') === 'true') {
         const [sel, recipes] = await Promise.all([
             getKVValue(DYE2_KV_NAMESPACE, 'selection').catch(() => null),
             getDye2KvArray('recipes').catch(() => null),
         ]);
-        const recipeTemp = selectedRecipeSteamTemp(sel, recipes);
-        if (recipeTemp != null) return { targetTemperature: recipeTemp };
+        recipe = selectedRecipeSteam(sel, recipes);
     }
-    const remembered = await readSharedValue(STEAM_TEMP_LAST_VALUE_KEY);
-    return remembered > 0 ? { targetTemperature: Math.round(remembered) } : {};
+    const [temp, duration, flow] = await Promise.all([
+        readSharedValue(STEAM_TEMP_LAST_VALUE_KEY),
+        readSharedValue(STEAM_DURATION_LAST_VALUE_KEY),
+        readSharedValue(STEAM_FLOW_LAST_VALUE_KEY),
+    ]);
+    return steamOnPatch({ recipe, remembered: { temp, duration, flow }, currentFlow: current.flow });
 }
 
 // KV first, machine second, like the hot-water setters above. PUT /workflow can
@@ -1990,6 +1994,9 @@ async function steamHeaterFor(duration) {
 export async function setTargetSteamDuration(duration) {
     if (isAutoSteamActive()) throw new Error('Use a pitcher preset in Auto mode, or switch to Flow or Time.');
     const value = parseFloat(duration);
+    // 0 is the heater off, and it must not be remembered: the last-* keys hold
+    // what we switch back ON to.
+    if (!(value >= MIN_STEAM_DURATION_S)) return setSteamHeaterEnabled(false);
     return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () => updateWorkflow({ steamSettings: { duration: value } }, 'api.steamDuration'));
 }
 
@@ -2002,11 +2009,11 @@ export async function writeAutoSteamSettings(steam) {
 }
 
 // Steam-heater switch for procedures that must not run against a hot steam
-// boiler (descaling) and for the Settings > Calibration > Steam toggle:
-// switching off stores the current target, switching back on returns to it.
-// The duration is deliberately untouched, so the user's steam time survives.
+// boiler (descaling), for the steam pages' toggle and for the main-page tile's
+// duration stepping through 0: switching off stores the current temperature and
+// duration, switching back on returns to them.
 export async function setSteamHeaterEnabled(enabled) {
-    return updateWorkflow({ steamSettings: await steamHeaterFor(enabled ? 1 : 0) }, 'api.steamHeater');
+    return updateWorkflow({ steamSettings: await steamHeaterFor(!!enabled) }, 'api.steamHeater');
 }
 
 export async function setTargetSteamFlow(flow) {
@@ -2021,6 +2028,9 @@ export async function setTargetSteamFlow(flow) {
 export async function resyncSteamFromStore() {
     const steam = (await getWorkflow())?.steamSettings;
     if (!steam) return;
+    // Steam switched off: the remembered duration and flow would both read as
+    // drift from the off state's zeros and push the heater straight back on.
+    if (isSteamOff(steam.targetTemperature)) return resyncMilkStopIfDrifted(steam.stopAtTemperature);
     await resyncIfDrifted(STEAM_DURATION_LAST_VALUE_KEY, steam.duration, setTargetSteamDuration);
     await resyncIfDrifted(STEAM_FLOW_LAST_VALUE_KEY, steam.flow, setTargetSteamFlow);
     await resyncMilkStopIfDrifted(steam.stopAtTemperature);

@@ -155,9 +155,9 @@
                 </div>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="steam-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Steam Setting"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center" aria-labelledby="steam-label">
-                        <span id="steam-duration-value" class="text-[var(--text-primary)] text-[25.5px] font-bold block">30s</span>
-                        <span id="steam-flow-value" class="text-[var(--text-primary)] text-[19.5px] font-semibold block">1.0ml/s</span>
+                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center flex flex-col" aria-labelledby="steam-label">
+                        <span id="steam-duration-value" class="text-[var(--text-primary)] text-[26px] font-bold block">30s</span>
+                        <span id="steam-flow-value" class="text-[var(--text-primary)] text-[20px] font-semibold block">1.0ml/s</span>
                     </div>
                     <button id="steam-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Steam Setting"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
@@ -219,9 +219,9 @@
                 </div>
                 <div class="relative w-[246px] h-[72px]">
                     <button id="hot-water-vol-minus" class="absolute left-[0px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Decrease Hot Water Amount"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center" aria-labelledby="hotwater-label">
-                        <span id="hot-water-vol-value" class="text-[var(--text-primary)] text-[25.5px] font-bold block">ml</span>
-                        <span id="hot-water-temp-value" class="text-[var(--text-primary)] text-[19.5px] font-semibold block">°C</span>
+                    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[72px] text-center flex flex-col" aria-labelledby="hotwater-label">
+                        <span id="hot-water-vol-value" class="text-[var(--text-primary)] text-[26px] font-bold block">ml</span>
+                        <span id="hot-water-temp-value" class="text-[var(--text-primary)] text-[20px] font-semibold block">°C</span>
                     </div>
                     <button id="hot-water-vol-plus" class="absolute left-[174px] top-1/2 -translate-y-1/2 w-[72px] h-[72px] bg-[var(--button-grey)] rounded-[15px] flex items-center justify-center" aria-label="Increase Hot Water Amount"><svg aria-hidden="true" width="37.5" height="37.5" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                 </div>
@@ -240,7 +240,7 @@
             <div id="main-row" class="flex flex-row">
                 <!-- Left column: header + chart -->
                 <div class="flex flex-col flex-1 min-w-0">
-                    <div class="relative h-[150px]">
+                    <div class="chart-header-band relative h-[150px]">
                         <div class="absolute top-[30px] left-[40px] right-[44px]">
                             <!-- Reserve #machine-status' 556px box (plus a 12px gutter) so the name and
                                  its buttons can never run under it. That box is anchored right-[44px] in
@@ -266,16 +266,20 @@
                                     <img src="src/ui/icons/icon_profile_edit.svg" alt="" class="w-[25px] h-[25px]" aria-hidden="true">
                                 </button>
                             </div>
+                            <!-- Dial-in values of the hidden #shot-settings sidebar, mirrored as the TCL
+                                 zoomed page's dense text line (skin.tcl:907, the line above $btns).
+                                 Filled by zoom-dialin.js while zoomed, empty and hidden otherwise. -->
+                            <div id="zoom-dialin" aria-label="Dial-in settings"></div>
                             <!-- min-w-full so Weight's ml-auto has room to push right, while the row
                                  still grows past it for a long-language line — i18n.fitTelemetry
                                  watches the row's own box to decide when to scale it down. -->
                             <div id="telemetry-row" class="h-9 pt-10 inline-flex min-w-full justify-start items-center gap-[22px] whitespace-nowrap" aria-label="Machine Telemetry">
-                                <p id="mix-info-container"><span class="text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Water">Water</span>&nbsp;&nbsp;<span id="data-mix-temp" class="text-[var(--text-primary)] text-[22.5px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
+                                <p id="mix-info-container"><span class="tele-label-plain text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Water">Water</span><span class="tele-label-zoomed text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Mix">Mix</span>&nbsp;&nbsp;<span id="data-mix-temp" class="text-[var(--text-primary)] text-[22.5px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
                                 <!-- Group-head temperature, labelled "Puck": only meaningful while a shot
                                      is pulling, so ui.updateMachineStatus shows it for MachineState.ESPRESSO
                                      and hides it again for every other state. The data ids stay "group". -->
                                 <div id="puck-info-container" style="display: none;">
-                                    <p><span class="text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Puck">Puck</span>&nbsp;&nbsp;<span id="data-group-temp" class="text-[var(--text-primary)] text-[22.5px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
+                                    <p><span class="tele-label-plain text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Puck">Puck</span><span class="tele-label-zoomed text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Group">Group</span>&nbsp;&nbsp;<span id="data-group-temp" class="text-[var(--text-primary)] text-[22.5px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
                                 </div>
                                 <p><span class="text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Steam">Steam</span>&nbsp;&nbsp;<span id="data-steam-temp" class="text-[var(--text-primary)] text-[22.5px] font-semibold font-['NotoSansMono'] leading-6">°c</span></p>
                                 <p><span class="text-[var(--data-card-title-text-color)] text-[22.5px] font-semibold font-['Inter'] leading-6" data-i18n-key="Tank">Tank</span>&nbsp;&nbsp;<span id="data-tank-vol" class="text-[var(--text-primary)] text-[22.5px] font-semibold font-['NotoSansMono'] leading-6">ml</span></p>
@@ -302,9 +306,6 @@
                     <!-- Shot chart (tap to open full-screen expanded charts) -->
                     <div id="chart-wrap" class="relative w-full">
                         <div id="plotly-chart" class="w-full h-[650px] border border-l-0 border-r-0 border-[var(--border-color)] cursor-pointer" role="img" aria-label="Shot extraction graph"></div>
-                        <!-- Dial-in values of the hidden #shot-settings sidebar, mirrored as the TCL
-                             zoomed page's dense text line. Filled by zoom-dialin.js while zoomed. -->
-                        <div id="zoom-dialin" aria-label="Dial-in settings"></div>
                         <!-- Full-screen chart (TCL "zoomed" page): shown instead of #plotly-chart while #main-page has .chart-zoomed; tap it to leave -->
                         <div id="expanded-chart" class="w-full h-full border border-l-0 border-r-0 border-[var(--border-color)] cursor-pointer" style="display:none" role="img" aria-label="Full-screen shot extraction graph"></div>
                     </div>

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
     profileFingerprint, profileDrifted, serializeSelection, restoreSelection,
-    parseDyeReturn, resolveReturn, changedFields, pluginRecordsDialIn, armedSelectionId, selectedRecipeSteamTemp, recipeStripCells, favStripCells,
+    parseDyeReturn, resolveReturn, changedFields, pluginRecordsDialIn, armedSelectionId, selectedRecipeSteam, recipeStripCells, favStripCells,
     recipeIdPatch, selectionModified, recipeCellState, profilePatchWithSteps, pluginHasEndpoint,
 } from '../src/modules/dye-selection.js';
 
@@ -157,15 +157,21 @@ test('armedSelectionId: an empty selection object arms nothing', () => {
     assert.equal(armedSelectionId({}, { recipes: [{ id: '1' }], favs: [{ id: 7 }] }), null);
 });
 
-test('selectedRecipeSteamTemp: the selected recipe steam temperature, or null', () => {
-    const recipes = [{ id: '2', dashboardVariables: { steamTempC: 140.4 } }, { id: '3', dashboardVariables: { steamTempC: 0 } }, { id: '4' }];
-    assert.equal(selectedRecipeSteamTemp({ kind: 'recipe', id: 2 }, recipes), 140);
-    assert.equal(selectedRecipeSteamTemp({ kind: 'recipe', id: '3' }, recipes), null, 'below 135 is off, not a temperature');
-    assert.equal(selectedRecipeSteamTemp({ kind: 'recipe', id: '4' }, recipes), null);
-    assert.equal(selectedRecipeSteamTemp({ kind: 'recipe', id: '9' }, recipes), null);
-    assert.equal(selectedRecipeSteamTemp({ kind: 'favourite', id: '2' }, recipes), null);
-    assert.equal(selectedRecipeSteamTemp(null, recipes), null);
-    assert.equal(selectedRecipeSteamTemp({ kind: 'recipe', id: '2' }, null), null);
+test('selectedRecipeSteam: the selected recipe steam settings, each null when absent', () => {
+    const recipes = [
+        { id: '2', dashboardVariables: { steamTempC: 140.4, steamTimeS: 25, steamFlowMls: 0.8 } },
+        { id: '3', dashboardVariables: { steamTempC: 0, steamTimeS: 0, steamFlowMls: 0 } },
+        { id: '4' },
+    ];
+    assert.deepEqual(selectedRecipeSteam({ kind: 'recipe', id: 2 }, recipes), { tempC: 140, durationS: 25, flow: 0.8 });
+    assert.deepEqual(selectedRecipeSteam({ kind: 'recipe', id: '3' }, recipes), { tempC: null, durationS: null, flow: null },
+        'below 135 is off, not a temperature; a 0 duration or flow is not a setting');
+    const none = { tempC: null, durationS: null, flow: null };
+    assert.deepEqual(selectedRecipeSteam({ kind: 'recipe', id: '4' }, recipes), none);
+    assert.deepEqual(selectedRecipeSteam({ kind: 'recipe', id: '9' }, recipes), none);
+    assert.deepEqual(selectedRecipeSteam({ kind: 'favourite', id: '2' }, recipes), none);
+    assert.deepEqual(selectedRecipeSteam(null, recipes), none);
+    assert.deepEqual(selectedRecipeSteam({ kind: 'recipe', id: '2' }, null), none);
 });
 
 const recipeIds = cells => cells.map(c => c.recipe && String(c.recipe.id));

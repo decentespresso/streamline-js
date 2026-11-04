@@ -140,10 +140,9 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             window.app.ui.updateTemperatureValue(tempC);
                         } else if (type === 'steam-duration') {
                             // The numpad blanks a bare "0" to '' — treat empty/NaN as 0.
-                            // 0 = steam timer off: steam runs until the user stops it.
-                            // Duration does NOT touch the heater (rest_v1.yml:
-                            // SteamSettings.duration "does not control steam-heater
-                            // preheating"); that is Settings > Calibration > Steam.
+                            // 0 switches the steam heater off: api.setTargetSteamDuration
+                            // routes it to the heater switch, which also remembers the
+                            // duration to come back to.
                             const v = (newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal);
                             window.app.ui.updateSteamDisplay({ targetSteamDuration: v });
                             window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v));
@@ -152,7 +151,10 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             // only (initMobileValueInputs guards on shouldUseNumpad()) and
                             // was missing it entirely, so a value typed here never stuck
                             // across a profile switch even though +/- worked fine.
-                            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: v });
+                            // Off is a machine state, not a per-profile steam time: saving
+                            // 0 here would switch the heater off every time this profile
+                            // loaded.
+                            if (v > 0) window.app?.saveContextToActiveProfile?.({ targetSteamDuration: v });
                         } else if (type === 'steam-flow') {
                             // Numpad blanks a bare "0" to ''. Unlike duration, 0 steam
                             // flow has no meaning (steam is gated on duration, not flow),
@@ -2637,13 +2639,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // The "Steam" label deep-links to Settings > Calibration > Steam. The
-        // settings shell restores the saved location on mount, so writing it
-        // before loadPage is the whole mechanism.
+        // The "Steam" label deep-links to Settings > Quick Adjustments > Steam,
+        // which now carries the steam heater toggle. The settings shell restores
+        // the saved location on mount, so writing it before loadPage is the
+        // whole mechanism.
         const steamLabel = document.getElementById('steam-label');
         if (steamLabel) {
             const openSteamSettings = () => {
-                writeSettingsLocation('calibration', 'calib_steam');
+                writeSettingsLocation('quickadjustments', 'steam');
                 loadPage('src/settings/settings.html');
             };
             steamLabel.addEventListener('pointerdown', () => {

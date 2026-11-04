@@ -1009,10 +1009,9 @@ textarea,
    dashboard and the dial-in sidebar go, and the zoomed chart takes the plot's
    place out to the full width and down to the bottom of the screen (#chart-wrap
    is already the flex item that absorbs free space). */
-/* The strip and the chart share #chart-wrap's height instead of both taking all
-   of it: #expanded-chart's h-full was measured against the wrap, so the chart
-   hung the strip's own height past the bottom of the screen and took the x tick
-   labels with it. Column flex gives the strip its line and the chart the rest. */
+/* #expanded-chart's h-full was measured against the wrap, so it hung past the
+   bottom of the screen and took the x tick labels with it. Column flex + flex:1
+   makes it take exactly what the wrap has. */
 #main-page.chart-zoomed #chart-wrap {
     display: flex;
     flex-direction: column;
@@ -1044,8 +1043,12 @@ textarea,
     padding-bottom: 0;
 }
 
-/* The dial-in line above the zoomed chart: the hidden sidebar's values, in the
-   telemetry row's own idiom (label in the card-title colour, value in mono). */
+/* The dial-in line of the zoomed page: the hidden sidebar's values, in the
+   telemetry row's own idiom (label in the card-title colour, value in mono).
+   It sits inside the header band between the profile name and the machine
+   readings, the order the TCL zoomed page uses (skin.tcl:907-908). The band is
+   a fixed 150px, so the telemetry row gives up its 40px top gap to make room —
+   the two lines together cost no more than the one did. */
 #zoom-dialin {
     display: none;
 }
@@ -1054,9 +1057,48 @@ textarea,
     display: flex;
     align-items: center;
     gap: 34px;
-    padding: 0 40px 10px;
+    padding-top: 4px;
     white-space: nowrap;
     overflow: hidden;
+}
+
+/* The row below needs real air, not just a box boundary: its own box used to
+   start exactly where the strip's ended, which put the readings' ascenders up
+   against the dial-in descenders. */
+#main-page.chart-zoomed #telemetry-row {
+    padding-top: 12px;
+}
+
+/* Cups is a Bengle-only field and the zoomed line is the dense one; it goes,
+   leaving the width to the readings that matter mid-shot. !important for the
+   same reason as Group below — app.js owns the inline display. */
+#main-page.chart-zoomed #cupwarmer-info-container {
+    display: none !important;
+}
+
+/* The zoomed page names the two temperatures as the TCL skin does — Mix and
+   Group, not Water and the shot-only Puck — so both labels live in the markup
+   and the layout class picks one. Swapping textContent instead would be undone
+   by the next re-translation, which rewrites from data-i18n-key. */
+.tele-label-zoomed {
+    display: none;
+}
+
+#main-page.chart-zoomed .tele-label-plain {
+    display: none;
+}
+
+#main-page.chart-zoomed .tele-label-zoomed {
+    display: inline;
+}
+
+/* Group stays in the zoomed line even when no shot is pulling, as the TCL
+   zoomed page has it, so the row never reflows mid-shot. !important because
+   ui.updateMachineStatus owns the element's inline display for the normal
+   page, where the field is still espresso-only; leaving on exit hands it
+   straight back. */
+#main-page.chart-zoomed #puck-info-container {
+    display: block !important;
 }
 
 .zoom-dialin-pair {
@@ -1065,12 +1107,15 @@ textarea,
     gap: 10px;
 }
 
+/* 28px, not the telemetry row's 24px: #zoom-dialin clips its overflow to keep a
+   long line off the chart, and a 24px line box lets 22.5px descenders hang past
+   its own bottom edge, where the clip shaved them. */
 .zoom-dialin-label {
     color: var(--data-card-title-text-color);
     font-family: 'Inter', sans-serif;
     font-size: 22.5px;
     font-weight: 600;
-    line-height: 1.5rem;
+    line-height: 28px;
 }
 
 .zoom-dialin-value {
@@ -1078,5 +1123,5 @@ textarea,
     font-family: 'NotoSansMono', monospace;
     font-size: 22.5px;
     font-weight: 600;
-    line-height: 1.5rem;
+    line-height: 28px;
 }

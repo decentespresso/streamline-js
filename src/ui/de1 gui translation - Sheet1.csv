@@ -1853,3 +1853,8 @@ Declare USB power manually and hide the battery level.,,,USB-Stromversorgung man
 What is it about?,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 machine reports,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 No steam timer,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Off,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Steam Stop,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Stop at Milk Temperature (°C),,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Requires the Bengle milk temperature probe.,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

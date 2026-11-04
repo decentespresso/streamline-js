@@ -9,6 +9,16 @@ import {
     resolveMilkProbePresence,
     selectMilkProbeSensorId,
     applyMilkProbeGate,
+    isSteamOff,
+    steamOffPatch,
+    steamOnPatch,
+    steamDurationIntent,
+    DEFAULT_STEAM_DURATION_S,
+    MIN_STEAM_DURATION_S,
+    MAX_STEAM_DURATION_S,
+    MIN_STEAM_FLOW,
+    STEAM_ENABLED_MIN_TEMP,
+    STEAM_ENABLED_MAX_TEMP,
     resolveSteamTileMode,
     steamSlotField,
     milkTelemetryText,
@@ -92,9 +102,9 @@ test('armed target degrades to time mode on a non-Bengle', () => {
     assert.equal(resolveSteamStopMode(65, 'off', false), 'time');
 });
 
-test('disarmed + stored preference resolves off/time as stored', () => {
-    assert.equal(resolveSteamStopMode(0, 'off', true), 'off');
-    assert.equal(resolveSteamStopMode(0, 'off', false), 'off');
+test('disarmed resolves to time; a stored off from an older build reads as time', () => {
+    assert.equal(resolveSteamStopMode(0, 'off', true), 'time', 'unlimited steam is gone');
+    assert.equal(resolveSteamStopMode(0, 'off', false), 'time');
     assert.equal(resolveSteamStopMode(0, 'time', true), 'time');
     assert.equal(resolveSteamStopMode(0, 'time', false), 'time');
 });
@@ -152,6 +162,89 @@ test('a fresh positive reading revives an absent probe', () => {
     assert.deepEqual(s, { present: true, lastPositiveMs: 50000 });
 });
 
+// ── Steam off / on transition ───────────────────────────────────────────────
+// One rule for every way into and out of steam-off: the toggle, the duration
+// field and the main-page tile all go through these. targetTemperature is the
+// only truth for "off"; duration 0 rides along so no surface shows a bare "0".
+
+test('isSteamOff: only a target at or above the enabled floor is on', () => {
+    assert.equal(isSteamOff(0), true);
+    assert.equal(isSteamOff(STEAM_ENABLED_MIN_TEMP - 1), true, 'below the floor the machine zeroes it');
+    assert.equal(isSteamOff(STEAM_ENABLED_MIN_TEMP), false);
+    assert.equal(isSteamOff(155), false);
+    assert.equal(isSteamOff(undefined), true, 'a workflow with no steam target is not armed');
+    assert.equal(isSteamOff(null), true);
+    assert.equal(isSteamOff('155'), true, 'a string is not a temperature');
+});
+
+test('steamOffPatch: zeroes the heater and the duration together', () => {
+    assert.deepEqual(steamOffPatch(), { targetTemperature: 0, duration: 0 });
+});
+
+test('steamOnPatch: remembered values come back', () => {
+    assert.deepEqual(
+        steamOnPatch({ remembered: { temp: 158, duration: 42 }, currentFlow: 0.8 }),
+        { targetTemperature: 158, duration: 42 });
+});
+
+test('steamOnPatch: with nothing remembered, documented defaults', () => {
+    assert.deepEqual(
+        steamOnPatch({ currentFlow: 0.8 }),
+        { targetTemperature: 150, duration: DEFAULT_STEAM_DURATION_S });
+});
+
+test('steamOnPatch: a recipe wins over the remembered values, per field', () => {
+    const patch = steamOnPatch({
+        recipe: { tempC: 162, durationS: null, flow: null },
+        remembered: { temp: 140, duration: 20, flow: 0.7 },
+        currentFlow: 0.9,
+    });
+    assert.equal(patch.targetTemperature, 162, "the recipe's temperature");
+    assert.equal(patch.duration, 20, 'the remembered duration fills what the recipe omits');
+});
+
+test('steamOnPatch: never re-arms outside the band the machine accepts', () => {
+    // A remembered value below the floor would leave the heater off while the
+    // toggle showed on -- the exact fight the clamp exists to prevent.
+    assert.equal(steamOnPatch({ remembered: { temp: 100 } }).targetTemperature, STEAM_ENABLED_MIN_TEMP);
+    assert.equal(steamOnPatch({ remembered: { temp: 999 } }).targetTemperature, STEAM_ENABLED_MAX_TEMP);
+    assert.equal(steamOnPatch({ remembered: { duration: 0 } }).duration, MIN_STEAM_DURATION_S);
+    assert.equal(steamOnPatch({ remembered: { duration: 9999 } }).duration, MAX_STEAM_DURATION_S);
+});
+
+test('steamOnPatch: flow is left alone unless the machine has none to use', () => {
+    assert.equal('flow' in steamOnPatch({ remembered: { flow: 0.7 }, currentFlow: 0.9 }), false,
+        'a usable flow was set by the user or another app');
+    assert.equal(steamOnPatch({ remembered: { flow: 0.7 }, currentFlow: 0 }).flow, 0.7);
+    assert.equal(steamOnPatch({ remembered: { flow: 0.7 }, currentFlow: undefined }).flow, 0.7);
+    assert.equal('flow' in steamOnPatch({ remembered: { flow: 0.1 }, currentFlow: 0 }), false,
+        'a remembered flow below the machine minimum is not worth writing');
+    assert.equal(steamOnPatch({ recipe: { flow: MIN_STEAM_FLOW }, remembered: { flow: 2 }, currentFlow: 0 }).flow,
+        MIN_STEAM_FLOW, "the recipe's flow wins");
+});
+
+test('steamDurationIntent: below the shortest duration is Off, not a number', () => {
+    assert.deepEqual(steamDurationIntent(0), { off: true });
+    assert.deepEqual(steamDurationIntent('0'), { off: true });
+    assert.deepEqual(steamDurationIntent(0.4), { off: true });
+    assert.deepEqual(steamDurationIntent(-5), { off: true });
+    assert.deepEqual(steamDurationIntent(1), { off: false, duration: 1 });
+    assert.deepEqual(steamDurationIntent('45'), { off: false, duration: 45 });
+    assert.deepEqual(steamDurationIntent('44.6'), { off: false, duration: 45 });
+    assert.deepEqual(steamDurationIntent(300), { off: false, duration: MAX_STEAM_DURATION_S },
+        'the DE1 cannot hold more than a byte');
+});
+
+test('steamDurationIntent: an unreadable entry changes nothing', () => {
+    // '' is the numpad's own blanking of a bare 0 -- the caller repaints and
+    // leaves the machine alone rather than guessing Off.
+    assert.equal(steamDurationIntent(''), null);
+    assert.equal(steamDurationIntent('abc'), null);
+    assert.equal(steamDurationIntent(null), null);
+    assert.equal(steamDurationIntent(undefined), null);
+    assert.equal(steamDurationIntent(NaN), null);
+});
+
 // ── selectMilkProbeSensorId ─────────────────────────────────────────────────
 // Picks the Bengle milk probe out of a GET /api/v1/sensors response. Matched
 // by info.name (a documented SensorManifest field), never by the sensor's
@@ -186,27 +279,20 @@ test('sensor select: a name match with no usable id resolves to no probe', () =>
 });
 
 // ── applyMilkProbeGate ──────────────────────────────────────────────────────
-// 'temperature' is only offerable with a probe; without one it falls back to
-// the previously-set non-temperature mode. Other modes pass through untouched.
+// 'temperature' is only offerable with a probe; without one the only other
+// stop is 'time'. Other modes pass through untouched.
 
 test('gate: temperature with a probe passes through', () => {
-    assert.equal(applyMilkProbeGate('temperature', true, 'off'), 'temperature');
+    assert.equal(applyMilkProbeGate('temperature', true), 'temperature');
 });
 
-test('gate: temperature without a probe falls back to the stored mode', () => {
-    assert.equal(applyMilkProbeGate('temperature', false, 'off'), 'off');
-    assert.equal(applyMilkProbeGate('temperature', false, 'time'), 'time');
+test('gate: temperature without a probe falls back to time', () => {
+    assert.equal(applyMilkProbeGate('temperature', false), 'time');
 });
 
-test('gate: missing/unknown fallback defaults to time', () => {
-    assert.equal(applyMilkProbeGate('temperature', false, null), 'time');
-    assert.equal(applyMilkProbeGate('temperature', false, 'temperature'), 'time');
-    assert.equal(applyMilkProbeGate('temperature', false, 'bogus'), 'time');
-});
-
-test('gate: non-temperature modes are untouched regardless of the probe', () => {
-    assert.equal(applyMilkProbeGate('time', false, 'off'), 'time');
-    assert.equal(applyMilkProbeGate('off', true, 'time'), 'off');
+test('gate: time is untouched regardless of the probe', () => {
+    assert.equal(applyMilkProbeGate('time', false), 'time');
+    assert.equal(applyMilkProbeGate('time', true), 'time');
 });
 
 // ── resolveSteamTileMode ────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
 import { isCustomSaverBrightness, setCustomSaverBrightnessEnabled, getSaverBrightness, setSaverBrightness, SAVER_BRIGHTNESS_DEFAULT } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
@@ -10,7 +10,7 @@ import { loadPage } from '../modules/router.js'; // Singular and correctly forma
 import { logger } from '../modules/logger.js';
 import { isBengleMachine, setMachineModel } from '../modules/machine.js';
 import { brightnessNotices, QUEUED_NOTICE, LOW_BATTERY_NOTICE, GO_TO_SETTING_LABEL, LOW_BATTERY_SETTING_CATEGORY, REQUESTED_APPLIED_TEMPLATE, requestedBrightnessReadout } from '../modules/brightness-notice.js';
-import { resolveSteamStopMode, applyMilkProbeGate, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP } from '../modules/steam-mode.js';
+import { resolveSteamStopMode, applyMilkProbeGate, steamDurationIntent, steamOffPatch, steamOnPatch, isSteamOff, MIN_STEAM_DURATION_S, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP } from '../modules/steam-mode.js';
 import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { wakeProfileChoices } from '../modules/wake-profile.js';
@@ -311,7 +311,9 @@ async function flushPendingChanges() {
     if (pendingChanges.workflow.steamSettings) {
         const steam = pendingChanges.workflow.steamSettings;
         tasks.push(updateWorkflow({ steamSettings: steam }, 'settings.steam'));
-        if (isNum(steam.duration)) persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, steam.duration);
+        // Enabled values only, same rule as the temperature below: 0 is the
+        // heater switched off, and the key is what we switch back ON to.
+        if (steam.duration > 0) persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, steam.duration);
         if (isNum(steam.flow)) persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, steam.flow);
         // Enabled temperatures only: 0 is the heater switched off, and the main
         // page reads this key to decide what to switch back ON to when steam is
@@ -2948,24 +2950,18 @@ function getMilkProbe() {
     return window.app?.getMilkProbe?.() ?? { present: false, temperature: 0 };
 }
 
-// Last non-temperature stop mode the user chose ('time'|'off') — what the page
-// falls back to while the probe is absent. Probe loss is NOT display-only:
-// ui.js un-arms an active stop on the machine (stopAtTemperature = 0) and
-// lands the stop-mode record on this fallback (onMilkProbeUpdate below mirrors
-// the un-arm into this page's cached/staged workflow), so re-attaching the
-// probe restores the Milk Temp OPTION but not the mode — Milk Temp comes back
-// only when the user re-selects it (or an armed stop survived, e.g. a boot
-// with the probe attached).
-function getSteamStopFallbackMode() {
-    try {
-        return localStorage.getItem('streamline.steamStopModeFallback');
-    } catch (e) { return null; }
-}
+// Probe loss is NOT display-only: ui.js un-arms an active stop on the machine
+// (stopAtTemperature = 0) and records 'time' as the fallback stop mode
+// (onMilkProbeUpdate below mirrors the un-arm into this page's cached/staged
+// workflow), so re-attaching the probe restores the Milk Temp OPTION but not
+// the mode — Milk Temp comes back only when the user re-selects it (or an
+// armed stop survived, e.g. a boot with the probe attached). ui.js still reads
+// the fallback record for the tile's own Time|Flow pair.
 
 // The steam page's effective stop mode: the resolved mode gated on probe
 // presence ('temperature' is not offerable without a probe).
 function getEffectiveSteamStopMode(probePresent) {
-    return applyMilkProbeGate(getSteamStopMode(), probePresent, getSteamStopFallbackMode());
+    return applyMilkProbeGate(getSteamStopMode(), probePresent);
 }
 
 // Live milk-probe feed from app.js (one call per machine snapshot, ~10 Hz).
@@ -3023,10 +3019,11 @@ export function renderSteamSettings() {
     // stepper keeps showing the temperature we would switch back ON to and
     // greys out while the master toggle below is off -- exactly what
     // renderCalibSteamSettings already does with the same remembered value.
-    const steamHeaterOn = (steamSettings.targetTemperature ?? 150) > 0;
+    const steamHeaterOn = !isSteamOff(steamSettings.targetTemperature ?? 150);
     const targetTemp = steamHeaterOn
         ? steamSettings.targetTemperature
         : (lastEnabledSteamCalibTemp ?? 150);
+    seedRememberedSteamValues();
     const duration = steamSettings.duration ?? 60;
     const flow = steamSettings.flow ?? 0.9;
     const stopTemp = steamSettings.stopAtTemperature ?? 0;
@@ -3038,38 +3035,37 @@ export function renderSteamSettings() {
     const stopMode = getEffectiveSteamStopMode(probe.present); // 'off' | 'time' | 'temperature'
     const milkTarget = stopTemp > 0 ? Math.round(stopTemp) : 60;
 
-    // Steam-stop segmented control, per the settings pattern in Figma
-    // (v3_Master Settings_Example 5, "Setting Tabs Multi-Choice"): one
-    // full-width row of equal segments that share their borders -- the design
-    // overlaps them by 1px rather than spacing them out, so a -1px left margin
-    // on every segment after the first collapses the seam.
+    // Steam-stop choice: two compact pills on the label's own line, like every
+    // other control on this page (Steam temperature, Duration, Flow all put a
+    // narrow control to the right of their label, and Steam Purge Mode uses the
+    // same 200px width). The old full-width joined segments were the Figma
+    // "Setting Tabs Multi-Choice" pattern, which fitted three choices; with Off
+    // gone there are two, and a stretched pair read as a banner rather than a
+    // control.
     //
-    // Height stays at this page's own 96px, NOT the design's 160 scaled by the
-    // 0.75 the type follows: component boxes in this codebase are not on that
-    // ratio (the toggle is 100x50 against the design's 104.8x62.88), and these
-    // segments sit beside 69px steppers, which a 120px row towers over.
+    // 72px tall to match the +/- steppers it sits among, not the 96px the
+    // full-width row needed. Separate pills, so no shared seam and no -1px
+    // margin trick.
     // A disabled button (Milk Temp with no probe) renders grayed and inert.
-    // ponytail: the seam and the end radii are inline styles, not new Tailwind
-    // classes -- rounded-l-*/-ml-px are not in the generated app.css and
-    // src/css/app.css is not hand-editable (AGENTS.md). Inline style is already
-    // the escape hatch used elsewhere on this page (the 130px value boxes).
-    const SEG_BASE = `flex-1 h-[96px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center text-center relative transition-colors duration-200`;
+    const SEG_BASE = `w-[200px] h-[72px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[24px] flex items-center justify-center text-center transition-colors duration-200`;
     const SEG_INACTIVE = 'bg-[var(--box-color)] border border-[var(--border-primary)] text-[#b6c3d7]';
-    const segSeam = (first, last) =>
-        `border-radius:${first ? '10px' : '0'} ${last ? '10px' : '0'} ${last ? '10px' : '0'} ${first ? '10px' : '0'};${first ? '' : 'margin-left:-1px;'}`;
-    const stopSegBtn = (value, label, disabled = false, first = false, last = false) => {
+    const stopSegBtn = (value, label, disabled = false) => {
         if (disabled) {
-            return `<button class="${SEG_BASE} cursor-not-allowed ${SEG_INACTIVE} opacity-40" style="${segSeam(first, last)}"
-                    aria-pressed="false" aria-disabled="true" disabled data-i18n-key="${label}">${getTranslation(label)}</button>`;
+            // Not `disabled`: a disabled button fires no click, and the reason it
+            // is unavailable now lives in a toast rather than in a line of copy
+            // sitting under the control. aria-disabled still tells assistive tech.
+            return `<button class="${SEG_BASE} cursor-pointer ${SEG_INACTIVE} opacity-40"
+                    aria-pressed="false" aria-disabled="true" onclick="window.explainSteamStopUnavailable()"
+                    data-i18n-key="${label}">${getTranslation(label)}</button>`;
         }
         const active = stopMode === value;
-        // z-index keeps the active segment's solid fill over its neighbours' shared border.
-        return `<button class="${SEG_BASE} cursor-pointer ${active ? 'bg-[var(--button-primary-bg)] text-white z-10' : SEG_INACTIVE}" style="${segSeam(first, last)}"
+        return `<button class="${SEG_BASE} cursor-pointer ${active ? 'bg-[var(--button-primary-bg)] text-white' : SEG_INACTIVE}"
                     aria-pressed="${active}"
                     onclick="window.setSteamStopMode('${value}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
     };
+    // No "Off" stop: unlimited steam is gone, and Off on this page means the
+    // heater only. A steam time of 0 switches the heater off instead.
     const stopDescriptions = {
-        off: 'Steam runs until you stop it (subject to the machine safety timeout).',
         time: 'Steam stops automatically after the set duration.',
         temperature: 'Steam stops automatically when the milk reaches the target temperature.'
     };
@@ -3123,7 +3119,7 @@ export function renderSteamSettings() {
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Steam heater master switch -->
-            ${steamHeaterToggleRow((steamSettings.targetTemperature ?? 150) > 0)}
+            ${steamHeaterToggleRow(steamHeaterOn)}
 
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
@@ -3178,22 +3174,23 @@ export function renderSteamSettings() {
             </div>
 
 
+            <!-- Steam Stop mode. Bengle only: Milk Temp is the only alternative to
+                 Time, so without a probe-capable machine there is no choice to
+                 offer -- the Duration field above IS the stop, and a lone Time
+                 button would be a control that does nothing. -->
+            ${bengle ? `
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
-            <!-- Steam Stop mode -->
             <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
-                <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                    <p class="leading-[1.2]" data-i18n-key="Steam Stop">Steam Stop</p>
-                </div>
-                <div class="flex w-full">
-                    ${stopSegBtn('off', 'Off', false, true, false)}
-                    ${stopSegBtn('time', 'Time', false, false, !bengle)}
-                    ${bengle ? stopSegBtn('temperature', 'Milk Temp', !probe.present, false, true) : ''}
+                <div class="flex items-center justify-between gap-[14px] w-full">
+                    <p class="font-['Inter:Bold',sans-serif] font-bold leading-[1.2] not-italic text-[var(--action-label)] text-[30px]" data-i18n-key="Steam Stop">Steam Stop</p>
+                    <div class="flex gap-[20px] items-center">
+                        ${stopSegBtn('time', 'Time')}
+                        ${stopSegBtn('temperature', 'Milk Temp', !probe.present)}
+                    </div>
                 </div>
                 <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${stopDescriptions[stopMode]}">${getTranslation(stopDescriptions[stopMode])}</p>
-                ${bengle && !probe.present ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] opacity-60 text-[24px] w-full" data-i18n-key="Requires the Bengle milk temperature probe.">${getTranslation('Requires the Bengle milk temperature probe.')}</p>
-                ` : ''}
             </div>
+            ` : ''}
 
             <!-- Stop at Milk Temperature (Milk Temp mode — Bengle) -->
             ${stopMode === 'temperature' && bengle ? `
@@ -3232,17 +3229,21 @@ export function renderSteamSettings() {
                 </div>
             </div>
             ` : ''}
-            <!-- Steam Duration: the Time stop itself, and the backstop under a
-                 Milk Temp stop -- the machine stops on whichever comes first, so a
-                 probe that never reaches target still has a cap. Only an Off stop
-                 has no duration at all. -->
-            ${stopMode === 'time' || stopMode === 'temperature' ? `
+            <!-- Steam Duration, Milk Temp stop only: there it is the BACKSTOP under
+                 the probe -- the machine stops on whichever comes first, so a probe
+                 that never reaches target still has a cap -- and the main-page tile
+                 cannot reach it, because an armed milk stop takes the tile's small
+                 slot (steamSlotField) and its mode pair becomes Milk|Flow.
+                 Under a Time stop the tile DOES own the duration (Time mode's big
+                 number, and the small slot in Flow mode), so a copy here would be a
+                 second control for the same value. -->
+            ${stopMode === 'temperature' ? `
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
                         <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="${stopMode === 'temperature' ? 'Max duration (seconds)' : 'Duration (seconds)'}">${getTranslation(stopMode === 'temperature' ? 'Max duration (seconds)' : 'Duration (seconds)')}</p>
-                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.steamDurationInput.min, SETTINGS_NUMPAD_CONFIGS.steamDurationInput.max, 's', duration)}
+                            <p class="leading-[1.2]" data-i18n-key="Duration (seconds)">${getTranslation('Duration (seconds)')}</p>
+                            ${rangeHint(MIN_STEAM_DURATION_S, SETTINGS_NUMPAD_CONFIGS.steamDurationInput.max, 's', duration || undefined)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3253,15 +3254,15 @@ export function renderSteamSettings() {
                             </button>
                             <div class="flex items-center justify-center" style="width: 130px;">
                                 ${duration === 0 ? `
-                                <!-- 0s is no steam timer: steam runs until stopped. The main page
-                                     shows this as the open-ended symbol (ui.formatSteamDuration),
-                                     so this page must not show a bare "0" for the same state. -->
+                                <!-- 0s is the heater off, the same state the toggle below shows.
+                                     The main page renders it the same way (ui.formatSteamDuration),
+                                     so neither place shows a bare "0" that reads as a short time. -->
                                 <input type="hidden" id="steamDurationInput" value="0">
-                                <p class="text-center text-[var(--text-primary)] text-[24px] font-bold w-full" aria-label="${getTranslation('No steam timer')}">${ui.formatSteamDuration(0)}</p>
+                                <p class="text-center text-[var(--text-primary)] text-[24px] font-bold w-full" data-i18n-key="Off">${getTranslation('Off')}</p>
                                 ` : `
                                 <input type="text" inputmode="numeric" pattern="[0-9]*" id="steamDurationInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
                                        value="${duration}" step="5"
-                                       onchange="window.updateSteamSetting('duration', parseInt(this.value))">
+                                       onchange="window.setSteamDurationFromInput(this.value)">
                                 <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">s</span>
                                 `}
                             </div>
@@ -3274,9 +3275,6 @@ export function renderSteamSettings() {
                         </div>
                     </div>
                 </div>
-                ${stopMode === 'temperature' ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] opacity-60 text-[24px] w-full pt-[12px]" data-i18n-key="Steam also stops after this long if the milk never reaches the target.">${getTranslation('Steam also stops after this long if the milk never reaches the target.')}</p>
-                ` : ''}
             </div>
             ` : ''}
 
@@ -5208,10 +5206,26 @@ export function renderCalibVoltageSettings() {
 }
 
 
-// Target temperature to switch the steam heater back on to. Captured when the
-// toggle goes off (the workflow then holds 0), so the stepper keeps showing a
-// real temperature and switching on returns to it.
+// Values to switch the steam heater back on to. Captured when it goes off (the
+// workflow then holds 0 for both), so the steppers keep showing real numbers
+// and switching on returns to them. Seeded from the shared last-* keys on first
+// render, so an app that boots with steam already off still knows them.
 let lastEnabledSteamCalibTemp = null;
+let lastEnabledSteamDuration = null;
+let rememberedSteamSeeded = false;
+
+async function seedRememberedSteamValues() {
+    if (rememberedSteamSeeded) return;
+    rememberedSteamSeeded = true;
+    try {
+        const [temp, duration] = await Promise.all([
+            readSharedValue(STEAM_TEMP_LAST_VALUE_KEY),
+            readSharedValue(STEAM_DURATION_LAST_VALUE_KEY),
+        ]);
+        if (lastEnabledSteamCalibTemp === null && temp > 0) lastEnabledSteamCalibTemp = temp;
+        if (lastEnabledSteamDuration === null && duration > 0) lastEnabledSteamDuration = duration;
+    } catch (e) { /* defaults cover it */ }
+}
 
 // Shared "Steam heater" on/off row (Quick Adjustments -> Steam and Calibration -> Steam).
 // Carries no page sizing; each page's container sets the width.
@@ -5231,7 +5245,9 @@ function steamHeaterToggleRow(heaterOn) {
 
 export function renderCalibSteamSettings() {
     const workflowTemp = settingsCache.workflow?.steamSettings?.targetTemperature ?? 155;
-    const heaterOn = workflowTemp > 0;
+    // isSteamOff, not > 0: a target between 1 and the enabled floor is a heater
+    // the machine has switched off, and the toggle must say so (#1079).
+    const heaterOn = !isSteamOff(workflowTemp);
     const targetTemp = heaterOn ? workflowTemp : (lastEnabledSteamCalibTemp ?? 150);
     const dim = heaterOn ? '' : 'opacity-40 cursor-not-allowed';
     const dis = heaterOn ? '' : 'disabled';
@@ -9488,18 +9504,24 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // remembers enabled values) -- api.setSteamHeaterEnabled writes at once and
     // would fight this page's Save model.
     window.setSteamHeaterOn = function(on) {
-        const current = settingsCache.workflow?.steamSettings?.targetTemperature ?? 0;
-        let value = 0;
+        const steam = settingsCache.workflow?.steamSettings ?? {};
         if (on) {
-            // Must land at or above the enabled floor: re-arming to a remembered
-            // value below it would leave the heater off and the toggle fighting
-            // the user.
-            const remembered = lastEnabledSteamCalibTemp ?? (current > 0 ? current : 150);
-            value = Math.min(STEAM_ENABLED_MAX_TEMP, Math.max(STEAM_ENABLED_MIN_TEMP, remembered));
-        } else if (current > 0) {
-            lastEnabledSteamCalibTemp = current;
+            // steamOnPatch clamps into the enabled band: re-arming to a
+            // remembered value below the floor would leave the heater off and
+            // the toggle fighting the user.
+            const patch = steamOnPatch({
+                remembered: {
+                    temp: lastEnabledSteamCalibTemp ?? (steam.targetTemperature > 0 ? steam.targetTemperature : null),
+                    duration: lastEnabledSteamDuration ?? (steam.duration > 0 ? steam.duration : null),
+                },
+                currentFlow: steam.flow,
+            });
+            for (const [field, value] of Object.entries(patch)) updateSteamSetting(field, value);
+        } else {
+            if (steam.targetTemperature > 0) lastEnabledSteamCalibTemp = steam.targetTemperature;
+            if (steam.duration > 0) lastEnabledSteamDuration = steam.duration;
+            for (const [field, value] of Object.entries(steamOffPatch())) updateSteamSetting(field, value);
         }
-        updateSteamSetting('targetTemperature', value);
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
@@ -9547,14 +9569,22 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
-    // Staged value, not the box: at 0 the box is the no-timer symbol and the
-    // input behind it is hidden (so it carries no change handler to round-trip
-    // through). Crossing into or out of 0 swaps which element is rendered, so
-    // that transition -- and only that one -- repaints.
+    // Staged value, not the box: at 0 the box reads "Off" and the input behind
+    // it is hidden (so it carries no change handler to round-trip through).
+    //
+    // Off is one end of this control as well as of the temperature: stepping
+    // below the shortest duration switches the heater off, and stepping up from
+    // Off re-arms at the remembered duration rather than at one step -- the
+    // user asked for steam back, not for one second of it.
     window.adjustSteamDuration = function(change) {
         const cfg = SETTINGS_NUMPAD_CONFIGS.steamDurationInput;
         const previous = settingsCache.workflow?.steamSettings?.duration ?? 0;
+        if (previous === 0) {
+            if (change > 0) window.setSteamHeaterOn(true);
+            return;                                     // already off; stepping down is a no-op
+        }
         const newValue = Math.max(cfg.min, Math.min(cfg.max, previous + change));
+        if (newValue < MIN_STEAM_DURATION_S) { window.setSteamHeaterOn(false); return; }
         if (newValue === previous) return;
         updateSteamSetting('duration', newValue);
         const input = document.getElementById('steamDurationInput');
@@ -9562,6 +9592,19 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if ((previous === 0) !== (newValue === 0) && activeSettingsCategory) {
             updateSettingsContentArea(activeSettingsCategory);
         }
+    };
+
+    // Typed or numpad entry. Anything below the shortest duration -- 0 and an
+    // empty box included -- is Off rather than a very short steam time.
+    window.setSteamDurationFromInput = function(raw) {
+        const intent = steamDurationIntent(raw);
+        if (!intent) {                                  // unparseable: repaint, change nothing
+            if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+            return;
+        }
+        if (intent.off) { window.setSteamHeaterOn(false); return; }
+        updateSteamSetting('duration', intent.duration);
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
     window.adjustSteamFlow = function(change) {
@@ -9584,18 +9627,23 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
     };
 
-    // Steam-stop mode toggle (Off | Time | Milk Temp). Stages stopAtTemperature and
+    // Steam-stop mode toggle (Time | Milk Temp). Stages stopAtTemperature and
     // re-renders so the correct dependent field (Duration or Milk target) is revealed.
     window.setEcoSteam = setEcoSteamEnabled;
+
+    // Why Milk Temp is greyed out, on demand instead of as standing copy.
+    window.explainSteamStopUnavailable = function() {
+        ui.showToast(getTranslation('Requires the Bengle milk temperature probe.'), 3000, 'info');
+    };
 
     window.setSteamStopMode = function(mode) {
         // Milk Temp is unofferable without the probe (button renders disabled —
         // this guard is belt-and-braces against a stale DOM).
         if (mode === 'temperature' && !getMilkProbe().present) return;
         // A hand-picked mode overrides any pending probe-loss restore, exactly
-        // like a tap on the main-page tile — without this, an Off/Time stop
-        // chosen here while the probe is away is auto-re-armed to Milk the
-        // moment the probe returns.
+        // like a tap on the main-page tile — without this, a Time stop chosen
+        // here while the probe is away is auto-re-armed to Milk the moment the
+        // probe returns.
         ui.clearMilkStopProbeRestore();
         try {
             localStorage.setItem('streamline.steamStopMode', mode);

@@ -1,14 +1,13 @@
 import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
-import { AUTO_STEAM_BOUNDS } from './auto-steam-safety.js';
-const MAX_STEAM_DURATION_S = AUTO_STEAM_BOUNDS.duration.maximum;
-import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
+
+import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setSteamHeaterEnabled, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
 import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from './machine-status-policy.js';
 import { openDB, getSetting } from './idb.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, formatScreensaverClockDate, formatScreensaverClockTime, screensaverClockPositionStyle } from './screensaver-clock.js';
 import { deriveSleepButtonAction, isWakePending, mayTapWakeMachine } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel, isRefillKitPresent } from './machine.js';
-import { STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
+import { MAX_STEAM_DURATION_S, MIN_STEAM_DURATION_S, STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
 import { API_DEBOUNCE_MS } from './workflow-watch.js';
 import { shouldUseNumpad } from './numpad-policy.js';
 import { openContextMenu } from './context-menu.js';
@@ -120,7 +119,23 @@ function showAutoSteamTargetBriefly(label) {
 }
 
 function currentManualSteamMode() {
-    return manualSteamMode({ milkAvailable: isBengleMachine() && milkProbePresent });
+    return manualSteamMode({ milkAvailable: milkTileAvailable() });
+}
+
+// Can the tile offer the Milk|Flow pair at all? Bengle + a live probe. This is
+// what decides whether a TOGGLE can reach Milk and arm the stop, so it must not
+// depend on the stop already being armed.
+function milkTileAvailable() {
+    return isBengleMachine() && milkProbePresent;
+}
+
+// Does the pair READ as Milk|Flow right now? Only with the stop actually armed.
+// Unarmed, the non-flow number is a steam duration, so a "Milk" label would
+// contradict the value it labels -- the pair falls back to Time|Flow until a
+// toggle arms the stop (toggleSteamMode arms on any non-auto mode while
+// milkTileAvailable()).
+function milkPairArmed() {
+    return milkTileAvailable() && milkStopArmed;
 }
 
 function disposeCalibratedSteamUI() {
@@ -615,6 +630,28 @@ function makeEditable(element, onCommit) {
     });
 }
 
+// A two-value tile (Steam, Hot Water) shows the half the +/- buttons and the
+// presets edit big and on TOP, the other half small underneath, so the number
+// and the mode label never read in opposite orders.
+//
+// Both sizes and both weights are set here rather than left to the markup: the
+// two spans used to carry their own size/weight classes, which stayed on while
+// these were toggled, and equal-specificity ties went to stylesheet order --
+// the pair ended up with four different looks instead of two.
+//
+// The stack reverses rather than the nodes moving, so the DOM order (and every
+// id the numpad, zoom dial-in and plugin tiles look up) stays put.
+const TILE_VALUE_BIG = ['text-[26px]', 'font-bold'];
+const TILE_VALUE_SMALL = ['text-[20px]', 'font-semibold'];
+function showActiveValue(activeEl, otherEl) {
+    activeEl.classList.remove(...TILE_VALUE_SMALL);
+    activeEl.classList.add(...TILE_VALUE_BIG, 'text-[var(--text-primary)]');
+    otherEl.classList.remove(...TILE_VALUE_BIG);
+    otherEl.classList.add(...TILE_VALUE_SMALL);
+    const stack = activeEl.parentElement;
+    if (stack) stack.style.flexDirection = activeEl === stack.firstElementChild ? 'column' : 'column-reverse';
+}
+
 export function updateHotWaterDisplay(data) {
     const volEl = document.getElementById('hot-water-vol-value');
     const tempEl = document.getElementById('hot-water-temp-value');
@@ -636,21 +673,10 @@ export function updateHotWaterDisplay(data) {
         : formatTemp(currentHotWaterTemp, 0);
     syncPresetHighlight(document.getElementById('hotwater-presets'), t => t === hwTarget);
 
-    if (hotWaterMode === 'volume') {
-        volEl.classList.remove('text-[20px]');
-        volEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
-        tempEl.classList.remove('text-[26px]', 'font-bold');
-        tempEl.classList.add('text-[20px]');
-        modeVolEl.className = 'text-[var(--mimoja-blue-v2)]';
-        modeTempEl.className = 'text-[var(--low-contrast-white)]';
-    } else { // temperature mode
-        tempEl.classList.remove('text-[20px]');
-        tempEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
-        volEl.classList.remove('text-[26px]', 'font-bold');
-        volEl.classList.add('text-[20px]');
-        modeTempEl.className = 'text-[var(--mimoja-blue-v2)]';
-        modeVolEl.className = 'text-[var(--low-contrast-white)]';
-    }
+    const volActive = hotWaterMode === 'volume';
+    showActiveValue(volActive ? volEl : tempEl, volActive ? tempEl : volEl);
+    modeVolEl.className = volActive ? 'text-[var(--mimoja-blue-v2)]' : 'text-[var(--low-contrast-white)]';
+    modeTempEl.className = volActive ? 'text-[var(--low-contrast-white)]' : 'text-[var(--mimoja-blue-v2)]';
 }
 
 function scheduleHotWaterApi() {
@@ -880,10 +906,10 @@ export function flashElement(element) {
 // app.js feeds live probe presence here (same debounced tracker the settings
 // steam page consumes). The tile's mode pair follows availability — Milk|Flow
 // with the probe, Time|Flow without — and a probe loss un-arms an active milk
-// stop and lands the tile on the user's recorded Time/Off fallback, exactly
+// stop and lands the tile on the user's recorded fallback stop mode, exactly
 // like the settings page. The shared skin-local keys keep both views agreeing.
 
-// Last non-temperature stop mode the user chose ('time'|'off') — recorded by
+// Last non-temperature stop mode the user chose ('time') — recorded by
 // the settings page; what both views fall back to when the probe disappears.
 function readSteamStopFallback() {
     try { return localStorage.getItem('streamline.steamStopModeFallback'); } catch (e) { return null; }
@@ -899,7 +925,7 @@ function recordSteamStopMode(mode) {
 
 // A stop mode the user picks BY HAND overrides any pending probe-loss restore.
 // The tile's toggle clears the marker inline (toggleSteamMode); the settings
-// page's stop-mode buttons (setSteamStopMode) call this — otherwise an Off/Time
+// page's stop-mode buttons (setSteamStopMode) call this — otherwise a Time
 // stop chosen explicitly in Settings while the probe is away would be
 // overridden by the auto-re-arm when the probe returns.
 export function clearMilkStopProbeRestore() {
@@ -908,18 +934,28 @@ export function clearMilkStopProbeRestore() {
 
 // Show the tile's mode pair: "Milk | Flow" while the milk stop is offerable,
 // else "Time | Flow" (non-Bengle, or Bengle with the probe absent/unplugged).
+// Called from updateSteamDisplay, so it runs as often as the tile repaints:
+// dedupe before writing, like every other per-frame writer on this page.
+let lastMilkPairShown = null;
 function updateSteamModeOptions(milkAvailable) {
+    if (milkAvailable === lastMilkPairShown) return;
     const timeEl = document.getElementById('steam-mode-time');
     const milkEl = document.getElementById('steam-mode-milk');
-    if (timeEl) timeEl.style.display = milkAvailable ? 'none' : '';
-    if (milkEl) milkEl.style.display = milkAvailable ? '' : 'none';
+    if (!timeEl || !milkEl) return;      // tile not mounted yet; nothing recorded
+    timeEl.style.display = milkAvailable ? 'none' : '';
+    milkEl.style.display = milkAvailable ? '' : 'none';
+    lastMilkPairShown = milkAvailable;
 }
 
 export function setMilkProbePresent(present) {
     if (present === milkProbePresent) return;
+    // Bengle check BEFORE the write: machine info can land after the first probe
+    // reading, and storing the flag first would make this call the only one that
+    // ever sees the flip -- every later call returns at the equality check above,
+    // leaving the pair stuck on Time|Flow with a probe attached.
+    if (!isBengleMachine()) return; // milk stop is Bengle-only; the tile pair is Time|Flow regardless
     milkProbePresent = present;
     if (isAutoSteamMode()) return;
-    if (!isBengleMachine()) return; // milk stop is Bengle-only; the tile pair is Time|Flow regardless
     const fallback = readSteamStopFallback();
     if (!present && (milkStopArmed || steamMode === 'temperature')) {
         // Probe gone → the temperature stop can never trigger: un-arm it on the
@@ -947,18 +983,15 @@ export function setMilkProbePresent(present) {
         setStopAtTemperature(currentMilkStop).catch(e => logger.error(e));
         recordSteamStopMode('temperature');
     }
-    steamMode = resolveSteamTileMode(steamMode, present, milkStopArmed, fallback);
-    updateSteamModeOptions(present);
+    steamMode = resolveSteamTileMode(steamMode, milkPairArmed(), milkStopArmed, fallback);
     updateSteamDisplay({ targetSteamDuration: currentSteamDuration, targetSteamFlow: currentSteamFlow });
     updateSteamPresetDisplay();
 }
 
-// 0s means no steam timer: steam runs until the user stops it (subject to the
-// machine safety timeout). The heater is a separate setting, so "off" would be
-// wrong here -- show the open-ended symbol rather than a number that looks like
-// a very short steam time.
+// 0s is the steam heater off, the same state the settings page's toggle shows.
+// Never a bare "0", which reads as a very short steam time.
 export function formatSteamDuration(v) {
-    return v === 0 ? '∞' : `${v}s`;
+    return v === 0 ? getTranslation('Off') : `${v}s`;
 }
 
 export function updateSteamDisplay(data) {
@@ -984,10 +1017,14 @@ export function updateSteamDisplay(data) {
         milkStopArmed = data.stopAtTemperature > 0;
         if (milkStopArmed) currentMilkStop = Math.round(data.stopAtTemperature);
         if (steamMode !== 'auto') steamMode = resolveSteamTileMode(
-            steamMode, isBengleMachine() && milkProbePresent, milkStopArmed, readSteamStopFallback());
+            steamMode, milkPairArmed(), milkStopArmed, readSteamStopFallback());
     }
 
-    const milkAvailable = isBengleMachine() && milkProbePresent;
+    // Derived here, not only on a presence flip: the flip handler is skipped in
+    // Auto mode and at boot before the machine model is known, and the pair also
+    // follows the armed stop, which changes without any flip at all.
+    const milkAvailable = milkPairArmed();
+    updateSteamModeOptions(milkAvailable);
     document.querySelectorAll('[data-steam-mode]').forEach(label => {
         const selected = label.dataset.steamMode === steamMode || (label.dataset.steamMode === 'time' && steamMode === 'temperature');
         label.style.color = selected ? 'var(--mimoja-blue-v2)' : '';
@@ -1006,10 +1043,7 @@ export function updateSteamDisplay(data) {
 
     if (steamMode === 'temperature') {
         durationEl.textContent = formatTemp(currentMilkStop, 0);
-        durationEl.classList.remove('text-[20px]');
-        durationEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
-        flowEl.classList.remove('text-[26px]', 'font-bold');
-        flowEl.classList.add('text-[20px]');
+        showActiveValue(durationEl, flowEl);
         if (modeMilkEl) modeMilkEl.className = ACTIVE;
         modeTimeEl.className = INACTIVE;
         modeFlowEl.className = INACTIVE;
@@ -1021,10 +1055,7 @@ export function updateSteamDisplay(data) {
         durationEl.style.fontSize = showingTarget ? '20px' : '';
         durationEl.style.fontWeight = showingTarget ? '400' : '';
         durationEl.style.whiteSpace = showingTarget ? 'nowrap' : '';
-        durationEl.classList.remove('text-[20px]');
-        durationEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
-        flowEl.classList.remove('text-[26px]', 'font-bold');
-        flowEl.classList.add('text-[20px]');
+        showActiveValue(durationEl, flowEl);
         modeTimeEl.className = ACTIVE;
         modeFlowEl.className = INACTIVE;
     } else { // flow mode
@@ -1033,13 +1064,10 @@ export function updateSteamDisplay(data) {
         // is armed (the toggle keeps it armed in Flow), the steam time
         // otherwise -- including a Bengle whose stop was turned off in
         // Settings, where the seconds are what actually ends the steam.
-        durationEl.textContent = milkAvailable && milkStopArmed
+        durationEl.textContent = milkAvailable
             ? formatTemp(currentMilkStop, 0)
             : formatSteamDuration(currentSteamDuration);
-        flowEl.classList.remove('text-[20px]');
-        flowEl.classList.add('text-[26px]', 'font-bold', 'text-[var(--text-primary)]');
-        durationEl.classList.remove('text-[26px]', 'font-bold');
-        durationEl.classList.add('text-[20px]');
+        showActiveValue(flowEl, durationEl);
         modeFlowEl.className = ACTIVE;
         modeTimeEl.className = INACTIVE;
     }
@@ -1148,14 +1176,26 @@ function syncSteamPresets() {
     }
 }
 
+// The heater on/off transition from the tile's duration stepper. One writer
+// (api.setSteamHeaterEnabled) decides what comes back, and the workflow echo
+// repaints the tile -- so this never has to invent a duration locally. Pushed
+// through pushSteamSetting like every other steam write, so a failure marks the
+// tile and gets retried.
+function switchSteamHeater(on) {
+    markTileInteraction();
+    pushSteamSetting('duration', setSteamHeaterEnabled(on));
+}
+
 function incrementSteam() {
     if (steamMode === 'auto') { adjustAutoSteamSelection(0.1); return; }
     if (isAutoSteamMode()) return;
     const steamPlusBtn = document.getElementById('steam-plus');
     if (steamPlusBtn) { flashPlusMinusButton(steamPlusBtn); }
     if (steamMode === 'time') {
-        // 255 is the DE1's ceiling for TargetSteamLength (a single wire byte),
-        // the same bound Auto steam already enforces via AUTO_STEAM_BOUNDS.
+        // Off is one end of this stepper: plus from Off re-arms the heater at
+        // the remembered duration (api.setSteamHeaterEnabled owns that rule),
+        // and the tile repaints from the workflow echo rather than guessing it.
+        if (currentSteamDuration === 0) { switchSteamHeater(true); return; }
         if (currentSteamDuration < MAX_STEAM_DURATION_S) currentSteamDuration += 1;
     } else if (steamMode === 'temperature') {
         if (currentMilkStop < 80) currentMilkStop = Math.min(80, currentMilkStop + displayStepToCelsius(1));
@@ -1175,9 +1215,10 @@ function decrementSteam() {
     const steamMinusBtn = document.getElementById('steam-minus');
     if (steamMinusBtn) { flashPlusMinusButton(steamMinusBtn); }
     if (steamMode === 'time') {
-        if (currentSteamDuration > 0) {
-            currentSteamDuration -= 1;
-        }
+        // Stepping below the shortest duration switches the heater off, so the
+        // tile and the settings page mean the same thing by "Off".
+        if (currentSteamDuration <= MIN_STEAM_DURATION_S) { switchSteamHeater(false); return; }
+        currentSteamDuration -= 1;
     } else if (steamMode === 'temperature') {
         if (currentMilkStop > 30) currentMilkStop = Math.max(30, currentMilkStop - displayStepToCelsius(1));
     } else {
@@ -1502,7 +1543,7 @@ function syncDrinkOutPresets() {
 // inline editor below -- ask at interaction time, so a tap no longer offers
 // "STEAM DURATION" over a value in °C.
 export function steamSlotField() {
-    return resolveSteamSlotField(isBengleMachine() && milkProbePresent, milkStopArmed);
+    return resolveSteamSlotField(milkTileAvailable(), milkStopArmed);
 }
 
 // Milk-stop writes are clamped to 30-80 °C everywhere (tile +/-, the settings
@@ -1563,8 +1604,7 @@ export async function setSteamFlowPresetsFromMachineModel(model) {
     // same machine info at boot, before the first updateSteamDisplay; this
     // uses the model arg directly so the label always matches the presets
     // resolved below.
-    const bengle = isBengleModel(model);
-    const milkAvailable = bengle && milkProbePresent;
+    const milkAvailable = isBengleModel(model) && milkProbePresent && milkStopArmed;
     updateSteamModeOptions(milkAvailable);
     if (steamMode !== 'auto') steamMode = resolveSteamTileMode(steamMode, milkAvailable, milkStopArmed, readSteamStopFallback());
     try {
@@ -1626,7 +1666,7 @@ export async function setSteamFlowPresetsFromMachineModel(model) {
 
 async function toggleSteamMode() {
     if (calibratedSteamApplying) return;
-    const milkAvailable = isBengleMachine() && milkProbePresent;
+    const milkAvailable = milkTileAvailable();   // ungated: toggling is what ARMS the stop
     const modes = steamModeCycle({
         autoAvailable: calibratedSteamAvailable,
         milkAvailable,
@@ -1649,7 +1689,7 @@ async function toggleSteamMode() {
             // With milk available the pair is Milk|Flow and the tile shows the
             // milk target in both, so the stop stays armed across the toggle --
             // Flow only changes which number +/- edits. Disarming it there used
-            // to drop the steam back onto the Time/Off fallback, which is why
+            // to drop the steam back onto the fallback stop mode, which is why
             // Flow mode painted the fallback's seconds under a "Milk" label.
             const nextArmed = milkAvailable || next === 'temperature';
             if (nextArmed !== milkStopArmed) {
