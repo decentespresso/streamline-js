@@ -1150,9 +1150,11 @@ function scheduleSteamApi() {
     clearTimeout(steamApiDebounce);
     steamApiDebounce = setTimeout(() => {
         if (steamMode === 'time') {
-            pushSteamSetting(steamSyncField(steamMode), setTargetSteamDuration(currentSteamDuration));
-            // Per-profile save, same call the dose/yield/temp tiles make.
-            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
+            pushSteamSetting(steamSyncField(steamMode), setTargetSteamDuration(currentSteamDuration, { rearm: true }));
+            // Per-profile save, same call the dose/yield/temp tiles make. Not a
+            // 0: that is the heater off, and a profile holding it would switch
+            // the heater off every time it was loaded.
+            if (currentSteamDuration > 0) window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
         } else if (steamMode === 'temperature') {
             // Milk stop now has a KV record of its own, so it takes the same
             // marked-and-retried path as duration and flow (steamSyncField maps
@@ -2416,8 +2418,8 @@ export function initUI(callbacks) {
                 const newValue = steamTimePresets[index];
                 if (newValue === undefined) return;
 
-                pushSteamSetting('duration', setTargetSteamDuration(newValue));
-                window.app?.saveContextToActiveProfile?.({ targetSteamDuration: newValue });
+                pushSteamSetting('duration', setTargetSteamDuration(newValue, { rearm: true }));
+                if (newValue > 0) window.app?.saveContextToActiveProfile?.({ targetSteamDuration: newValue });
                 updateSteamDisplay({ targetSteamDuration: newValue });
 
                 syncPresetHighlight(steamPresets, t => t === button.textContent.trim());
@@ -2788,8 +2790,8 @@ export function initUI(callbacks) {
                 value = 0;
             }
             currentSteamDuration = value;
-            pushSteamSetting('duration', setTargetSteamDuration(currentSteamDuration));
-            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
+            pushSteamSetting('duration', setTargetSteamDuration(currentSteamDuration, { rearm: true }));
+            if (currentSteamDuration > 0) window.app?.saveContextToActiveProfile?.({ targetSteamDuration: currentSteamDuration });
             updateSteamDisplay({ targetSteamDuration: currentSteamDuration });
             syncSteamPresets();
         });

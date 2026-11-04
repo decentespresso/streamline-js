@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { decideResync } from '../src/modules/resync-policy.js';
 import { profileAtBrewTemp } from '../src/modules/brew-temp.js';
 import { selectedRecipeSteam } from '../src/modules/dye-selection.js';
-import { isSteamOff, steamOffPatch, steamOnPatch, MIN_STEAM_DURATION_S } from '../src/modules/steam-mode.js';
+import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, MIN_STEAM_DURATION_S } from '../src/modules/steam-mode.js';
 
 // Persistence of the user's main-page settings: the shared KV record that
 // outranks a drifted workflow (milk stop, plus the resync rule every tile value
@@ -240,7 +240,7 @@ const SHARED_VALUE_CACHE = [
         ...TRACKING,
         /export async function setTargetSteamTemp\(temp\) \{[\s\S]*?\r?\n\}/,
         /async function steamHeaterFor\(on\) \{[\s\S]*?\r?\n\}/,
-        /export async function setTargetSteamDuration\(duration\) \{[\s\S]*?\r?\n\}/,
+        /export async function setTargetSteamDuration\(duration, \{ rearm = false \} = \{\}\) \{[\s\S]*?\r?\n\}/,
         /export async function setSteamHeaterEnabled\(enabled\) \{[\s\S]*?\r?\n\}/,
     ]);
 
@@ -257,16 +257,17 @@ const SHARED_VALUE_CACHE = [
         const steamSettings = typeof machine === 'number' ? { targetTemperature: machine } : machine;
         const kvWrites = [];
         const workflowWrites = [];
+        const writerTags = [];
         const api = new Function(
             'logger', 'persistSharedValue', 'persistLastValue', 'updateWorkflow', 'getWorkflow', 'getValueFromStore', 'openDB', 'getSetting',
             'localStorage', 'getKVValue', 'getDye2KvArray', 'DYE2_KV_NAMESPACE', 'selectedRecipeSteam',
-            'isSteamOff', 'steamOffPatch', 'steamOnPatch', 'MIN_STEAM_DURATION_S',
+            'isSteamOff', 'steamOffPatch', 'steamOnPatch', 'steamDurationWrite', 'MIN_STEAM_DURATION_S',
             `const isAutoSteamActive = () => false; ${body}\nreturn { setTargetSteamDuration, setSteamHeaterEnabled, setTargetSteamTemp };`,
         )(
             { warn() {}, error() {} },
             async (key, value) => { kvWrites.push([key, value]); },
             async () => {},
-            async (patch) => { workflowWrites.push(patch); },
+            async (patch, writer) => { workflowWrites.push(patch); writerTags.push(writer); },
             async () => ({ steamSettings }),
             async (_namespace, key) => stored[key] ?? null,
             async () => {},
@@ -276,9 +277,9 @@ const SHARED_VALUE_CACHE = [
             async () => dye.recipes ?? null,
             'dye2.reaplugin',
             selectedRecipeSteam,
-            isSteamOff, steamOffPatch, steamOnPatch, MIN_STEAM_DURATION_S,
+            isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, MIN_STEAM_DURATION_S,
         );
-        return { api, kvWrites, workflowWrites };
+        return { api, kvWrites, workflowWrites, writerTags };
     };
 
     test('duration 0 switches the heater off and is never remembered as a duration', async () => {
@@ -290,9 +291,33 @@ const SHARED_VALUE_CACHE = [
         assert.deepEqual(kvWrites, [['last-steam-temp', 150], ['last-steam-duration', 25]]);
     });
 
-    test('a duration write from a heater-off machine sends no temperature', async () => {
-        const { api, workflowWrites } = build(150, 0);
-        await api.setTargetSteamDuration(30);
+    test('the user setting a duration on an off machine brings the temperature back', async () => {
+        // The tile reads the duration and the Settings toggle reads the
+        // temperature. Sending the duration alone left the tile counting
+        // seconds for a heater the toggle still (correctly) reported as off.
+        const { api, workflowWrites, writerTags } = build({ temp: 150, duration: 45 }, 0);
+        await api.setTargetSteamDuration(30, { rearm: true });
+        assert.deepEqual(workflowWrites, [{ steamSettings: { targetTemperature: 150, duration: 30 } }],
+            'the duration asked for wins over the remembered one');
+        // Carrying the temperature makes this the heater writer's write, not
+        // the duration writer's -- workflow-fields.js enforces that split.
+        assert.deepEqual(writerTags, ['api.steamHeater']);
+    });
+
+    test('a background replay does not wake a heater the user switched off', async () => {
+        // A drift resync or a profile's saved steam settings. Nothing is
+        // written -- not the workflow, and not the KV key, which would
+        // otherwise disagree with the workflow for good and have the drift
+        // check replaying this on every cooldown.
+        const { api, kvWrites, workflowWrites } = build({ temp: 150, duration: 45 }, 0);
+        assert.equal(await api.setTargetSteamDuration(30), null);
+        assert.deepEqual(workflowWrites, []);
+        assert.deepEqual(kvWrites, []);
+    });
+
+    test('with the heater on, a duration write still sends the duration alone', async () => {
+        const { api, workflowWrites } = build(150, { targetTemperature: 150 });
+        await api.setTargetSteamDuration(30, { rearm: true });
         assert.deepEqual(workflowWrites, [{ steamSettings: { duration: 30 } }]);
     });
 

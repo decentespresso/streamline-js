@@ -13,6 +13,7 @@ import {
     steamOffPatch,
     steamOnPatch,
     steamDurationIntent,
+    steamDurationWrite,
     DEFAULT_STEAM_DURATION_S,
     MIN_STEAM_DURATION_S,
     MAX_STEAM_DURATION_S,
@@ -554,5 +555,91 @@ test('shouldEnterEcoSteam: steam already off is left off, never armed', () => {
             false,
             `entered eco with configuredTemp ${temp}`,
         );
+    }
+});
+
+
+// The bug this exists to stop: the tile reads the duration and the Settings
+// heater toggle reads the temperature, so a write that moved only the duration
+// left the tile counting seconds for a heater the toggle reported as off.
+test('steamDurationWrite: a duration below the floor switches the heater off', () => {
+    for (const temp of [0, 150, undefined]) {
+        assert.equal(steamDurationWrite(temp, 0), 'off');
+        assert.equal(steamDurationWrite(temp, '0'), 'off');
+        assert.equal(steamDurationWrite(temp, 0.4), 'off');
+        assert.equal(steamDurationWrite(temp, -1), 'off');
+        assert.equal(steamDurationWrite(temp, NaN), 'off');
+    }
+    assert.equal(steamDurationWrite(150, 0, { rearm: true }), 'off',
+        'the user asking for 0 is still Off, not a re-arm');
+});
+
+test('steamDurationWrite: with the heater on, the duration is the whole change', () => {
+    assert.equal(steamDurationWrite(150, 30), 'write');
+    assert.equal(steamDurationWrite(150, 30, { rearm: true }), 'write');
+    assert.equal(steamDurationWrite(170, '45'), 'write');
+});
+
+test('steamDurationWrite: off + the user\'s own duration re-arms the heater', () => {
+    assert.equal(steamDurationWrite(0, 30, { rearm: true }), 'rearm');
+    assert.equal(steamDurationWrite(undefined, 30, { rearm: true }), 'rearm');
+    // Below the enabled floor is a heater the machine has switched off, the
+    // same reading isSteamOff gives the Settings toggle.
+    assert.equal(steamDurationWrite(100, 30, { rearm: true }), 'rearm');
+});
+
+test('steamDurationWrite: off + a background replay leaves the heater off', () => {
+    // A drift resync or a profile's saved steam settings must not undo a
+    // heater the user switched off -- the rule resyncSteamFromStore already
+    // applies to the whole check.
+    assert.equal(steamDurationWrite(0, 30), 'skip');
+    assert.equal(steamDurationWrite(0, 30, { rearm: false }), 'skip');
+    assert.equal(steamDurationWrite(100, 67), 'skip');
+});
+
+test('steamOnPatch: the loaded profile answers when nothing was remembered', () => {
+    // "We do not know what they last used" -- fall back to what the user saved
+    // against the profile (a favourite included) before a stock number.
+    const patch = steamOnPatch({ profile: { duration: 42, flow: 1.2 }, currentFlow: 0 });
+    assert.equal(patch.duration, 42);
+    assert.equal(patch.flow, 1.2);
+});
+
+test('steamOnPatch: a remembered value still outranks the profile', () => {
+    const patch = steamOnPatch({
+        remembered: { duration: 25, flow: 0.9 },
+        profile: { duration: 42, flow: 1.2 },
+        currentFlow: 0,
+    });
+    assert.equal(patch.duration, 25);
+    assert.equal(patch.flow, 0.9);
+});
+
+test('steamOnPatch: a recipe outranks both', () => {
+    const patch = steamOnPatch({
+        recipe: { durationS: 15, flow: 2 },
+        remembered: { duration: 25, flow: 0.9 },
+        profile: { duration: 42, flow: 1.2 },
+        currentFlow: 0,
+    });
+    assert.equal(patch.duration, 15);
+    assert.equal(patch.flow, 2);
+});
+
+test('steamOnPatch: with no source at all the defaults are tile presets', () => {
+    const patch = steamOnPatch({});
+    assert.equal(patch.duration, DEFAULT_STEAM_DURATION_S, 'the second steam-time preset');
+    assert.ok(patch.targetTemperature >= 135 && patch.targetTemperature <= 170,
+        'and a temperature the heater will actually run at');
+});
+
+test('steamOnPatch: the re-arm can never land back on off', () => {
+    // Every rung is clamped into the enabled band, so a stale 0 or a value
+    // below the floor cannot switch the heater straight back off.
+    for (const source of [{ remembered: { temp: 0, duration: 0 } }, { profile: { duration: 0 } },
+                          { recipe: { tempC: 10, durationS: 0 } }]) {
+        const patch = steamOnPatch(source);
+        assert.ok(patch.targetTemperature >= 135, JSON.stringify(source));
+        assert.ok(patch.duration >= 1, JSON.stringify(source));
     }
 });

@@ -145,7 +145,7 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             // duration to come back to.
                             const v = (newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal);
                             window.app.ui.updateSteamDisplay({ targetSteamDuration: v });
-                            window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v));
+                            window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v, { rearm: true }));
                             // Per-profile save, same call the tile's +/- and presets make
                             // (ui.js) — this full-screen numpad entry point is mobile/tablet
                             // only (initMobileValueInputs guards on shouldUseNumpad()) and
@@ -2236,6 +2236,9 @@ async function initMainPageOnce() {
         window.app.saveGrindToActiveProfile = (val) => profileManager.saveGrindToActiveProfile(val);
         window.app.saveContextToActiveProfile = (fields) => profileManager.saveContextToActiveProfile(fields);
         window.app.getActiveProfileRecord = () => profileManager.getActiveProfileRecord();
+        // Last rung of the steam re-arm chain. Registered rather than imported:
+        // profileManager imports api.js, so the dependency only runs one way.
+        api.setSteamProfileFallback(() => profileManager.activeProfileSteamFallback());
         const workflow = await loadInitialData();
         await initializeDe1Connection();
         connectWebSocket(handleData, onMachineSnapshotSocketOpen);
@@ -2639,24 +2642,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // The "Steam" label deep-links to Settings > Quick Adjustments > Steam,
-        // which now carries the steam heater toggle. The settings shell restores
-        // the saved location on mount, so writing it before loadPage is the
-        // whole mechanism.
-        const steamLabel = document.getElementById('steam-label');
-        if (steamLabel) {
-            const openSteamSettings = () => {
-                writeSettingsLocation('quickadjustments', 'steam');
+        // A tile's own label deep-links to that tile's settings category -- Steam
+        // to the page carrying the steam heater toggle, Hot Water to its own.
+        // The settings shell restores the saved location on mount, so writing it
+        // before loadPage is the whole mechanism.
+        for (const [labelId, category] of [['steam-label', 'steam'], ['hotwater-label', 'hotwater']]) {
+            const label = document.getElementById(labelId);
+            if (!label) continue;
+            const open = () => {
+                writeSettingsLocation('quickadjustments', category);
                 loadPage('src/settings/settings.html');
             };
-            steamLabel.addEventListener('pointerdown', () => {
+            label.addEventListener('pointerdown', () => {
                 prefetchSettingsPage().catch(() => {});
             }, { once: true });
-            steamLabel.addEventListener('click', openSteamSettings);
-            steamLabel.addEventListener('keydown', (e) => {
+            label.addEventListener('click', open);
+            label.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
                 e.preventDefault();
-                openSteamSettings();
+                open();
             });
         }
     } catch (error) {

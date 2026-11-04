@@ -8,7 +8,7 @@ import { loadPage } from './router.js'; // Singular and correctly formatted impo
 import { getTranslation, fitTextToBox } from './i18n.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { planAssignmentsLoad, mayPersistAutoPopulate } from './favorites-load.js';
-import { loadProfileOverrides, saveProfileOverride, clearProfileOverride, applyOverridesToRecords } from './profile-overrides.js';
+import { loadProfileOverrides, saveProfileOverride, clearProfileOverride, getProfileOverride, applyOverridesToRecords } from './profile-overrides.js';
 import { applyFlowCalibrationForProfile } from './flow-calibration.js';
 import { recipeIdPatch } from './dye-selection.js';
 import { profileSendBlocked, setPendingProfileSend, clearPendingProfileSend } from './profile-send-gate.js';
@@ -541,6 +541,22 @@ export function getActiveProfileRecord() {
 
 export function getActiveProfileId() {
     return availableProfiles[activeProfileId] ? activeProfileId : null;
+}
+
+// The last rung of the steam re-arm chain (api.setSteamProfileFallback): what
+// the user saved against the profile that is loaded, a favourite included.
+// Reached only when neither a DYE2 recipe nor the remembered last-used value
+// can say what the heater should come back to.
+//
+// 0 is skipped on purpose. It is not a duration, it is the heater switched off,
+// and feeding it back into the re-arm would switch it straight off again.
+export function activeProfileSteamFallback() {
+    const overrides = getProfileOverride(getActiveProfileId()) || {};
+    const positive = (v) => (typeof v === 'number' && v > 0 ? v : null);
+    return {
+        duration: positive(overrides.targetSteamDuration),
+        flow: positive(overrides.targetSteamFlow),
+    };
 }
 
 // getActiveProfileId() answers null for an id the cache has not caught up with

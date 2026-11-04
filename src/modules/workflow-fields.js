@@ -148,6 +148,8 @@ export const WORKFLOW_WRITERS = {
         'context.grinderId', 'context.grinderModel',
         'context.extras.basketId', 'context.extras.basketName',
         'steamSettings.targetTemperature', 'steamSettings.duration', 'steamSettings.flow',
+        // The recipe's own milk auto-stop (KV steamStopAtTempC, dye2 6aec7f3).
+        'steamSettings.stopAtTemperature',
         'hotWaterData.targetTemperature', 'hotWaterData.volume', 'hotWaterData.duration', 'hotWaterData.flow',
         'rinseData',
     ],

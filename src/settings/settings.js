@@ -72,8 +72,6 @@ const SETTINGS_NUMPAD_CONFIGS = {
     // so anything above 255 cannot be held by the machine at all.
     steamDurationInput:      { title: 'STEAM DURATION',      unit: 'sec',  min: 0,   max: 255,  fieldType: 'settings-steam-duration' },
     steamFlowInput:          { title: 'STEAM FLOW',          unit: 'ml/s', min: 0.4, max: 2.5,  fieldType: 'settings-steam-flow' },
-    hotWaterTempInput:       { title: 'HOT WATER TEMP',      unit: '°C',   min: 50,  max: 95,   fieldType: 'settings-hw-temp' },
-    hotWaterVolumeInput:     { title: 'HOT WATER VOLUME',    unit: 'ml',   min: 10,  max: 500,  fieldType: 'settings-hw-volume' },
     hotWaterDurationInput:   { title: 'HOT WATER DURATION',  unit: 'sec',  min: 5,   max: 120,  fieldType: 'settings-hw-duration' },
     // 1-10 ml/s. Decaid does not validate this field at all -- it passes
     // hotWaterData.flow straight to the DE1's hotWaterFlowRate MMR -- and its
@@ -88,7 +86,7 @@ const SETTINGS_NUMPAD_CONFIGS = {
     heaterPh2TimeoutInput:   { title: 'HEATER TEST TIMEOUT', unit: 'sec',  min: 0,   max: 60,   fieldType: 'settings-heater-ph2-timeout' },
     weightFlowMultiplierInput: { title: 'WEIGHT FLOW MULT',  unit: '',     min: 0,              fieldType: 'settings-weight-mult' },
     volumeFlowMultiplierInput: { title: 'VOLUME FLOW MULT',  unit: '',     min: 0,              fieldType: 'settings-volume-mult' },
-    hotWaterFlowMultiplierInput: { title: 'HW FLOW MULT',    unit: 's',    min: 0,              fieldType: 'settings-hw-flow-mult' },
+    hotWaterFlowMultiplierInput: { title: 'HW FLOW MULT',    unit: '',     min: 0,              fieldType: 'settings-hw-flow-mult' },
     // Native type=number fields migrated onto the in-app numpad for a single,
     // consistent numeric-entry surface on the tablet (desktop keeps the native
     // control, since attachSettingsNumpad is gated on shouldUseNumpad()). The
@@ -4421,8 +4419,9 @@ export function renderHotWaterSettings() {
     }
 
     const hotWaterData = settingsCache.workflow?.hotWaterData || {};
-    const targetTemp = hotWaterData.targetTemperature ?? 75;
-    const volume = hotWaterData.volume ?? 50;
+    // Target temperature and volume are not here: the main-page Hot Water tile
+    // is the editor for both (its two-value pair), and a second set of steppers
+    // on this page was the same number twice.
     const duration = hotWaterData.duration ?? 30;
     const flow = hotWaterData.flow ?? 2.5;
     // Stop-at-weight toggle + its lookahead multiplier — Rea (not workflow) settings.
@@ -4436,70 +4435,6 @@ export function renderHotWaterSettings() {
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Hot Water Settings">Hot Water Settings</p>
-            </div>
-
-            <!-- Hot Water Temperature -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
-                <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Target Temperature (°C)">Target Temperature (°C)</p>
-                            ${rangeHint(tempInputValue(SETTINGS_NUMPAD_CONFIGS.hotWaterTempInput.min), tempInputValue(SETTINGS_NUMPAD_CONFIGS.hotWaterTempInput.max), tempUnitLabel(), tempInputValue(targetTemp))}
-                        </div>
-                        <div class="flex gap-[20px] h-[72px] items-center">
-                            <button aria-label="Decrease hot water temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterTemp(-1);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                            <div class="flex items-center justify-center" style="width: 130px;">
-                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="hotWaterTempInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${tempInputValue(targetTemp)}" step="1" min="${tempInputValue(50)}" max="${tempInputValue(95)}"
-                                       onchange="window.updateHotWaterSetting('targetTemperature', Math.round(window.tempInputToCelsius(this.value)))">
-                                <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">${tempUnitLabel()}</span>
-                            </div>
-                            <button aria-label="Increase hot water temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterTemp(1);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hot Water Volume -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
-                <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Volume">Volume</p>
-                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterVolumeInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterVolumeInput.max, 'ml', volume)}
-                        </div>
-                        <div class="flex gap-[20px] h-[72px] items-center">
-                            <button aria-label="Decrease hot water volume" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterVolume(-10);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                            <div class="flex items-center justify-center" style="width: 130px;">
-                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="hotWaterVolumeInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${volume}" step="10" min="10" max="500"
-                                       onchange="window.updateHotWaterSetting('volume', parseInt(this.value))">
-                                <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">ml</span>
-                            </div>
-                            <button aria-label="Increase hot water volume" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterVolume(10);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
             </div>
 
             <!-- Hot Water Duration -->
@@ -4591,7 +4526,7 @@ export function renderHotWaterSettings() {
                     <div class="content-stretch flex items-center justify-between relative w-full">
                         <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow Multiplier">Flow Multiplier</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">Lookahead for stop-at-weight</span>
+                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Higher stops the water sooner">Higher stops the water sooner</span>
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4604,7 +4539,6 @@ export function renderHotWaterSettings() {
                                 <input type="text" inputmode="decimal" id="hotWaterFlowMultiplierInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
                                        value="${hwFlowMult}" step="0.05" min="0"
                                        onchange="window.updateReaSetting('hotWaterFlowMultiplier', parseFloat(this.value))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">s</span>
                             </div>
                             <button aria-label="Increase hot water flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHotWaterFlowMultiplier(0.05);">
@@ -9353,25 +9287,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
     };
 
-    window.adjustHotWaterTemp = function(change) {
-        const input = document.getElementById('hotWaterTempInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(tempInputValue(50), Math.min(tempInputValue(95), newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
-        }
-    };
 
-    window.adjustHotWaterVolume = function(change) {
-        const input = document.getElementById('hotWaterVolumeInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(10, Math.min(500, newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
-        }
-    };
 
     window.adjustHotWaterDuration = function(change) {
         const input = document.getElementById('hotWaterDurationInput');

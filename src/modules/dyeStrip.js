@@ -19,7 +19,7 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, getProfiles } from './api.js';
+import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox, getTranslation } from './i18n.js';
@@ -664,17 +664,34 @@ async function mergeRecipeLiveSettings(dv) {
         steam.flow = dv.steamFlowMls;
         await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, dv.steamFlowMls);
     }
+    // Not gated on steamMode: that is the display hint for the time/flow pair
+    // and says nothing about the stop. Remembered only while armed, the rule
+    // api.setStopAtTemperature applies -- a 0 means the stop is off, and
+    // persisting it would erase the temperature the user tuned.
+    if (dv.steamStopAtTempC != null) {
+        steam.stopAtTemperature = dv.steamStopAtTempC;
+        if (dv.steamStopAtTempC > 0) await persistSharedValue(MILK_STOP_LAST_VALUE_KEY, dv.steamStopAtTempC);
+    }
     if (Object.keys(steam).length) patch.steamSettings = steam;
 
+    // Applied on presence, not on hotWaterMode: the mode only says which of the
+    // pair the recipe editor showed, and gating on it dropped every other
+    // setting the recipe held. DYE2's own apply does the same (plugin.js
+    // RECIPE_MACHINE_FIELDS: "apply writes every setting held, not just the
+    // active mode's").
     const water = {};
-    if (dv.hotWaterMode === 'vol' && dv.hotWaterMl != null) {
+    if (dv.hotWaterMl != null) {
         water.volume = dv.hotWaterMl;
         await persistSharedValue(HOT_WATER_VOLUME_LAST_VALUE_KEY, dv.hotWaterMl);
     }
-    if (dv.hotWaterMode === 'temp' && dv.hotWaterTempC != null) {
+    if (dv.hotWaterTempC != null) {
         water.targetTemperature = dv.hotWaterTempC;
         await persistSharedValue(HOT_WATER_TEMP_LAST_VALUE_KEY, dv.hotWaterTempC);
     }
+    // No main-page tile and no last-* key of their own; held by the recipe
+    // editor, so applying the recipe must still put them on the machine.
+    if (dv.hotWaterTimeS != null) water.duration = dv.hotWaterTimeS;
+    if (dv.hotWaterFlowMls != null) water.flow = dv.hotWaterFlowMls;
     if (Object.keys(water).length) patch.hotWaterData = water;
 
     if (dv.flushS != null) {
@@ -1451,13 +1468,26 @@ export function recipeAutoSaveFields(dataToSend, workflow) {
     } else if (steam.flow != null) {
         patch.steamMode = 'flow';
         patch.steamFlowMls = workflow?.steamSettings?.flow ?? steam.flow;
-    } // stopAtTemperature (milk) / auto-steam fields: no recipe equivalent -- skip.
+    }
+    // The milk auto-stop is its own field, not one of the time/flow pair:
+    // steamMode has no 'milk' value (it only names which of the pair the recipe
+    // editor shows), so the stop is recorded without touching it. DYE2's recipe
+    // editor has had a Milk stop control since dye2 6aec7f3; 0 is a real value
+    // there, meaning the stop is off.
+    if (steam.stopAtTemperature != null) {
+        patch.steamStopAtTempC = workflow?.steamSettings?.stopAtTemperature ?? steam.stopAtTemperature;
+    }
+    // Volume and temperature are recorded independently -- one write can carry
+    // both, and an either/or dropped the second one. steamMode's sibling
+    // hotWaterMode is still just the display hint, so it follows whichever the
+    // edit led with.
     const hw = dataToSend.hotWaterData || {};
     if (hw.volume != null) {
         patch.hotWaterMode = 'vol';
         patch.hotWaterMl = workflow?.hotWaterData?.volume ?? hw.volume;
-    } else if (hw.targetTemperature != null) {
-        patch.hotWaterMode = 'temp';
+    }
+    if (hw.targetTemperature != null) {
+        if (patch.hotWaterMode === undefined) patch.hotWaterMode = 'temp';
         patch.hotWaterTempC = workflow?.hotWaterData?.targetTemperature ?? hw.targetTemperature;
     }
     const rinse = dataToSend.rinseData || {};

@@ -450,9 +450,10 @@ function lift(module, patterns) {
 // direction, folding a dashboard edit back into the active recipe. The only
 // safety property that matters here is that it never claims to represent an
 // edit the recipe schema has no field for (KV_CONTRACT.md's dashboardVariables
-// shape): milk auto-stop and calibrated auto-steam are dashboard-only concepts
-// with nothing to write into, so those must produce no patch at all rather than
-// a guessed one.
+// shape): calibrated auto-steam is a dashboard-only concept with nothing to
+// write into, so it must produce no patch at all rather than a guessed one.
+// The milk auto-stop DOES have a field -- steamStopAtTempC, added in dye2
+// 6aec7f3 along with a Milk stop control in the recipe editor.
 {
     const recipeAutoSaveFields = new Function(
         `${readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8')
@@ -500,12 +501,30 @@ function lift(module, patterns) {
         assert.deepEqual(patch, { steamMode: 'flow', steamFlowMls: 1.4 });
     });
 
-    test('a milk auto-stop edit has no recipe field -- produces no steam patch at all', () => {
+    test('a milk auto-stop edit records steamStopAtTempC and leaves steamMode alone', () => {
+        // steamMode names which of the time/flow PAIR the editor shows; there
+        // is no 'milk' value for it, so the stop is recorded on its own.
         const patch = recipeAutoSaveFields(
             { steamSettings: { stopAtTemperature: 65 } },
             { steamSettings: { stopAtTemperature: 65 } },
         );
-        assert.deepEqual(patch, {});
+        assert.deepEqual(patch, { steamStopAtTempC: 65 });
+    });
+
+    test('a milk auto-stop of 0 is a real value -- the stop turned off', () => {
+        const patch = recipeAutoSaveFields(
+            { steamSettings: { stopAtTemperature: 0 } },
+            { steamSettings: { stopAtTemperature: 0 } },
+        );
+        assert.deepEqual(patch, { steamStopAtTempC: 0 });
+    });
+
+    test('a steam time edit alongside a stop records both', () => {
+        const patch = recipeAutoSaveFields(
+            { steamSettings: { duration: 25, stopAtTemperature: 62 } },
+            { steamSettings: { duration: 25, stopAtTemperature: 62 } },
+        );
+        assert.deepEqual(patch, { steamMode: 'time', steamTimeS: 25, steamStopAtTempC: 62 });
     });
 
     test('hot water volume vs temperature pick the matching mode', () => {
@@ -519,6 +538,24 @@ function lift(module, patterns) {
         );
     });
 
+    test('one write carrying both hot water fields records both, not just the first', () => {
+        const patch = recipeAutoSaveFields(
+            { hotWaterData: { volume: 120, targetTemperature: 85 } },
+            { hotWaterData: { volume: 120, targetTemperature: 85 } },
+        );
+        assert.deepEqual(patch, { hotWaterMode: 'vol', hotWaterMl: 120, hotWaterTempC: 85 });
+    });
+
+    test('the workflow response wins over the sent payload for the stop and hot water too', () => {
+        assert.deepEqual(
+            recipeAutoSaveFields(
+                { steamSettings: { stopAtTemperature: 65 }, hotWaterData: { targetTemperature: 85 } },
+                { steamSettings: { stopAtTemperature: 64 }, hotWaterData: { targetTemperature: 86 } },
+            ),
+            { steamStopAtTempC: 64, hotWaterMode: 'temp', hotWaterTempC: 86 },
+        );
+    });
+
     test('flush maps to flushS', () => {
         const patch = recipeAutoSaveFields({ rinseData: { duration: 8 } }, { rinseData: { duration: 8 } });
         assert.deepEqual(patch, { flushS: 8 });
@@ -526,6 +563,64 @@ function lift(module, patterns) {
 
     test('an edit with nothing this schema covers produces an empty patch', () => {
         assert.deepEqual(recipeAutoSaveFields({ context: { extras: { note: 'x' } } }, {}), {});
+    });
+}
+
+// ── Recipe apply: which held settings reach the machine (dyeStrip.js)
+// The other direction. KV_CONTRACT.md is explicit that steamMode/hotWaterMode
+// are display-only and "Apply ignores them and writes every setting held" --
+// DYE2's own apply says the same (plugin.js RECIPE_MACHINE_FIELDS). Gating the
+// write on the mode silently dropped everything the recipe held outside it.
+{
+    const persisted = [];
+    const mergeRecipeLiveSettings = new Function(
+        'persistSharedValue', 'STEAM_DURATION_LAST_VALUE_KEY', 'STEAM_FLOW_LAST_VALUE_KEY',
+        'MILK_STOP_LAST_VALUE_KEY', 'HOT_WATER_VOLUME_LAST_VALUE_KEY', 'HOT_WATER_TEMP_LAST_VALUE_KEY',
+        'FLUSH_DURATION_LAST_VALUE_KEY',
+        `${readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8')
+            .match(/async function mergeRecipeLiveSettings\(dv\) \{[\s\S]*?\r?\n\}/)[0]}\nreturn mergeRecipeLiveSettings;`
+    )(
+        async (key, value) => { persisted.push([key, value]); },
+        'last-steam-duration', 'last-steam-flow', 'last-milk-stop',
+        'last-hot-water-volume', 'last-hot-water-temp', 'last-flush-duration',
+    );
+
+    test('a recipe\'s milk stop reaches the machine and is remembered', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamStopAtTempC: 62 });
+        assert.deepEqual(patch, { steamSettings: { stopAtTemperature: 62 } });
+        assert.deepEqual(persisted, [['last-milk-stop', 62]]);
+    });
+
+    test('a stop of 0 is applied but never remembered', async () => {
+        // 0 means the stop is off; remembering it would erase the temperature
+        // the user tuned, the same rule api.setStopAtTemperature follows.
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamStopAtTempC: 0 });
+        assert.deepEqual(patch, { steamSettings: { stopAtTemperature: 0 } });
+        assert.deepEqual(persisted, []);
+    });
+
+    test('the stop rides along with a steam time without needing a steamMode', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25, steamStopAtTempC: 62 });
+        assert.deepEqual(patch, { steamSettings: { duration: 25, stopAtTemperature: 62 } });
+    });
+
+    test('every hot water setting held is applied, whatever the display mode says', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({
+            hotWaterMode: 'vol', hotWaterMl: 120, hotWaterTempC: 85,
+            hotWaterTimeS: 30, hotWaterFlowMls: 6,
+        });
+        assert.deepEqual(patch, {
+            hotWaterData: { volume: 120, targetTemperature: 85, duration: 30, flow: 6 },
+        });
+        assert.deepEqual(persisted, [['last-hot-water-volume', 120], ['last-hot-water-temp', 85]]);
+    });
+
+    test('a recipe holding nothing produces no patch', async () => {
+        assert.deepEqual(await mergeRecipeLiveSettings({}), {});
     });
 }
 

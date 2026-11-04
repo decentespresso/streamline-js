@@ -168,9 +168,17 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
  * The workflow patch that brings the heater back on.
  *
  * Precedence per field: the selected DYE2 recipe, then the remembered value,
- * then a default -- so a recipe that names only a temperature still gets its
- * duration from what the user last used (dye2 KV_CONTRACT steamTempC /
- * steamTimeS / steamFlowMls).
+ * then the loaded profile's own saved number, then a default -- so a recipe
+ * that names only a temperature still gets its duration from what the user last
+ * used (dye2 KV_CONTRACT steamTempC / steamTimeS / steamFlowMls).
+ *
+ * The profile rung is the answer to "we do not know what they last used": a
+ * profile (a favourite included) carries the steam duration and flow the user
+ * saved against it, which beats a stock number. Below that the defaults are
+ * themselves tile presets -- DEFAULT_STEAM_DURATION_S is the second steam-time
+ * preset, and 150 C sits mid-band between STEAM_ENABLED_MIN_TEMP and MAX.
+ * Nothing here can return a value that leaves the heater off: every field is
+ * clamped into the enabled band below.
  *
  * Flow is left alone unless the machine's own flow is unusable: the off state
  * never writes flow, so there is normally nothing to put back (issue #143's
@@ -179,20 +187,52 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
  *
  * @param {{tempC?:*, durationS?:*, flow?:*}} recipe    selected DYE2 recipe's steam fields
  * @param {{temp?:*, duration?:*, flow?:*}} remembered  the shared last-* values
+ * @param {{duration?:*, flow?:*}} profile  the loaded profile's saved steam values
  * @param {*} currentFlow  workflow.steamSettings.flow
  */
-export function steamOnPatch({ recipe = {}, remembered = {}, currentFlow } = {}) {
+export function steamOnPatch({ recipe = {}, remembered = {}, profile = {}, currentFlow } = {}) {
     const temp = num(recipe.tempC) ?? num(remembered.temp) ?? 150;
-    const duration = num(recipe.durationS) ?? num(remembered.duration) ?? DEFAULT_STEAM_DURATION_S;
+    const duration = num(recipe.durationS) ?? num(remembered.duration)
+        ?? num(profile.duration) ?? DEFAULT_STEAM_DURATION_S;
     const patch = {
         targetTemperature: Math.round(clamp(temp, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP)),
         duration: Math.round(clamp(duration, MIN_STEAM_DURATION_S, MAX_STEAM_DURATION_S)),
     };
     if (num(currentFlow) === null || currentFlow < MIN_STEAM_FLOW) {
-        const flow = num(recipe.flow) ?? num(remembered.flow);
+        const flow = num(recipe.flow) ?? num(remembered.flow) ?? num(profile.flow);
         if (flow !== null && flow >= MIN_STEAM_FLOW) patch.flow = flow;
     }
     return patch;
+}
+
+/**
+ * What a duration write should do, given the heater's current target
+ * temperature.
+ *
+ * The duration and the target temperature are the two halves of one state, and
+ * two surfaces read different halves: the main-page tile shows "Off" from the
+ * duration, the Settings heater toggle from the temperature. A write that moves
+ * only the duration therefore leaves them contradicting each other -- the tile
+ * counting seconds for a heater the toggle (correctly) reports as off.
+ *
+ *  'off'    -- below the shortest duration: switch the heater off, both halves.
+ *  'write'  -- heater already on: the duration alone is the whole change.
+ *  'rearm'  -- heater off and the user asked for this duration: bring the
+ *              temperature back with it.
+ *  'skip'   -- heater off and this is a background replay (a drift resync, a
+ *              profile's saved settings). Leave it off; the same rule
+ *              resyncSteamFromStore applies to the whole check.
+ *
+ * @param {*} targetTemperature  workflow.steamSettings.targetTemperature
+ * @param {*} duration  the duration being written
+ * @param {{rearm?:boolean}} opts  rearm: this write is the user's own intent
+ * @returns {'off'|'write'|'rearm'|'skip'}
+ */
+export function steamDurationWrite(targetTemperature, duration, { rearm = false } = {}) {
+    const value = typeof duration === 'string' ? parseFloat(duration) : duration;
+    if (!(value >= MIN_STEAM_DURATION_S)) return 'off';
+    if (!isSteamOff(targetTemperature)) return 'write';
+    return rearm ? 'rearm' : 'skip';
 }
 
 /**

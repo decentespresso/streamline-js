@@ -10,7 +10,7 @@ import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-poli
 import { parseSse } from './derek-stream.js';
 import { assertDeclaredFields } from './workflow-fields.js';
 import { selectedRecipeSteam } from './dye-selection.js';
-import { isSteamOff, steamOffPatch, steamOnPatch, MIN_STEAM_DURATION_S } from './steam-mode.js';
+import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, MIN_STEAM_DURATION_S } from './steam-mode.js';
 import {
     SAVER_BRIGHTNESS_KEY, SAVER_BRIGHTNESS_CUSTOM_KEY,
     resolveSaverBrightness, parseSaverBrightnessSetting,
@@ -1956,6 +1956,13 @@ export async function setTargetSteamTemp(temp) {
 // The values to come back to are read at the moment we switch off -- one GET,
 // only on that transition -- with the shared last-* keys as the fallback and a
 // selected DYE2 recipe winning over both, per field.
+// Where the re-arm's last rung comes from: the loaded profile's own saved steam
+// values. Injected rather than imported, because profileManager imports this
+// module and owns which profile is active. app.js wires it at boot; unset, the
+// chain simply falls through to steamOnPatch's defaults.
+let steamProfileFallback = null;
+export function setSteamProfileFallback(provider) { steamProfileFallback = provider; }
+
 async function steamHeaterFor(on) {
     const current = (await getWorkflow().catch(() => null))?.steamSettings ?? {};
     if (!on) {
@@ -1981,7 +1988,10 @@ async function steamHeaterFor(on) {
         readSharedValue(STEAM_DURATION_LAST_VALUE_KEY),
         readSharedValue(STEAM_FLOW_LAST_VALUE_KEY),
     ]);
-    return steamOnPatch({ recipe, remembered: { temp, duration, flow }, currentFlow: current.flow });
+    let profile = {};
+    try { profile = (await steamProfileFallback?.()) ?? {}; }
+    catch (e) { logger.warn('Profile steam fallback failed:', e); }
+    return steamOnPatch({ recipe, remembered: { temp, duration, flow }, profile, currentFlow: current.flow });
 }
 
 // KV first, machine second, like the hot-water setters above. PUT /workflow can
@@ -1991,13 +2001,33 @@ async function steamHeaterFor(on) {
 // and the tile's number would be the only trace of their intent left anywhere.
 // Writing it first makes the store the record of intent, which is what
 // resyncSteamFromStore replays when a push doesn't land.
-export async function setTargetSteamDuration(duration) {
+export async function setTargetSteamDuration(duration, { rearm = false } = {}) {
     if (isAutoSteamActive()) throw new Error('Use a pitcher preset in Auto mode, or switch to Flow or Time.');
     const value = parseFloat(duration);
-    // 0 is the heater off, and it must not be remembered: the last-* keys hold
-    // what we switch back ON to.
-    if (!(value >= MIN_STEAM_DURATION_S)) return setSteamHeaterEnabled(false);
-    return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () => updateWorkflow({ steamSettings: { duration: value } }, 'api.steamDuration'));
+    // The duration and the target temperature are the two halves of the off
+    // state, and they are never written apart -- see steamDurationWrite. Pass
+    // rearm for a duration the USER set: it brings the temperature back with it
+    // instead of leaving the tile counting seconds for a heater that is off.
+    const current = (await getWorkflow().catch(() => null))?.steamSettings?.targetTemperature;
+    switch (steamDurationWrite(current, value, { rearm })) {
+        // 0 is the heater off, and it must not be remembered: the last-* keys
+        // hold what we switch back ON to.
+        case 'off': return setSteamHeaterEnabled(false);
+        // A background replay into a heater the user switched off. Writing the
+        // KV key here too would leave it disagreeing with the workflow for good,
+        // and the drift check replaying this on every cooldown.
+        case 'skip': return null;
+        case 'rearm': {
+            // Tagged as the heater writer, not the duration one: this write
+            // carries the temperature back too, and api.steamDuration owns only
+            // steamSettings.duration (workflow-fields.js).
+            const patch = await steamHeaterFor(true);
+            return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () =>
+                updateWorkflow({ steamSettings: { ...patch, duration: value } }, 'api.steamHeater'));
+        }
+        default:
+            return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () => updateWorkflow({ steamSettings: { duration: value } }, 'api.steamDuration'));
+    }
 }
 
 export function isAutoSteamActive() {
