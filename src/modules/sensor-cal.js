@@ -159,3 +159,28 @@ export function correctionBlocked(kind, de1ReportedValue, measuredValue) {
     }
     return '';
 }
+
+// The DE1's flow-estimation calibration (Decaid GET|POST
+// /api/v1/machine/calibration). Unlike the three targets above this is an
+// ABSOLUTE set, bounded by the MMR's 130..2000 at 0.001 scale.
+export const FLOW_MULTIPLIER_MIN = 0.13;
+export const FLOW_MULTIPLIER_MAX = 2.0;
+export const FLOW_MULTIPLIER_DEFAULT = 1.0;
+export const FLOW_MULTIPLIER_STEP = 0.01;
+
+/**
+ * Parse (a number or the input box's string) and clamp a flow multiplier.
+ * Rounds to 2 decimals because the step is 0.01: repeated +/- taps in
+ * floating point drift (0.1 + 0.01 + ... lands on 0.30000000000000004), and
+ * that drift would otherwise show in the box and ride the wire.
+ * @returns {number|null} null when not a finite number — the caller keeps
+ *   the previous value rather than inventing one.
+ */
+export function clampFlowMultiplier(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    const clamped = Math.min(FLOW_MULTIPLIER_MAX, Math.max(FLOW_MULTIPLIER_MIN, n));
+    return Math.round(clamped * 100) / 100;
+}

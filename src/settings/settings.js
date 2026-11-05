@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
 import { isCustomSaverBrightness, setCustomSaverBrightnessEnabled, getSaverBrightness, setSaverBrightness, SAVER_BRIGHTNESS_DEFAULT } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
@@ -20,7 +20,7 @@ import { LED_SEQUENCE_KEY, MIN_STEP_DURATION_MS, MAX_STEP_DURATION_MS, LED_TRIGG
 import { requestStart as ledRunRequestStart, requestStop as ledRunRequestStop, forceStop as ledRunForceStop, onRunChange as ledRunOnChange, getRunState as ledRunGetState, onMachineStateChange as ledRunOnMachineStateChange, noteStoredPalette as ledRunNoteStoredPalette } from '../modules/led-strip-runner.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
-import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS } from '../modules/sensor-cal.js';
+import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
@@ -34,7 +34,8 @@ import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
 import { adoptFromMachine, diffUserSettings, isOutOfRange, normalizeSettingValue, rejectedWrites, restorePatches, splitDifferences } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
-         minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl } from './plugin-view.js';
+         minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl,
+         AUTO_FLOW_CAL_PLUGIN_ID, isFlowCalPluginManaging } from './plugin-view.js';
 import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
 import { parseSkinAnswer } from '../modules/plugin-surfaces.js';
@@ -539,6 +540,14 @@ function updateSettingsContentArea(category) {
         sensorCalLoadError = '';
         ({ shown: sensorCalWarningShown, ack: sensorCalWarningAck } = sensorCalWarningNextState(
             { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'leave').state);
+        sensorCalAdvancedOpen = false;
+        sensorCalFlowError = '';
+        // Re-read the multiplier and who owns it on the next visit. The plugin
+        // moves the value between visits, and can be switched off from its own
+        // page, so a value cached for the whole app session goes stale on a
+        // control the user cannot correct.
+        sensorCalFlowLoaded = false;
+        sensorCalFlowManaged = null;
         document.getElementById('sensor-cal-warning-modal')?.close();
     }
     // Leaving the Cup Warmer page → stop its ~5 s revalidate poll.
@@ -610,20 +619,11 @@ function updateSettingsContentArea(category) {
         }
         if (category === 'calib_sensors') {
             setTimeout(initSensorCal, 0);
-            // Every render of this page (load completing, capture, edits,
-            // apply/restore) reaches this same branch -- sensorCalWarningNextState
-            // only opens on the first one of a visit, so the modal no longer
-            // reopens on each subsequent re-render.
-            const { state, open } = sensorCalWarningNextState(
-                { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'render');
-            sensorCalWarningShown = state.shown;
-            sensorCalWarningAck = state.ack;
-            // `open` alone would leave the warning gone for good the moment an
-            // unrelated render interrupts it before the user has acted on it
-            // -- see sensorCalWarningShouldReopen for why folding in
-            // sensorCalWarningWasOpen (captured above, before the rebuild) is
-            // safe against reopening on a user-driven render.
-            if (sensorCalWarningShouldReopen(open, sensorCalWarningWasOpen)) setTimeout(sensorCalShowWarning, 0);
+            // The warning guards the Advanced table only, and is opened by
+            // sensorCalAdvancedToggle -- not by rendering. A render can still
+            // destroy it mid-flight (every render rebuilds the <dialog>), so
+            // an interrupted showing is resumed on the fresh node.
+            if (sensorCalWarningShouldReopen(false, sensorCalWarningWasOpen)) setTimeout(sensorCalShowWarning, 0);
         }
         // Step 4's live readout needs the scale WS — claim it on every render
         // of the page at step 4 (idempotent), so returning to a resumed wizard
@@ -2379,13 +2379,32 @@ function refreshBrightnessNotices(brightness, frame = displayState()) {
 // Jump from a settings notice to the control it points at, through the same
 // delegated nav clicks a user would make (main category button, then subcategory).
 function jumpToSettingCategory(settingsCategory) {
-    const mainCategory = Object.keys(settingsTree).find(key =>
-        settingsTree[key].subcategories.some(sub => sub.settingsCategory === settingsCategory));
+    // Plugin rows are appended to the Extensions subnav dynamically, so the
+    // static tree never lists them.
+    const mainCategory = pluginIdFromCategory(settingsCategory) !== null
+        ? 'extensions'
+        : Object.keys(settingsTree).find(key =>
+            settingsTree[key].subcategories.some(sub => sub.settingsCategory === settingsCategory));
     if (!mainCategory) return;
     const mainButton = document.getElementById(`${mainCategory}-btn`);
     if (!mainButton) return;
     mainButton.click();
-    document.querySelector(`#sub-categories-panel .settings-subnav-btn[data-category="${CSS.escape(settingsCategory)}"]`)?.click();
+    clickSubcategoryWhenReady(settingsCategory);
+}
+
+// A static category's rows are in the DOM the moment its main button is
+// clicked. The Extensions rows for plugins are not: they come from the async
+// plugin list, so querying once lands on whatever row Extensions defaults to
+// (Shot Uploader) and the jump looks like it went to the wrong place. Wait for
+// the row instead, with a deadline so a category that never appears gives up.
+function clickSubcategoryWhenReady(settingsCategory, deadline = Date.now() + 2000) {
+    const row = document.querySelector(`#sub-categories-panel .settings-subnav-btn[data-category="${CSS.escape(settingsCategory)}"]`);
+    if (row) { row.click(); return; }
+    if (Date.now() >= deadline) {
+        logger.warn(`Settings jump: no subcategory row for ${settingsCategory}`);
+        return;
+    }
+    setTimeout(() => clickSubcategoryWhenReady(settingsCategory, deadline), 50);
 }
 
 let settingsJumpBinding = null;
@@ -5255,21 +5274,42 @@ let sensorCalWarningAck = false;
 // renders until Ok was clicked. "shown" gates opening; "ack" is still
 // tracked for callers that care whether the user actually clicked through.
 let sensorCalWarningShown = false;
+// The Advanced disclosure's open state. Every render rebuilds the <details>
+// from a template string, so without this it would fold shut mid-typing.
+let sensorCalAdvancedOpen = false;
+
+// Flow estimation calibration (Decaid GET|POST /machine/calibration): an
+// absolute set, unlike the sensor corrections above. null = the machine
+// reported nothing, so the control stays disabled rather than show a fake 1.0.
+let sensorCalFlow = null;
+let sensorCalFlowLoaded = false;
+let sensorCalFlowLoading = false;
+let sensorCalFlowError = '';
+let sensorCalFlowBusy = false;
+// null until the plugin read resolves (or fails, which counts as false).
+let sensorCalFlowManaged = null;
+let sensorCalFlowTimer = null;
+const SENSOR_CAL_FLOW_DEBOUNCE_MS = 600;
 
 // ─── sensor-cal warning visit policy ────────────────────────────────────────
 // Pure state transition, DOM-free on purpose: test/sensor-cal-warning.test.mjs
 // slices this block straight out of the source (see that file's header) so
 // coverage can't silently drift from what actually ships in this legacy file.
-// Events: 'render' (page mount or any later re-render), 'ack' (Ok clicked),
+// Events: 'open' (the Advanced disclosure was opened), 'ack' (Ok clicked),
+// 'cancel' (Cancel clicked -- Advanced closes, so opening it asks again),
 // 'leave' (navigated to a different settings category).
+// 'open' is idempotent until acknowledged: the browser re-fires the details
+// toggle event on every re-render of an open disclosure, and the caller
+// guards showModal() on .open.
 function sensorCalWarningNextState(state, event) {
     switch (event) {
-        case 'render':
-            return state.shown
+        case 'open':
+            return state.ack
                 ? { state, open: false }
-                : { state: { shown: true, ack: state.ack }, open: true };
+                : { state: { shown: true, ack: false }, open: true };
         case 'ack':
             return { state: { shown: state.shown, ack: true }, open: false };
+        case 'cancel':
         case 'leave':
             return { state: { shown: false, ack: false }, open: false };
         default:
@@ -5280,8 +5320,8 @@ function sensorCalWarningNextState(state, event) {
 
 // ─── sensor-cal warning reopen-after-interruption policy ───────────────────
 // Whether THIS render should (re)open the dialog, combining what
-// sensorCalWarningNextState('render') decided (`open`: true only for the
-// very first render of a visit) with whether the dialog that render is about
+// sensorCalWarningNextState decided (`open`: true only when the Advanced
+// disclosure was just opened) with whether the dialog that render is about
 // to destroy was actually showing when the render started (`wasOpen`, read
 // straight from the browser -- see updateSettingsContentArea, which captures
 // it before contentArea.innerHTML tears the old <dialog> down).
@@ -5379,11 +5419,43 @@ function shouldStartSensorCalLoad({ loaded, loading, error }) {
 }
 // ── end sensor-cal load re-entry policy ─────────────────────────────────────
 
+// Same shape as the sensor read: one attempt, no self-retry on failure (the
+// error clears on Retry or on leaving). A failure here never touches the
+// sensor table's state.
+// Fails open: any plugin read error means "not managed", never an error line.
+async function sensorCalReadFlowManaged() {
+    try {
+        const [plugins, settings] = await Promise.all([getPlugins(), getPluginSettings(AUTO_FLOW_CAL_PLUGIN_ID)]);
+        return isFlowCalPluginManaging(plugins, settings);
+    } catch (error) {
+        logger.warn('Auto Flow Calibration plugin state unavailable:', error);
+        return false;
+    }
+}
+
+async function sensorCalLoadFlow() {
+    if (sensorCalFlowLoaded || sensorCalFlowLoading || sensorCalFlowError) return;
+    sensorCalFlowLoading = true;
+    try {
+        const [reading, managed] = await Promise.all([getMachineCalibration(), sensorCalReadFlowManaged()]);
+        sensorCalFlow = clampFlowMultiplier(reading?.flowMultiplier);
+        sensorCalFlowManaged = managed;
+        sensorCalFlowLoaded = true; // an unusable value leaves the control disabled, without a retry loop
+    } catch (error) {
+        logger.error('Failed to read flow calibration:', error);
+        sensorCalFlowError = error.message;
+    } finally {
+        sensorCalFlowLoading = false;
+        sensorCalRerenderIfVisible();
+    }
+}
+
 async function initSensorCal() {
     // The live column is fed by the snapshot socket, which nobody has opened
     // if the app booted straight onto this page (a reload while in Settings).
     ensureMachineSnapshotSocket();
     sensorCalStartLive();
+    sensorCalLoadFlow();
     if (!shouldStartSensorCalLoad({ loaded: sensorCalLoaded, loading: sensorCalLoading, error: sensorCalLoadError })) return;
     sensorCalLoading = true;
     sensorCalLoadError = '';
@@ -5598,7 +5670,7 @@ function sensorCalShowWarning() {
 
 function sensorCalWarningModal() {
     return `
-            <dialog id="sensor-cal-warning-modal" class="modal">
+            <dialog id="sensor-cal-warning-modal" class="modal" oncancel="window.sensorCalWarningCancel()">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
                     <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2" data-i18n-key="Sensor Calibration">Sensor Calibration</h3>
                     <p class="text-[24px] text-[var(--text-primary)] leading-[1.4] break-words" data-i18n-key="Bad calibration settings might make your espresso machine unuseable.  Only proceed if you have been told to or have read the relevant manual sections and know what you are doing.">Bad calibration settings might make your espresso machine unuseable.  Only proceed if you have been told to or have read the relevant manual sections and know what you are doing.</p>
@@ -5614,6 +5686,61 @@ function sensorCalWarningModal() {
                     </div>
                 </div>
             </dialog>`;
+}
+
+function sensorCalFlowCard() {
+    const managed = sensorCalFlowManaged === true;
+    const disabled = sensorCalFlow === null || sensorCalFlowManaged === null || managed;
+    const btnState = disabled ? 'disabled style="opacity:0.4"' : '';
+    // While the plugin owns the value, the label and the range line dim with the
+    // controls (same 0.4 as the +/- buttons, inline because app.css is generated
+    // and a new utility class would not be in it). The notice and its button stay
+    // at full strength: the dimmed half is what you cannot touch, the bright half
+    // is why, and where to go instead. The hint is muted by COLOUR rather than a
+    // second opacity, so dimming it here does not compound into near-invisible.
+    const mutedWhenManaged = managed ? 'style="opacity:0.4"' : '';
+    // The range line stays in BOTH states. It says what the number is and what
+    // normal looks like, which is what someone reads a value they cannot change
+    // to find out -- and the plugin's own MinimumMultiplier/MaximumMultiplier are
+    // not these bounds, so this stays the DE1's range either way.
+    const hint = `<p ${mutedWhenManaged} class="text-[20px] font-normal leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.">Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.</p>`;
+    const notice = managed
+        ? `<p class="text-[20px] font-normal leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Flow calibration is managed automatically by the Auto Flow Calibration plugin.">Flow calibration is managed automatically by the Auto Flow Calibration plugin.</p>
+           <button class="${SENSOR_CAL_SMALL_BTN} bg-[var(--button-primary-bg)] text-white self-start mt-[4px]" data-settings-jump="${escapeHtml(pluginCategoryFor(AUTO_FLOW_CAL_PLUGIN_ID))}" data-i18n-key="Open plugin settings">Open plugin settings</button>`
+        : '';
+    // Laid out like Quick Adjustments > Steam: a full-width row, label and its
+    // supporting lines on the left, the stepper on the right, a rule underneath.
+    // The old fixed 590px bordered card ignored the page's width and floated in
+    // the middle of it, which read as a stray box rather than a setting.
+    return `
+            <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
+                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                    <p id="flow-estimation-multiplier-label" ${mutedWhenManaged} class="leading-[1.2]" data-i18n-key="Flow Estimation Calibration Multiplier">Flow Estimation Calibration Multiplier</p>
+                    ${hint}
+                    ${notice}
+                    ${sensorCalFlowError ? `<p class="text-[20px] font-normal leading-[1.2] text-red-500">${escapeHtml(sensorCalFlowError)}</p>` : ''}
+                </div>
+                <div class="flex gap-[20px] h-[72px] items-center shrink-0">
+                    <button id="flow-estimation-mult-minus" aria-label="Decrease flow estimation calibration multiplier" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                            onclick="window.flashPlusMinusButton(this); window.sensorCalFlowAdjust(-1);">
+                        <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="flex items-center justify-center" style="width: 130px;">
+                        <input type="text" inputmode="decimal" id="flow-estimation-mult-input" aria-labelledby="flow-estimation-multiplier-label" ${disabled ? 'disabled' : ''} class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
+                               value="${sensorCalFlow === null ? '' : sensorCalFlow.toFixed(2)}"
+                               onchange="window.sensorCalFlowInput(this.value)">
+                    </div>
+                    <button id="flow-estimation-mult-plus" aria-label="Increase flow estimation calibration multiplier" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                            onclick="window.flashPlusMinusButton(this); window.sensorCalFlowAdjust(1);">
+                        <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>`;
 }
 
 export function renderSensorCalSettings() {
@@ -5656,7 +5783,15 @@ export function renderSensorCalSettings() {
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div class="w-full">${body}</div>
+            ${sensorCalFlowCard()}
+
+            <details id="sensor-cal-advanced" class="w-full" ${sensorCalAdvancedOpen ? 'open' : ''}
+                     ontoggle="window.sensorCalAdvancedToggle(this.open)">
+                <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[22px] font-bold text-[var(--text-secondary)] py-[8px]">
+                    <span data-i18n-key="Advanced">Advanced</span> ▾
+                </summary>
+                <div class="w-full pt-[8px]">${body}</div>
+            </details>
             ${sensorCalWarningModal()}
         </div>
     `;
@@ -8614,18 +8749,86 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         document.getElementById('sensor-cal-warning-modal')?.close();
     };
 
-    // Declining leaves the page entirely rather than sitting on a live
-    // calibration screen the user just said they did not want. Reuses the
-    // settings sub-nav so the highlighted menu item follows.
-    window.sensorCalWarningCancel = function() {
-        document.getElementById('sensor-cal-warning-modal')?.close();
-        document.querySelector('.settings-subnav-btn[data-category="calib_defaultload"]')?.click();
+    // Opening Advanced is what asks. The browser also fires this on every
+    // re-render of an already-open disclosure; sensorCalWarningNextState is a
+    // no-op once acknowledged and sensorCalShowWarning guards on .open.
+    window.sensorCalAdvancedToggle = function(isOpen) {
+        sensorCalAdvancedOpen = isOpen;
+        if (!isOpen) return;
+        const { state, open } = sensorCalWarningNextState(
+            { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'open');
+        sensorCalWarningShown = state.shown;
+        sensorCalWarningAck = state.ack;
+        if (open) sensorCalShowWarning();
     };
+
+    // Declining folds Advanced shut again and stays on the page: the flow
+    // control above it was never behind the warning.
+    window.sensorCalWarningCancel = function() {
+        ({ shown: sensorCalWarningShown, ack: sensorCalWarningAck } = sensorCalWarningNextState(
+            { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'cancel').state);
+        sensorCalAdvancedOpen = false;
+        const dlg = document.getElementById('sensor-cal-warning-modal');
+        if (dlg?.open) dlg.close();
+        const details = document.getElementById('sensor-cal-advanced');
+        if (details) details.open = false;
+    };
+
+    // +/- step; typing goes through sensorCalFlowInput. Both clamp, paint
+    // immediately, and share one debounced write.
+    window.sensorCalFlowAdjust = function(direction) {
+        if (sensorCalFlow === null) return;
+        sensorCalFlowSet(sensorCalFlow + direction * FLOW_MULTIPLIER_STEP);
+    };
+
+    window.sensorCalFlowInput = function(raw) {
+        const value = clampFlowMultiplier(raw);
+        if (value === null) { sensorCalRerenderIfVisible(); return; } // snap the box back
+        sensorCalFlowSet(value);
+    };
+
+    function sensorCalFlowSet(candidate) {
+        const value = clampFlowMultiplier(candidate);
+        if (value === null || sensorCalFlow === null) return;
+        sensorCalFlow = value;
+        sensorCalFlowError = '';
+        sensorCalRerenderIfVisible();
+        clearTimeout(sensorCalFlowTimer);
+        sensorCalFlowTimer = setTimeout(sensorCalFlowFlush, SENSOR_CAL_FLOW_DEBOUNCE_MS);
+    }
+
+    // POST the settled value, then paint what the machine reports. One write
+    // in flight at a time; an edit made during it schedules another flush.
+    async function sensorCalFlowFlush() {
+        sensorCalFlowTimer = null;
+        if (sensorCalFlowBusy) {
+            sensorCalFlowTimer = setTimeout(sensorCalFlowFlush, SENSOR_CAL_FLOW_DEBOUNCE_MS);
+            return;
+        }
+        const sent = sensorCalFlow;
+        if (sent === null) return;
+        sensorCalFlowBusy = true;
+        try {
+            await setMachineCalibration(sent);
+            const reading = await getMachineCalibration();
+            const reported = clampFlowMultiplier(reading?.flowMultiplier);
+            // Keep an edit made while the write was in flight; it has its own flush.
+            if (sensorCalFlow === sent) sensorCalFlow = reported;
+        } catch (error) {
+            logger.error('Flow calibration write failed:', error);
+            sensorCalFlowError = error.message;
+            ui.showToast(`Calibration failed: ${error.message}`, 5000, 'error');
+        } finally {
+            sensorCalFlowBusy = false;
+            sensorCalRerenderIfVisible();
+        }
+    }
 
     // Clearing the error re-opens initSensorCal's re-entry gate, so the
     // re-render below performs exactly one fresh attempt.
     window.sensorCalRetryLoad = function() {
         sensorCalLoadError = '';
+        sensorCalFlowError = '';
         sensorCalRerender();
     };
 

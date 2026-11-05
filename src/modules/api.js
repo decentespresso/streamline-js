@@ -534,6 +534,35 @@ export async function setSensorCalibration(target, de1ReportedValue, measuredVal
     }
 }
 
+// The DE1's flow-estimation calibration (MMR calFlowEst), at
+// /machine/calibration — NOT the per-sensor /machine/calibration/{target}
+// above. Unlike those, this one is an ABSOLUTE set: POSTing 1.0 twice lands
+// on 1.0 twice. Decaid accepts 0.13–2.0 and answers 202 once the write is
+// queued, so callers re-read rather than assume.
+
+/** @returns {Promise<{flowMultiplier: number}>} */
+export async function getMachineCalibration() {
+    const response = await fetch(`${API_BASE_URL}/machine/calibration`);
+    if (!response.ok) {
+        throw new Error(`Failed to read flow calibration. Status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+/** @param {number} flowMultiplier absolute value, 0.13–2.0 */
+export async function setMachineCalibration(flowMultiplier) {
+    logger.info(`Flow estimation calibration: set ${flowMultiplier}`);
+    const response = await fetch(`${API_BASE_URL}/machine/calibration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flowMultiplier }),
+    });
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.error || `Flow calibration write failed. Status: ${response.status}`);
+    }
+}
+
 // Last machine snapshot frame seen on the singleton snapshot socket. Null
 // until the first frame lands (machine asleep, or nothing connected).
 let lastMachineSnapshot = null;

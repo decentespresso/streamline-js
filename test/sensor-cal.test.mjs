@@ -14,6 +14,11 @@ import {
     SENSOR_CAL_MIN,
     SENSOR_CAL_MAX,
     SENSOR_CAL_SAMPLE_WINDOW_MS,
+    clampFlowMultiplier,
+    FLOW_MULTIPLIER_MIN,
+    FLOW_MULTIPLIER_MAX,
+    FLOW_MULTIPLIER_DEFAULT,
+    FLOW_MULTIPLIER_STEP,
 } from '../src/modules/sensor-cal.js';
 
 // --- input parsing ----------------------------------------------------------
@@ -197,4 +202,40 @@ test('correctionBlocked: a plausible few-percent correction passes', () => {
 
 test('correctionBlocked: the band does not apply to the temperature offset', () => {
     assert.equal(correctionBlocked('offset', 92, 20), '');
+});
+
+// --- flow estimation multiplier ---------------------------------------------
+
+test('clampFlowMultiplier keeps a value inside the range', () => {
+    assert.equal(clampFlowMultiplier(1.0), 1);
+    assert.equal(clampFlowMultiplier(0.87), 0.87);
+    assert.equal(FLOW_MULTIPLIER_DEFAULT, 1.0);
+});
+
+test('clampFlowMultiplier clamps below the minimum and above the maximum', () => {
+    assert.equal(clampFlowMultiplier(0.05), FLOW_MULTIPLIER_MIN);
+    assert.equal(clampFlowMultiplier(-3), FLOW_MULTIPLIER_MIN);
+    assert.equal(clampFlowMultiplier(2.5), FLOW_MULTIPLIER_MAX);
+});
+
+test('clampFlowMultiplier accepts numeric strings from the input box', () => {
+    assert.equal(clampFlowMultiplier('1.25'), 1.25);
+    assert.equal(clampFlowMultiplier(' 0.5 '), 0.5);
+    assert.equal(clampFlowMultiplier('9'), FLOW_MULTIPLIER_MAX);
+});
+
+test('clampFlowMultiplier returns null for anything that is not a finite number', () => {
+    for (const bad of [null, undefined, '', '   ', 'abc', NaN, Infinity]) {
+        assert.equal(clampFlowMultiplier(bad), null, String(bad));
+    }
+});
+
+test('repeated +0.01 steps stay at 2 decimal places', () => {
+    let v = 0.13;
+    for (let i = 0; i < 187; i++) v = clampFlowMultiplier(v + FLOW_MULTIPLIER_STEP);
+    assert.equal(v, 2);
+    v = 1;
+    for (let i = 0; i < 30; i++) v = clampFlowMultiplier(v + FLOW_MULTIPLIER_STEP);
+    assert.equal(v, 1.3);
+    assert.equal(String(v), '1.3');
 });
