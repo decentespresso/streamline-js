@@ -1675,6 +1675,11 @@ async function putWorkflow(data) {
         }
     }
 
+    if (dataToSend.profile) {
+        const steps = Array.isArray(dataToSend.profile.steps) ? dataToSend.profile.steps.length : 'n/a';
+        logger.info(`Sending profile to machine: "${dataToSend.profile.title}" (${steps} steps)`);
+    }
+
     const response = await fetch(`${API_BASE_URL}/workflow`, {
         method: 'PUT',
         headers: {

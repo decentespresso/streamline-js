@@ -8645,10 +8645,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if (captured === null || measured === null) return;
         const blocked = correctionBlocked(target.kind, captured, sensorCalToCelsius(id, measured));
         if (blocked) { entry.error = blocked; sensorCalRerender(); return; }
-        // Captured BEFORE the write: this is what Restore puts back.
-        const priorValue = entry.current;
         entry.busy = true; entry.error = ''; sensorCalRerender();
         try {
+            // Re-read the stored trim rather than trust the one from page load: it may have
+            // changed elsewhere since. This is what Restore puts back, so it must be the
+            // value the machine holds right now, captured BEFORE the write.
+            await sensorCalRead(id);
+            const priorValue = entry.current;
             await setSensorCalibration(id, captured, sensorCalToCelsius(id, measured));
             // The 202 is the BLE write ack, not a settled value — read it back
             // rather than paint the preview as fact.

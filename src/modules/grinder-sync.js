@@ -61,3 +61,15 @@ export function grindStepFromInfo(info) {
     return Array.isArray(info?.capabilities) && info.capabilities.includes('grindSetting')
         && d?.kind === 'numeric' && Number.isFinite(step) && step > 0 && step <= 100 ? step : null;
 }
+
+/** The Grind tile's -/+ step the workflow's grinder declares (`settingSmallStep`), or null. Numeric grinders only. */
+export function workflowGrindStep(grinder) {
+    const type = grinder?.settingType ?? 'numeric';
+    const step = grinder?.settingSmallStep;
+    return type === 'numeric' && Number.isFinite(step) && step > 0 && step <= 100 ? step : null;
+}
+
+/** Decimal places the tile shows for a fractional step: its own count, between 1 and 2. */
+export function grindDecimals(step) {
+    return Math.min(2, Math.max(1, decimals(step)));
+}

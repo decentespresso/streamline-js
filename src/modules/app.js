@@ -1,4 +1,4 @@
-import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShots, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket } from './api.js';
+import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShots, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket, getGrinder } from './api.js';
 import { initScaling } from './scaling.js';
 import * as chart from './chart.js';
 import * as ui from './ui.js';
@@ -15,6 +15,7 @@ import { loadPage, initRouter, isSubPage, prefetchSettingsPage, prefetchSubpages
 import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
+import { workflowGrindStep } from './grinder-sync.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
 import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
@@ -1551,6 +1552,7 @@ async function loadInitialData() {
 
         const workflow = await getWorkflow();
         logger.debug("Workflow data received:", workflow);
+        syncWorkflowGrindStep(workflow);
 
         const profile = workflow?.profile;
         const context = workflow?.context;
@@ -1843,6 +1845,27 @@ const WORKFLOW_REFRESH_MIN_GAP_MS = 250; // focus + visibilitychange can both fi
 const WORKFLOW_READBACK_FOLLOWUP_MS = 1500; // a plugin reacting to our write
 const tileEditPending = () => ui.msSinceTileInteraction() < WORKFLOW_EDIT_GUARD_MS || api.hasWorkflowWriteInFlight();
 let lastWorkflowTiles = null;
+
+// The workflow's grinder id last looked up; the poll calls this every tick, so only a change fetches.
+// ponytail: keyed on the id alone, so a grinder whose step is edited in Decaid while it stays
+// selected reaches the tile at the next restart. Watch the grinder itself if that matters.
+let lastWorkflowGrinderId;
+// Feed the Grind tile the small step of the grinder the workflow names. Never throws.
+async function syncWorkflowGrindStep(workflow) {
+    const id = workflow?.context?.grinderId || null;
+    if (id === lastWorkflowGrinderId) return;
+    lastWorkflowGrinderId = id;
+    if (!id) { ui.setWorkflowGrindStep(null); return; }
+    try {
+        ui.setWorkflowGrindStep(workflowGrindStep(await getGrinder(id)));
+    } catch (e) {
+        // Drop the memo so the next poll retries: Decaid can 503 while it is still
+        // warming up, which is exactly when loadInitialData asks. Holding the id here
+        // would leave the tile on the default step for the rest of the session.
+        lastWorkflowGrinderId = undefined;
+        logger.warn('Grinder lookup for the grind step failed:', e);
+    }
+}
 let lastWorkflowRefreshAt = 0;
 let workflowWatchStarted = false;
 // Set by a plugin's workflow-refresh; cleared only once a read has succeeded, so
@@ -1907,6 +1930,7 @@ async function refreshWorkflowTiles() {
         return;
     }
     if (!workflow) return;
+    syncWorkflowGrindStep(workflow);
 
     // The user touched a tile while the read was in flight. Painting (or moving
     // the baseline) would overwrite that edit with the older server value, so
@@ -2434,33 +2458,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                       (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
         const isStandalone = window.navigator.standalone === true;
 
-        // Detect in-app webview: no Chrome/Safari/Firefox branding despite being on mobile,
-        // or explicit webview signals (wv flag on Android, no window.safari on iOS)
-        const ua = navigator.userAgent;
-        const isAndroidWebView = /Android/.test(ua) && /wv/.test(ua);
-        const isIOSWebView = isIOS && !isStandalone && !/Safari\//.test(ua);
-        const isDecentWebView = ua.includes('Decent');
-        // Canonical signal: the reaprime/Decent host injects window.__DECENT_HOST__
-        // into the tablet webview. It's the most reliable tablet/kiosk indicator
-        // (the UA-sniffing above misses hosts that don't brand their UA), and it's
-        // absent in a normal desktop browser — so this only ever hides the
-        // fullscreen control on-device, never for a desktop user. Ceiling: a host
-        // that neither brands its UA nor injects the global is still treated as a
-        // browser (acceptable — the button is harmless there).
-        const isDecentHost = !!window.__DECENT_HOST__;
-        const isWebView = isAndroidWebView || isIOSWebView || isDecentWebView || isDecentHost;
-
-        if (isWebView) {
-            // A root class, not an inline style on the one button that exists right
-            // now: index.html, profile_selector.html and settings.html each carry
-            // their own #fullscreen-toggle-btn, and the router injects the sub-page
-            // ones long after this runs -- so hiding by id here only ever covered
-            // the main page. CSS on <html> covers every page, present and future.
-            // The host OS owns fullscreen in a webview, so the button is never
-            // useful there. See main.css; help-overlay.css deliberately overrides
-            // this on the main page to keep the slot laid out for the help button.
-            document.documentElement.classList.add('is-webview');
-        }
+        // Webview detection lives in the inline <script> in index.html (it must run
+        // before first paint); it leaves the result as a root class.
+        const isWebView = document.documentElement.classList.contains('is-webview');
 
         // Function to determine if we're in fullscreen mode
         // This accounts for both browser fullscreen API and web view fullscreen scenarios

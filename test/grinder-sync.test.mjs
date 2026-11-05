@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deviceSetting, parseDeviceNumber, followDecision, canSendGrind, grinderSettingString, sendDecision } from '../src/modules/grinder-sync.js';
+import { deviceSetting, parseDeviceNumber, followDecision, canSendGrind, grinderSettingString, sendDecision, workflowGrindStep, grindDecimals } from '../src/modules/grinder-sync.js';
 
 const numeric = { kind: 'numeric', min: 0, max: 40, step: 0.5 };
 const info = { capabilities: ['grindSetting'], controls: { grindSetting: numeric } };
@@ -69,4 +69,20 @@ test('grindStepFromInfo: the declared numeric step of a settable grinder, else n
     assert.equal(grindStepFromInfo({ capabilities: ['grindSetting'], controls: { grindSetting: { kind: 'opaque' } } }), null);
     assert.equal(grindStepFromInfo({ capabilities: ['grindSetting'], controls: { grindSetting: { kind: 'numeric', min: 0, max: 9, step: 0 } } }), null);
     assert.equal(grindStepFromInfo(null), null);
+});
+
+test('workflowGrindStep: numeric grinders with a sane small step only', () => {
+    assert.equal(workflowGrindStep({ settingType: 'numeric', settingSmallStep: 0.2 }), 0.2);
+    assert.equal(workflowGrindStep({ settingSmallStep: 0.25 }), 0.25);
+    assert.equal(workflowGrindStep({ settingType: 'preset', settingSmallStep: 0.2 }), null);
+    for (const bad of [null, 0, -0.1, 101, NaN, '0.2', undefined]) {
+        assert.equal(workflowGrindStep({ settingType: 'numeric', settingSmallStep: bad }), null);
+    }
+    assert.equal(workflowGrindStep(null), null);
+});
+
+test('grindDecimals: the step\'s own places, one to two', () => {
+    assert.equal(grindDecimals(0.1), 1);
+    assert.equal(grindDecimals(0.25), 2);
+    assert.equal(grindDecimals(0.125), 2);
 });

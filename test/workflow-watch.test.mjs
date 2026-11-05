@@ -117,7 +117,7 @@ test('a profile switch shows up as a title change', () => {
             'isSubPage', 'ui', 'getWorkflow', 'logger', 'loadInitialData',
             'workflowTileValues', 'tilesToPaint', 'profileChanged',
             'WORKFLOW_REFRESH_MIN_GAP_MS', 'tileEditPending', 'WORKFLOW_TILE_PAINTERS',
-            'refreshWorkflowTilesSoon', 'seed', 'calls', 'state',
+            'refreshWorkflowTilesSoon', 'syncWorkflowGrindStep', 'seed', 'calls', 'state',
             `let lastWorkflowTiles = seed;
              let lastWorkflowRefreshAt = 0;
              let pendingForcedRefresh = state.force;
@@ -138,6 +138,7 @@ test('a profile switch shows up as a title change', () => {
             () => sinceEdit < 1100,
             new Proxy({}, { get: (_t, key) => (value) => calls.painted.push([key, value]) }),
             () => { calls.retries++; },
+            () => {},
             baseline,
             calls,
             state,

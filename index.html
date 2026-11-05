@@ -21,6 +21,38 @@
                 'data-theme', localStorage.getItem('theme') || 'light');
         })();
     </script>
+    <script>
+        (function() {
+            // Webview detection has to run before first paint: the fullscreen
+            // button is in the markup, so adding this class after the router and
+            // main page have loaded lets it flash on the dashboard (#185).
+            //
+            // A root class, not an inline style on the one button that exists
+            // right now: index.html, profile_selector.html and settings.html each
+            // carry their own #fullscreen-toggle-btn, and the router injects the
+            // sub-page ones later -- CSS on <html> covers every page, present and
+            // future. The host OS owns fullscreen in a webview, so the button is
+            // never useful there. See main.css; help-overlay.css deliberately
+            // overrides this on the main page to keep the slot laid out for the
+            // help button. app.js reads this class; it is the single source of truth.
+            var ua = navigator.userAgent;
+            var isIOS = /iPhone|iPad|iPod/i.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
+            var isStandalone = window.navigator.standalone === true;
+            var isAndroidWebView = /Android/.test(ua) && /wv/.test(ua);
+            var isIOSWebView = isIOS && !isStandalone && !/Safari\//.test(ua);
+            var isDecentWebView = ua.includes('Decent');
+            // Canonical signal: the reaprime/Decent host injects window.__DECENT_HOST__
+            // into the tablet webview. It's the most reliable tablet/kiosk indicator
+            // (the UA sniffing misses hosts that don't brand their UA), and it's
+            // absent in a normal desktop browser, so this only ever hides the
+            // fullscreen control on-device. Ceiling: a host that neither brands its
+            // UA nor injects the global is treated as a browser (button is harmless).
+            var isDecentHost = !!window.__DECENT_HOST__;
+            if (isAndroidWebView || isIOSWebView || isDecentWebView || isDecentHost) {
+                document.documentElement.classList.add('is-webview');
+            }
+        })();
+    </script>
     <link rel="icon" type="image/png" href="//fast.decentespresso.com/favicon-32x32.png" sizes="32x32">
     <link href="src/css/app.css" rel="stylesheet" type="text/css" />
     <link href="src/css/dark-mode.css" rel="stylesheet" type="text/css" />
