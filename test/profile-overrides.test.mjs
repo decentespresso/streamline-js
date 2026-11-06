@@ -17,6 +17,7 @@ import {
     getProfileOverride,
     applyOverridesToRecords,
     overrideMergeBase,
+    profileSwitchDial,
 } from '../src/modules/profile-overrides.js';
 
 function fakeKv(initial = {}) {
@@ -268,4 +269,40 @@ test('two overlapping saves of different fields for one profile both survive', a
         saveProfileOverride('profile:abc', { targetYield: 36 }),
     ]);
     assert.deepEqual(store['profile%3Aabc'], { targetDoseWeight: 18, targetYield: 36 });
+});
+
+// What a profile switch sends for the three dial-in numbers. The gap where a
+// profile has no saved override used to be filled from the skin's own record of
+// "the last number set on a tile", which DYE2 never updated -- so a switch after
+// a DYE dial-in reinstated the previous recipe's dose and nulled its grind
+// (#189). Silence now means "leave the live value alone".
+test('profileSwitchDial: a saved override is sent, a missing one is left alone', () => {
+    assert.deepEqual(
+        profileSwitchDial({ targetDoseWeight: 20, grinderSetting: '7.5', targetYield: 42 }, '36'),
+        { targetDoseWeight: 20, grinderSetting: '7.5', targetYield: 42 });
+
+    const bare = profileSwitchDial({}, '36');
+    assert.deepEqual(bare, { targetYield: 36 }, 'no dose and no grind key at all');
+    assert.ok(!('grinderSetting' in bare) && !('targetDoseWeight' in bare));
+
+    // Half an override is still an override for that half.
+    assert.deepEqual(profileSwitchDial({ grinderSetting: 3 }, '36'),
+        { grinderSetting: 3, targetYield: 36 });
+});
+
+test('profileSwitchDial: zero is a value, absence is not', () => {
+    assert.deepEqual(profileSwitchDial({ targetDoseWeight: 0, grinderSetting: '0' }, '0'),
+        { targetDoseWeight: 0, grinderSetting: '0', targetYield: 0 });
+    // null is how a cleared override reads, and must not be sent as null -- that
+    // would wipe the live value, which is the bug this helper exists to fix.
+    assert.deepEqual(profileSwitchDial({ targetDoseWeight: null, grinderSetting: null }, '36'),
+        { targetYield: 36 });
+});
+
+test('profileSwitchDial: yield is the profile\'s own, coerced, never NaN', () => {
+    assert.equal(profileSwitchDial({}, '36.5').targetYield, 36.5, 'a legacy TCL string parses');
+    assert.equal(profileSwitchDial({}, 40).targetYield, 40);
+    assert.equal(profileSwitchDial({}, 'n/a').targetYield, 0, 'unparsable sends 0, never NaN');
+    assert.equal(profileSwitchDial(undefined, undefined).targetYield, 0, 'no metadata at all is survivable');
+    assert.equal(profileSwitchDial({ targetYield: 30 }, '36').targetYield, 30, "the user's own yield wins");
 });

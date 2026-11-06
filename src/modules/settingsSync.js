@@ -56,8 +56,6 @@ export const SYNCED_KEYS = [
     'waterTankUnit',
     'waterRefillLevel',
     'keyboardBindings',
-    'lastGrinderSetting',
-    'lastTargetDoseWeight',
     // Settings > Connections > Grinder: whether the Grind tile follows the
     // grinder and whether it may set it (src/modules/grinder-runtime.js).
     'grinder-follow',

@@ -54,7 +54,7 @@ change.
 |---|---|---|
 | `context.extras.dye.recipeId` | DYE2 recipe apply / Save to recipes, and every writer that replaces the profile | Since dye2#36 the plugin **derives** its selection from this field — there is no `POST /selection` for it. A recipe apply sets it; a favourite or recent apply, and a profile change from any source, must write `null` **explicitly**, because the deep merge reads an absent key as "unchanged". A tile edit leaves it alone: that is the `*`. |
 | `context.coffeeName`, `context.coffeeRoaster`, `context.beanBatchId` | DYE2 bean picker, skin bean picker | Persistent across shots; nothing clears them (#164). |
-| `context.grinderSetting`, `context.targetDoseWeight`, `context.targetYield` | skin tiles, recipe apply | The contested group — #153 and #155 live here. |
+| `context.grinderSetting`, `context.targetDoseWeight`, `context.targetYield` | skin tiles, recipe apply | The contested group — #153 and #155 live here. A profile switch sends dose and grind **only** when that profile has a saved override, and otherwise omits them so the live dial-in survives (`profileSwitchDial`, #189); yield is a profile field, so a switch always sends it. Never fill a gap from a skin-local copy of a shared value — no other client updates it. |
 | `profile.target_weight` | dose/yield tiles, profile switches | A non-autonomous machine stops on this, not on `context.targetYield`, so the tiles fold the yield into it — alone, never with the rest of the profile. |
 | `steamSettings`, `hotWaterData`, `rinseData` | skin settings page, skin tiles, recipe apply | Full sub-object sends are the defect; send only the changed key (#157). |
 | `profile` | any source | A profile change nulls `recipeId`: the recipe's identity *is* its profile. |

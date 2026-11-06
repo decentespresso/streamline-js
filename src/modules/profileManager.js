@@ -8,7 +8,7 @@ import { loadPage } from './router.js'; // Singular and correctly formatted impo
 import { getTranslation, fitTextToBox } from './i18n.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { planAssignmentsLoad, mayPersistAutoPopulate } from './favorites-load.js';
-import { loadProfileOverrides, saveProfileOverride, clearProfileOverride, getProfileOverride, applyOverridesToRecords } from './profile-overrides.js';
+import { loadProfileOverrides, saveProfileOverride, clearProfileOverride, getProfileOverride, applyOverridesToRecords, profileSwitchDial } from './profile-overrides.js';
 import { applyFlowCalibrationForProfile } from './flow-calibration.js';
 import { recipeIdPatch } from './dye-selection.js';
 import { profileSendBlocked, setPendingProfileSend, clearPendingProfileSend } from './profile-send-gate.js';
@@ -656,53 +656,22 @@ export async function applySavedSteamSettings(metadata) {
     }
 }
 
-// A grind setting belongs to the grinder and the beans, and a dose to the
-// basket -- neither is really a property of the profile. So remember the last
-// one the user set, whichever profile they set it on, and use it when nothing
-// better is known: a profile the user has never adjusted then opens on a real
-// number instead of a blank grind tile or a 0 dose. These sit at the BACK of
-// the fallback chain -- a profile that states its own dose keeps it. Yield and
-// brew temperature are deliberately not remembered at all; those come from the
-// profile's own recipe, and carrying them across would change how it brews.
-// Decaid's Profile schema carries no dose at all -- see profile.dart toJson():
-// version, title, notes, author, beverage_type, steps, target_volume,
-// target_weight, target_volume_count_start, tank_temperature. The dose lives only
-// on the workflow context (context.targetDoseWeight), which is where every tile
-// edit writes it. So behind the user's saved override for a profile there is no
-// recipe number to fall back to -- only the last dose they set, then the stock
-// basket.
+// The dose 'Use Profile Defaults' falls back to. A grind setting belongs to the
+// grinder and the beans, and a dose to the basket -- neither is a property of the
+// profile, and Decaid's Profile schema carries no dose at all (profile.dart
+// toJson(): version, title, notes, author, beverage_type, steps, target_volume,
+// target_weight, target_volume_count_start, tank_temperature). The dose lives
+// only on the workflow context, so a reset that is asked to forget the user's
+// number has no recipe number to go back to and needs a stock basket.
+//
+// NOT a fallback for a profile switch: a switch sends the profile's own override
+// or nothing at all, so the live dose stands whoever set it (profileSwitchDial).
 export const DEFAULT_DOSE_WEIGHT = 18;
 
 // What the grind tile reads after 'Use Profile Defaults'. There is no grind in a
 // profile, so a reset has no recipe number to go back to -- it blanks the tile to
 // zero, and pins that so coming back to the profile still reads zero.
 export const RESET_GRINDER_SETTING = '0';
-
-const LAST_GRIND_KEY = 'lastGrinderSetting';
-const LAST_DOSE_KEY = 'lastTargetDoseWeight';
-
-function rememberTileDefaults(fields) {
-    try {
-        if (fields?.grinderSetting != null) localStorage.setItem(LAST_GRIND_KEY, String(fields.grinderSetting));
-        if (fields?.targetDoseWeight != null) localStorage.setItem(LAST_DOSE_KEY, String(fields.targetDoseWeight));
-    } catch (e) {
-        logger.warn('Could not remember last tile values:', e);
-    }
-}
-
-export function lastGrinderSetting() {
-    try {
-        const stored = localStorage.getItem(LAST_GRIND_KEY);
-        return stored === null || stored === '' ? null : stored;
-    } catch { return null; }
-}
-
-export function lastTargetDoseWeight() {
-    try {
-        const parsed = parseFloat(localStorage.getItem(LAST_DOSE_KEY));
-        return Number.isFinite(parsed) ? parsed : null;
-    } catch { return null; }
-}
 
 // The one way a profile record reaches the machine. Every entry point -- the
 // favourite buttons, the selector's Confirm, the editor's SAVE -- goes through
@@ -719,8 +688,8 @@ export async function sendProfileRecordToMachine(record) {
         return 'deferred';
     }
     const meta = record.metadata || {};
-    const parsedYield = meta.targetYield ?? parseFloat(record.profile.target_weight);
-    const targetYield = Number.isFinite(parsedYield) ? parsedYield : 0;
+    const dial = profileSwitchDial(meta, record.profile.target_weight);
+    const targetYield = dial.targetYield;
     // The UI yield override lives in metadata, but a non-autonomous machine
     // stops on profile.target_weight -- fold it into a copy so the sent profile
     // matches the number the user set, and fold a saved brew temp the same way.
@@ -730,9 +699,7 @@ export async function sendProfileRecordToMachine(record) {
         await updateWorkflow({
             profile,
             context: {
-                targetDoseWeight: meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT,
-                targetYield,
-                grinderSetting: meta.grinderSetting ?? lastGrinderSetting() ?? null,
+                ...dial,
                 // The profile changed, so the recipe being dialled in is no
                 // longer this one (dye2#36).
                 ...recipeIdPatch(null),
@@ -762,10 +729,6 @@ export async function flushPendingProfileSend() {
 }
 
 export async function saveContextToActiveProfile(fields) {
-    // Before the active-profile guard below: a number the user typed is worth
-    // remembering as the fallback even on the path where there is no profile to
-    // attach it to.
-    rememberTileDefaults(fields);
     // Last-ditch bind: the machine's profile is on screen even when nothing has
     // set the id this session. Better than dropping the user's number.
     if (!activeProfileId || !availableProfiles[activeProfileId]) {
@@ -838,23 +801,18 @@ export async function loadProfileForWake(profileId) {
         return true;
     }
     // Waking onto a profile is a profile switch, so it owes the same saved
-    // overrides as the three interactive paths. Dose and grind are not profile
-    // fields (see DEFAULT_DOSE_WEIGHT), so behind this profile's own override sits
-    // the last number the user set anywhere; yield IS a profile field, so the
-    // override answers first and then the recipe -- coerced, since target_weight
-    // can be a legacy TCL string.
+    // overrides as the three interactive paths -- and leaves the live dial-in
+    // alone where this profile has none (profileSwitchDial).
     const meta = availableProfiles[profileId]?.metadata || {};
-    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
-    const grinderSetting = meta.grinderSetting ?? lastGrinderSetting();
-    const parsedYield = parseFloat(meta.targetYield ?? profile.target_weight);
-    const targetYield = isNaN(parsedYield) ? 0 : parsedYield;
+    const dial = profileSwitchDial(meta, profile.target_weight);
+    const targetYield = dial.targetYield;
     // Same fold as sendProfileRecordToMachine: a non-autonomous machine stops on
     // profile.target_weight, so a yield override has to reach the sent profile,
     // and a saved brew temp has to survive the wake.
     const profileToSend = withSavedBrewTemp(
         targetYield > 0 ? { ...profile, target_weight: targetYield } : profile, meta);
     try {
-        await updateWorkflow({ profile: profileToSend, context: { targetDoseWeight, targetYield, grinderSetting, ...recipeIdPatch(null) } }, 'profile.wake');
+        await updateWorkflow({ profile: profileToSend, context: { ...dial, ...recipeIdPatch(null) } }, 'profile.wake');
         setActiveProfile(profileId);
         // Steam rides its own setters, not the workflow context.
         await applySavedSteamSettings(meta);
@@ -1065,15 +1023,11 @@ async function handleProfileClick(index) {
     logger.info(`Sending profile '${profile.title}' to REA (callId: ${callId})...`);
     let profileSuccessfullySet = false;
     const meta = profileRecord.metadata || {};
-    // Fallback chains, most specific first. Neither dose nor grind is a profile
-    // field (see DEFAULT_DOSE_WEIGHT), so behind the user's saved override for
-    // this profile there is only the last number they set anywhere. Yield is a
-    // profile field, so the recipe answers for it and nothing is carried over.
-    const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
-    const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
-    const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
-    const displayYield = Number.isFinite(effectiveYield) ? effectiveYield : 0;
+    // This profile's own saved dose and grind, and silence where it has none, so
+    // the live dial-in stands (profileSwitchDial). Yield is a profile field, so
+    // the recipe answers for it.
+    const dial = profileSwitchDial(meta, profile.target_weight);
+    const displayYield = dial.targetYield;
     // The UI yield override lives in metadata (targetYield), but on non-autonomous
     // machines Rea's stop-at-weight reads profile.target_weight — so a metadata-only
     // yield never reaches the machine's stop and the shot runs past it. Fold the
@@ -1093,7 +1047,7 @@ async function handleProfileClick(index) {
             ? await getWorkflow()
             : await updateWorkflow({
                 profile: profileToSend,
-                context: { targetDoseWeight, targetYield: displayYield, ...grindContext, ...recipeIdPatch(null) }
+                context: { ...dial, ...recipeIdPatch(null) }
             }, 'profile.send');
         // Paint the tiles from the workflow Rea echoed back rather than from the
         // numbers we meant to send, so what the user reads is what the machine
