@@ -3,11 +3,12 @@ import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setSteamHeaterEnabled, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
 import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from './machine-status-policy.js';
+import { createSteamTimer, foldSteamFrame, steamElapsedSeconds } from './steam-timer.js';
 import { openDB, getSetting } from './idb.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, formatScreensaverClockDate, formatScreensaverClockTime, screensaverClockPositionStyle } from './screensaver-clock.js';
 import { deriveSleepButtonAction, isWakePending, mayTapWakeMachine } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel, isRefillKitPresent } from './machine.js';
-import { MAX_STEAM_DURATION_S, MIN_STEAM_DURATION_S, steamCounterSeconds, STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
+import { MAX_STEAM_DURATION_S, MIN_STEAM_DURATION_S, STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
 import { API_DEBOUNCE_MS } from './workflow-watch.js';
 import { shouldUseNumpad } from './numpad-policy.js';
 import { openContextMenu } from './context-menu.js';
@@ -218,10 +219,10 @@ export function setGrinderGrindStep(step) { grinderDeclaredStep = Number.isFinit
 let workflowGrinderStep = null;
 export function setWorkflowGrindStep(step) { workflowGrinderStep = Number.isFinite(step) && step > 0 ? step : null; }
 
-// How long the steam elapsed counter will pick up where it left off. Covers a
-// dropped/odd status frame; a genuine second steam session is always further
-// apart than this.
-const STEAM_RESUME_GRACE_MS = 2000;
+// Delivered-steam time for the status line. Folded from every frame in
+// updateMachineStatus and read by the steam branch; the policy, including what
+// counts as delivery and when a session restarts, is in steam-timer.js.
+let steamTimer = createSteamTimer();
 
 // Tap feedback for icon buttons: flashes the active blue (see .icon-flash in
 // main.css). Restarts cleanly on rapid taps.
@@ -3057,6 +3058,11 @@ document.addEventListener('streamline:languagechange', () => {
 export function updateMachineStatus(data) {
     lastMachineStatusData = data;
     const { status, state, substate, stepName, profileStepName, timeValue, isClickable,  isHeating, isHeatingFromTimeToReady, steamTemperature } = data;
+    // Before any branching, so the count follows the machine rather than
+    // whichever message won the status line. A language change replays the last
+    // frame through here; folding it again is a no-op while frozen, and while
+    // steam is running it only advances the clock that is running anyway.
+    steamTimer = foldSteamFrame(steamTimer, { state, substate, now: Date.now() });
     // Puck (group-head) temperature only means anything while a shot is pulling,
     // so it joins the telemetry row for espresso and leaves again afterwards.
     const puckVisible = state === MachineState.ESPRESSO;
@@ -3150,15 +3156,6 @@ export function updateMachineStatus(data) {
         delete machineStatusEl.preinfusionOrPouringIntervalId;
     }
 
-    // Manage steam interval lifecycle. The stop is stamped so a status blip --
-    // one odd frame, a warning that briefly replaced the status text -- can
-    // resume the count instead of restarting it at 0 (issue #60).
-    if (!isCurrentlySteamState && machineStatusEl.steamIntervalId) {
-        clearInterval(machineStatusEl.steamIntervalId);
-        delete machineStatusEl.steamIntervalId;
-        machineStatusEl.steamStoppedAt = Date.now();
-    }
-
     // Manage flush interval lifecycle
     if (!isCurrentlyFlushState && machineStatusEl.flushIntervalId) {
         clearInterval(machineStatusEl.flushIntervalId);
@@ -3172,10 +3169,9 @@ export function updateMachineStatus(data) {
     if (isPouringDone && (isSteamState || isFlushState || isHotWaterState)) {
         if (isSteamState) {
             const steamText = getTranslation('Steaming');
-            const frozenValue = typeof machineStatusEl.currentSteamValue === 'number'
-                ? machineStatusEl.currentSteamValue
-                : 0;
-            setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${steamText}:</span> <span class="text-[var(--status-clickable-color)]">${frozenValue}s</span>`);
+            // Already frozen: the tail substates do not deliver, so the fold
+            // above stopped the clock at the last delivered millisecond.
+            setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${steamText}:</span> <span class="text-[var(--status-clickable-color)]">${steamElapsedSeconds(steamTimer, Date.now())}s</span>`);
         } else if (isFlushState) {
             const flushText = getTranslation('Flush');
             const frozenValue = typeof machineStatusEl.currentFlushValue === 'number'
@@ -3298,33 +3294,12 @@ export function updateMachineStatus(data) {
                 if (isSteamHeatingPhase && steamHeaterCold) {
                     setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-red-color)]">${steamonlytext}${steamheatingtext}:</span><span class="text-[var(--status-clickable-color)]">${steamwaitingText}</span>`);
                 } else {
-                    // Original steam counter logic for active steaming
-                    if (!machineStatusEl.steamIntervalId) {
-                        // Steam that reappears within the grace window is the same
-                        // session seen through a gap in the status string, not a new
-                        // one -- carry the count over. Anything longer starts at 0.
-                        const sinceStop = Date.now() - (machineStatusEl.steamStoppedAt ?? 0);
-                        const resuming = sinceStop < STEAM_RESUME_GRACE_MS
-                            && typeof machineStatusEl.currentSteamValue === 'number';
-                        machineStatusEl.currentSteamValue = resuming ? machineStatusEl.currentSteamValue : 0;
-
-                        machineStatusEl.steamIntervalId = setInterval(() => {
-                            machineStatusEl.currentSteamValue = steamCounterSeconds(
-                                machineStatusEl.currentSteamValue + 1, currentSteamDuration);
-
-                            setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${getTranslation('Steaming')}:</span> <span class="text-[var(--status-clickable-color)]">${machineStatusEl.currentSteamValue}s</span>`);
-                            logger.debug(`DEBUG: Steam live counter update: ${machineStatusEl.innerHTML}`);
-                        }, 1000);
-
-                        // Initial render at 0s
-                        setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${steamText}:</span> <span class="text-[var(--status-clickable-color)]">${machineStatusEl.currentSteamValue}s</span>`);
-                    } else {
-                        // If already running, just ensure we render the latest value with correct label.
-                        const currentValue = typeof machineStatusEl.currentSteamValue === 'number'
-                            ? machineStatusEl.currentSteamValue
-                            : 0;
-                        setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${steamText}:</span> <span class="text-[var(--status-clickable-color)]">${currentValue}s</span>`);
-                    }
+                    // Painted from the frames themselves, with no interval of its
+                    // own: steam frames arrive several times a second, so the
+                    // second ticks over on its own, and a feed that stops leaves
+                    // the last delivered value on screen rather than counting
+                    // through a gap it cannot see.
+                    setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${steamText}:</span> <span class="text-[var(--status-clickable-color)]">${steamElapsedSeconds(steamTimer, Date.now())}s</span>`);
                 }
             } else {
                 // Check if this is a hotwater state and apply special formatting

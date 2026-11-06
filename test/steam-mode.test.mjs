@@ -18,7 +18,6 @@ import {
     MIN_STEAM_DURATION_S,
     MAX_STEAM_DURATION_S,
     MIN_STEAM_FLOW,
-    steamCounterSeconds,
     STEAM_ENABLED_MIN_TEMP,
     STEAM_ENABLED_MAX_TEMP,
     resolveSteamTileMode,
@@ -642,18 +641,5 @@ test('steamOnPatch: the re-arm can never land back on off', () => {
         const patch = steamOnPatch(source);
         assert.ok(patch.targetTemperature >= 135, JSON.stringify(source));
         assert.ok(patch.duration >= 1, JSON.stringify(source));
-    }
-});
-
-test('steamCounterSeconds: the count holds at the target the machine was given', () => {
-    assert.equal(steamCounterSeconds(19, 20), 19);
-    assert.equal(steamCounterSeconds(20, 20), 20);
-    // #188: the DE1 held MachineState.steam for 38 s against a 20 s target.
-    assert.equal(steamCounterSeconds(38, 20), 20);
-});
-
-test('steamCounterSeconds: no usable target means no cap', () => {
-    for (const target of [0, null, undefined, NaN, '20', {}]) {
-        assert.equal(steamCounterSeconds(42, target), 42, String(target));
     }
 });

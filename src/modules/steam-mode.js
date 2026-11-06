@@ -149,20 +149,6 @@ export const MAX_STEAM_DURATION_S = 255;
 export const MIN_STEAM_FLOW = 0.4;
 
 /**
- * Seconds to show on the status counter while steaming. The DE1 can hold
- * MachineState.steam well past its target -- 38 s against a 20 s target in the
- * #188 capture -- so the wall clock alone reads as the skin having lost track of
- * the steam it asked for. Hold the display at the target instead; the state exit
- * still ends the count. No target (heater off, or not read yet) means no cap.
- * @param {number} elapsed  seconds counted since the steam started
- * @param {*} target  workflow.steamSettings.duration
- */
-export function steamCounterSeconds(elapsed, target) {
-    const limit = num(target);
-    return limit !== null && limit >= MIN_STEAM_DURATION_S ? Math.min(elapsed, limit) : elapsed;
-}
-
-/**
  * Is the machine's steam heater off?
  * @param {*} targetTemperature  workflow.steamSettings.targetTemperature
  */
