@@ -8,7 +8,7 @@ import { AUTO_STEAM_SESSION_KEY, readAutoSteamSession } from './auto-steam-sessi
 import { openDB, getSetting, setSetting } from './idb.js';
 import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-policy.js';
 import { parseSse } from './derek-stream.js';
-import { assertDeclaredFields } from './workflow-fields.js';
+import { assertDeclaredFields, workflowPatchKeys } from './workflow-fields.js';
 import { selectedRecipeSteam } from './dye-selection.js';
 import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, MIN_STEAM_DURATION_S } from './steam-mode.js';
 import {
@@ -1656,13 +1656,13 @@ export async function updateWorkflow(data, writer) {
     assertDeclaredFields(writer, data);
     workflowWritesInFlight += 1;
     try {
-        return await putWorkflow(data);
+        return await putWorkflow(data, writer);
     } finally {
         workflowWritesInFlight -= 1;
     }
 }
 
-async function putWorkflow(data) {
+async function putWorkflow(data, writer = 'unknown') {
     // Deep copy to avoid side effects on the original object.
     const dataToSend = JSON.parse(JSON.stringify(data));
 
@@ -1706,8 +1706,15 @@ async function putWorkflow(data) {
 
     if (dataToSend.profile) {
         const steps = Array.isArray(dataToSend.profile.steps) ? dataToSend.profile.steps.length : 'n/a';
-        logger.info(`Sending profile to machine: "${dataToSend.profile.title}" (${steps} steps)`);
+        logger.audit(`profile to machine: "${dataToSend.profile.title}" (${steps} steps)`);
     }
+
+    // Which writer touched which fields, on every write. The workflow deep-merges
+    // and has no revision, so a lost edit is only ever visible as the ORDER of
+    // these lines (#189) -- and a report arrives as a log, not as a repro. Field
+    // paths only, never values: the context carries coffee, barista and drinker
+    // names.
+    logger.audit(`workflow PUT by ${writer}: ${workflowPatchKeys(dataToSend).sort().join(' ') || '(nothing)'}`);
 
     const response = await fetch(`${API_BASE_URL}/workflow`, {
         method: 'PUT',
