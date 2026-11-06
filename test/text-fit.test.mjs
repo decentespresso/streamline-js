@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { largestFittingSize } from '../src/modules/text-fit.js';
+import { largestFittingSize, fitShapeKey } from '../src/modules/text-fit.js';
 
 // fitTextToBox's size search. Each probe is a forced synchronous reflow in the
 // browser (write font-size, read scrollHeight), so the probe count is the whole
@@ -55,4 +55,25 @@ test('it probes far fewer times than the walk', () => {
     walkDown(14, 28, (s) => { walkProbes++; return fitsBelow(14)(s); });
     assert.equal(walkProbes, 14);
     assert.ok(binaryProbes <= 5, `binary search probed ${binaryProbes} times`);
+});
+
+// The shot-data range cells re-fit on every change, and a fit costs ~0.3 ms
+// against 0.001 ms for the write. The fitted size depends on how wide a string
+// renders, not which digits it holds, so the cache key has to separate strings
+// that render at different widths and merge the ones that do not.
+test('fitShapeKey: values of the same width share a key', () => {
+    assert.equal(fitShapeKey('9.9'), fitShapeKey('1.2'));
+    assert.equal(fitShapeKey('10.5→12.0→10.1'), fitShapeKey('11.6→13.1→10.2'));
+});
+
+test('fitShapeKey: a value that got wider does not', () => {
+    assert.notEqual(fitShapeKey('9.9'), fitShapeKey('10.1'), 'crossing ten is a re-fit');
+    assert.notEqual(fitShapeKey('5.0→9.9'), fitShapeKey('5.0→9.9→8.1'), 'a third segment is a re-fit');
+    assert.notEqual(fitShapeKey('92'), fitShapeKey('92→94'));
+});
+
+test('fitShapeKey: non-digits are the shape, and survive', () => {
+    assert.equal(fitShapeKey('-'), '-', 'the cleared cell');
+    assert.equal(fitShapeKey('8.8→8.8'), fitShapeKey('1.2→3.4'));
+    assert.equal(fitShapeKey('36.2g'), '88.8g', 'units and separators are kept as-is');
 });

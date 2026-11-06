@@ -1,6 +1,7 @@
 import { logger } from './logger.js';
 import { getTempUnit, celsiusToFahrenheit } from './units.js';
 import { fitTextToWidth } from './i18n.js';
+import { fitShapeKey } from './text-fit.js';
 
 // Holds the raw data for the current shot
 let currentShot = {};
@@ -47,10 +48,22 @@ function updateText(element, value) {
 // design draws. Rather than widen the column away from the design, shrink just
 // that cell until it fits -- ordinary values are well inside the column and keep
 // their full size. Only re-fits on an actual change, to stay off the hot path.
+// Re-fitting on every change is still the hot path: during a shot these ranges
+// move almost every frame, and a fit costs 0.307 ms against 0.001 ms for the
+// write (measured in Chrome on the shot-data table). The fitted size depends on
+// how wide the string renders, not on which digits it holds, so fit the widest
+// string of this shape once and keep that size for every value sharing it.
+const fittedShapes = new WeakMap(); // element -> the shape its inline size was fitted for
+
 function updateRangeText(element, value) {
     if (!element || element.textContent === value) return;
+    const shape = fitShapeKey(value);
+    if (fittedShapes.get(element) !== shape) {
+        element.innerHTML = withLiftedArrows(shape);
+        fitTextToWidth(element);
+        fittedShapes.set(element, shape);
+    }
     element.innerHTML = withLiftedArrows(value);
-    fitTextToWidth(element);
 }
 
 // The arrow needs its own element to be nudged up (see .range-arrow), so the
