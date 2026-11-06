@@ -40,6 +40,7 @@ import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
 import { parseSkinAnswer } from '../modules/plugin-surfaces.js';
 import { FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA, buildFeedbackDescription } from './feedback-report.js';
+import { TOUCH_SOUND_KEY, isTouchSoundEnabled, playTouchSound } from '../modules/touch-sound.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -1012,6 +1013,8 @@ export function renderSettingsContent(category) {
             return renderBrightnessSettings();
         case 'wakelock':
             return renderWakeLockSettings();
+        case 'sounds':
+            return renderSoundSettings();
         case 'presence':
             return renderPresenceSettings();
         case 'unitssettings':
@@ -2425,6 +2428,29 @@ function bindSettingsJump() {
 }
 
 // Render Wake Lock settings
+// One toggle, one string: the click the skin plays on a tap, off by default.
+// Deliberately no heading or description beyond the label -- the label is the
+// whole setting, and every extra sentence is another translation to carry.
+export function renderSoundSettings() {
+    const enabled = isTouchSoundEnabled();
+    return `
+        <div class="space-y-6 px-[60px] py-[80px]">
+            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Enable sounds">Enable sounds</label>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="touch-sound-toggle" class="sr-only peer"
+                               ${enabled ? 'checked' : ''}
+                               onchange="handleTouchSoundToggle(this.checked)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 export function renderWakeLockSettings() {
     // Prefer REA's live DisplayState; fall back to last-known localStorage intent
     // only before the first display frame has arrived. wakeLockOverride (not
@@ -10218,6 +10244,14 @@ window.handleBrightnessChange = async function(value) {
 };
 
 // Wake Lock handlers
+// Turning it on plays the click itself: the toggle is the only place where
+// "what does this sound like" is the question being asked, and the tap that
+// flipped it is the user gesture the AudioContext needs.
+window.handleTouchSoundToggle = function(enabled) {
+    try { localStorage.setItem(TOUCH_SOUND_KEY, enabled ? 'true' : 'false'); } catch (e) { /* private mode */ }
+    if (enabled) playTouchSound();
+};
+
 window.handleWakeLockToggle = async function(enabled) {
     try {
         if (enabled) {

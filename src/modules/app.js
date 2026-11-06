@@ -2414,6 +2414,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ['numpad-modal.css', 'time-picker-modal.css']
                 .forEach(file => loadStyle(`src/css/${file}`).catch(() => {}));
             initHelpLauncher();
+            // Boot, not the main-page mount: the skin can land on any route, and
+            // the toggle for this lives in Settings -- a listener that waited for
+            // the dashboard would leave the setting silent on the page that
+            // turns it on. One document-level listener that reads the setting
+            // per tap, so it costs nothing while off and needs no reload.
+            import('./touch-sound.js').then(m => m.initTouchSound())
+                .catch(error => logger.warn('Touch sound failed to start:', error));
             Promise.all([
                 import('./numpad-modal.js'),
                 import('./time-picker-modal.js')
