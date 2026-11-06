@@ -9359,9 +9359,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             ui.showToast('Skin set. Loading it now.', 6000, 'success');
             // The redirect lands on the port Decaid is serving *at that moment*,
             // and the webview only allows it once its own view has picked the new
-            // port up. Give it a beat: too early and the navigation is treated as
-            // an external link and opens in the system browser instead.
-            await new Promise(r => setTimeout(r, 1200));
+            // port up. Too early and the navigation is treated as an external link
+            // and opens in the system browser instead (#186). Nothing is exposed to
+            // the page to say the SkinView is ready, so this is a guess: 5 s, as
+            // asked for in #186, because 1.2 s lost on a slow tablet. The real fix
+            // is a readiness signal from Decaid (decaid#1108).
+            await new Promise(r => setTimeout(r, 5000));
             const enterSkin = () => window.location.assign(
                 `${window.location.protocol}//${window.location.hostname}:3000/?_=${Date.now()}`);
             enterSkin();
