@@ -7,7 +7,7 @@ import { openDB, getSetting } from './idb.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, formatScreensaverClockDate, formatScreensaverClockTime, screensaverClockPositionStyle } from './screensaver-clock.js';
 import { deriveSleepButtonAction, isWakePending, mayTapWakeMachine } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel, isRefillKitPresent } from './machine.js';
-import { MAX_STEAM_DURATION_S, MIN_STEAM_DURATION_S, STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
+import { MAX_STEAM_DURATION_S, MIN_STEAM_DURATION_S, steamCounterSeconds, STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
 import { API_DEBOUNCE_MS } from './workflow-watch.js';
 import { shouldUseNumpad } from './numpad-policy.js';
 import { openContextMenu } from './context-menu.js';
@@ -3309,7 +3309,8 @@ export function updateMachineStatus(data) {
                         machineStatusEl.currentSteamValue = resuming ? machineStatusEl.currentSteamValue : 0;
 
                         machineStatusEl.steamIntervalId = setInterval(() => {
-                            machineStatusEl.currentSteamValue += 1;
+                            machineStatusEl.currentSteamValue = steamCounterSeconds(
+                                machineStatusEl.currentSteamValue + 1, currentSteamDuration);
 
                             setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${getTranslation('Steaming')}:</span> <span class="text-[var(--status-clickable-color)]">${machineStatusEl.currentSteamValue}s</span>`);
                             logger.debug(`DEBUG: Steam live counter update: ${machineStatusEl.innerHTML}`);
