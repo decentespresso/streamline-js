@@ -1268,7 +1268,7 @@ function updateSteamPresetDisplay() {
         button.style.fontSize = '';
         button.style.minWidth = selectedTarget ? '92px' : '72px';
         button.style.whiteSpace = 'nowrap';
-        button.disabled = calibratedSteamApplying || !calibratedSteamConfigured;
+        button.disabled = currentMachineState !== 'idle' || calibratedSteamApplying || !calibratedSteamConfigured;
     });
     const setup = document.getElementById('steam-auto-setup');
     if (setup) setup.style.display = calibratedSteamPitchers.length ? 'none' : '';
@@ -3905,7 +3905,7 @@ const SIDEBAR_GROUPS = {
     dose:     ['dose-section'],
     drink:    ['drink-section', 'drink-out-presets'],
     brew:     ['brew-section', 'temp-presets'],
-    steam:    ['steam-section', 'steam-presets', 'steam-flow-presets'],
+    steam:    ['steam-section', 'steam-presets', 'steam-flow-presets', 'steam-auto-presets'],
     flush:    ['flush-section', 'flush-presets'],
     hotwater: ['hotwater-section', 'hotwater-presets'],
 };
