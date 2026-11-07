@@ -275,6 +275,9 @@ Everything lives on one page. It is laid out to put extraction information front
 
 ![The main screen with the help overlay showing](docs/media/main-screen-help.jpg)
 
+*Shown with DYE2 switched on, so the P/F/R tabs and the DYE button are present. With DYE2 off —
+the default — the top bar carries the favourite slots and nothing else.*
+
 ### Top bar
 
 **The top bar has two forms, depending on whether the DYE2 plugin is switched on.** DYE2 is **off by
@@ -336,7 +339,7 @@ Drink. Install it on Decaid as its README describes.
 
 | Row | What it sets |
 |---|---|
-| **Grind** | Your grinder setting. Recorded with the shot; it does not command the grinder |
+| **Grind** | Your grinder setting. Recorded with the shot. On its own it does not command the grinder — a grinder plugin can make the tile follow the grinder, or set it (§13) |
 | **Dose** | Dry coffee weight in grams |
 | *(yield)* | Target beverage weight, shown with the ratio — `36g (1:2.0)`. Drives stop-at-weight when a scale is connected |
 | **Brew** | Brew temperature |
@@ -434,8 +437,10 @@ Tap one to preview its graph and notes on the right.
 
 ![The profile selector with the help overlay showing](docs/media/profile-selector-help.jpg)
 
-**Tap** a profile to preview it. **Long-press** for more options: hide it, assign it to a favourite,
-or edit it.
+**Tap** a profile to preview it. **Long-press** for more options: hide it, duplicate it, edit it, or
+assign it to one of the five favourite slots. Long-pressing a favourite slot on the main screen
+brings you here too — then the top-right button reads **Assign to favourite 3** instead of
+**CONFIRM**, and tapping it puts the selected profile in that slot.
 
 The toolbar above the list:
 
@@ -444,18 +449,17 @@ The toolbar above the list:
 | **+** Add profile | Start a new profile from scratch, upload a file, or import a share code |
 | Eye — View all | Show hidden profiles as well |
 | Magnifier — Search | Search your profiles |
-| Sparkle — Decent Profile Generator | Design a new espresso profile in a few guided steps |
 | Bin — Delete | Delete the selected profile. Built-in profiles are *hidden* rather than removed |
 
 And the buttons around the preview:
 
 | Button | What it does |
 |---|---|
-| **CONFIRM** | Use this profile for your next shot |
+| **CONFIRM** | Use this profile for your next shot. Reads **Assign to favourite _n_** when you arrived from a long-pressed favourite slot |
 | **CANCEL** | Discard changes and return without switching profile |
 | **EDIT** | Open the selected profile in the editor |
-| **RESET** | Restore the selected profile to its original settings |
-| **1**–**5** | Assign the selected profile to a favourite slot on the home screen |
+| **RESET** | Only for a profile you have saved over: pick an earlier version to restore. Your current copy is deleted, and that cannot be undone |
+| Pencil | Rename the selected profile |
 
 ### Adding a profile
 
@@ -481,24 +485,26 @@ undone — for a share-code import, confirming also removes it from your library
 
 ### The editor
 
-**EDIT** opens the profile editor. Three tabs: **STEP**, **SUMMARY** and **SETTINGS**.
+**EDIT** opens the profile editor. Three tabs: **CARDS**, **SCRIPT** and **SETTINGS**.
 
 ![The profile editor with the help overlay showing](docs/media/profile-editor-help.jpg)
 
-**STEP** is a grid. Each **column is one step**, and each row is one aspect of it. Tap any value to
-edit it, or use the −/+ buttons; the card buttons under each column insert or delete steps.
+**CARDS** is a grid. Each **column is one step**, and each row is one aspect of it. Tap a card to
+expand it, then tap any value to edit it, or use the −/+ buttons; the **+** and bin under each
+column insert or delete steps. The ← → arrows at the top right page through steps that are
+off-screen.
 
 | Row | What it means |
 |---|---|
 | **Temp** | Target temperature for the step, and which sensor it follows — Coffee or Water |
-| **Pump** | The step's pressure or flow, and how fast it ramps there (**Quickly** or **Slowly**). **+ Limit** caps the opposite value |
-| **Max** | The longest this step runs before moving on — by weight, time or volume |
-| **Exit if** | End the step early when pressure or flow goes over or under a set value |
+| **Pump** | The step's pressure or flow, and how fast it ramps there (**Quickly** or **Slowly**). **Limit to** caps the opposite value |
+| **Maximum** | The longest this step runs before moving on — by weight, time or volume |
+| **Move on if** | End the step early when pressure or flow goes over or under a set value |
 
 Two ways to view the same profile:
 
-- **STEP (Grid view)** — the step cards above
-- **SUMMARY (Text view)** — the profile as plain sentences, with a graph preview
+- **CARDS** — the step cards above
+- **SCRIPT** — the profile as plain sentences, with a graph preview
 
 **SETTINGS** holds the profile-wide values: dose, yield, temperature and so on.
 
@@ -507,15 +513,17 @@ Across the top:
 | Control | What it does |
 |---|---|
 | Profile name | Tap the title to rename it |
-| ↺ Version history | Restore an earlier version of this profile |
-| **CANCEL** | Discard changes and exit the editor |
+| **CLOSE** | Discard changes and exit the editor |
+| **SAVE AS NEW** | Save under the new title as a separate profile, leaving the original untouched. Lights up once you have renamed it |
 | **SAVE** | Save over this profile |
+
+To restore an earlier version of a profile, use **RESET** in the selector.
 
 ### How renaming protects the original
 
 **Saving under a new name leaves the original untouched and keeps your version as a separate
-profile.** Saving without renaming overwrites the profile you opened. So if you want to keep both,
-rename first, then save.
+profile.** Rename the profile, then tap **SAVE AS NEW**. Plain **SAVE** overwrites the profile you
+opened. So if you want to keep both, rename first.
 
 Your edited copy is saved into Decaid's shared profile store — the same store every skin reads from
 — so it is visible from other skins too, not just Streamline.
@@ -537,21 +545,26 @@ Derek answers questions about your DE1 and your equipment, and can look at a spe
 
 1. **Long-press the shot history panel** on the main screen.
 2. Choose **Discuss with Derek**.
-3. The shot summary is copied to your clipboard and Derek opens.
-4. Paste it into the chat and ask your question.
+3. Derek opens as a chat window **inside the skin**, with the summary of the shot on screen already
+   sent. The answer streams in as it is written.
+4. Ask follow-up questions in the box at the bottom — the conversation keeps the shot in mind.
 
-The same menu offers **Copy Shot Summary** if you only want the text.
+![Derek answering a question about the shot on screen](docs/media/derek-chat.jpg)
 
-🎬 **Asking Derek about a shot.** Copying a shot summary and asking a question.
+**Close** ends the chat. **Open in browser** hands the conversation to
+`derek.decentespresso.com` and copies the shot summary to your clipboard on the way, so you can
+paste it there.
+
+The same long-press menu offers **Copy Shot Summary** if you only want the text.
+
+🎬 **Asking Derek about a shot.** Opening Derek from the shot-history menu and asking a question.
 
 https://github.com/user-attachments/assets/29869256-d63a-40ed-b8d3-2bf2876501ea
 
 Derek is not limited to shots you paste in — you can ask it general DE1 and equipment questions too.
 
-> Technically: the skin opens `derek.decentespresso.com` in the browser and copies the shot summary
-> to your clipboard on the same tap. (Decaid also exposes a proxy at
-> `POST /api/v1/derek/answers/stream` for skins and plugins that want to stream answers directly —
-> see docs/API.md.)
+> Technically: the skin streams the answer through Decaid's proxy at
+> `POST /api/v1/derek/answers/stream`, so nothing leaves the chat window. See docs/API.md.
 
 ---
 
@@ -564,7 +577,29 @@ Streamline.js stores every shot twice: locally in the browser's IndexedDB, and i
   what you just pulled
 - **Read the metrics** — each shot carries pre-infusion, extraction and total summaries
 - **Keep scrolling** — history is paginated and loads more as you go back
-- **Long-press the history panel** for Derek and copy options (§11).
+- **Long-press the history panel** for the menu below
+
+### The history long-press menu
+
+![The shot history long-press menu](docs/media/shot-history-menu.jpg)
+
+| Entry | When it appears | What it does |
+|---|---|---|
+| **Discuss with Derek** | Always | Opens Derek on this shot (§11) |
+| **Copy Shot Summary** | Always | Copies the shot as Markdown to the clipboard |
+| **Select coffee batch for next shot** | Assisted dial-in plugin installed | Pick the bean the next shot will be recorded against |
+| **Assisted dial-in analysis** | Assisted dial-in plugin installed | Hands this shot to the plugin for a recommendation |
+| **Assisted dial-in feedback** | Assisted dial-in plugin installed | Tell the plugin how the shot tasted, so it can adjust |
+| **Capture bean weight** | Assisted dial-in plugin installed | Read the dose off a bean scale, then send it with your feedback |
+| **Upload to Visualizer** | Visualizer account logged in | Uploads this shot to visualizer.coffee |
+
+Plugins can add their own entries to the bottom of this menu.
+
+### Assisted dial-in
+
+Dial-in is a Decaid plugin (`assisted-dialin.reaplugin`), not part of the skin. Streamline hands it
+the shot and the bean; the plugin owns the comparison, the recommendation and its own screen. With
+the plugin absent the four entries above simply do not appear.
 
 ---
 
@@ -580,8 +615,8 @@ panels to resize them. **SAVE** and **CANCEL** sit at the top right.
 ![The settings screen with the help overlay showing](docs/media/settings-help.jpg)
 
 ### 1. Quick Adjustments
-Sub-pages for **Flow Multiplier**, **Steam**, **Hot Water**, **Water Tank**, **Flush** and **Machine
-Advanced Settings**.
+Sub-pages for **Flow calibration**, **Steam**, **Hot Water**, **Water Tank**, **Flush** and
+**Machine Advanced Settings**.
 
 The two flow multipliers are worth understanding if your shots stop slightly early or late:
 
@@ -591,7 +626,8 @@ The two flow multipliers are worth understanding if your shots stop slightly ear
 | **Volume Flow Multiplier** | 0.3 s | Applied to machine flow when projecting volume for stop-at-volume. Accounts for the lag between the stop command and flow actually stopping |
 
 ### 2. Connection
-Two sub-pages, **Machine** and **Scale**. This is the section to visit when devices stop responding.
+Three sub-pages: **1. Machine**, **2. Scale** and **3. Grinder**. This is the section to visit when devices
+stop responding.
 
 Each known device shows its ID, a **Preferred** toggle, its availability, and **Reconnect** and
 **Forget** buttons. To add a scale by hand, use **Add WiFi scale manually**.
@@ -609,22 +645,44 @@ Each known device shows its ID, a **Preferred** toggle, its availability, and **
 **Scale Required** — prevents shots from starting when no scale is connected. This is the setting
 behind the blocked-start behaviour described in §8.
 
+**Grinder.** Laid out like the Scale page. A grinder reaches the skin through its own Decaid
+plugin — with none installed the page says so and offers **Search**. Two switches decide how the
+**Grind** tile and the grinder talk to each other:
+
+| Switch | What it does |
+|---|---|
+| **Follow Grinder** | The Grind tile shows what the grinder is set to |
+| **Send Grind** | The Grind tile sets the grinder. Only available on a grinder that accepts settings |
+
+![Grinder settings, with no grinder plugin installed](docs/media/grinder-settings.jpg)
+
+See [docs/grinders.md](docs/grinders.md) for the plugin side.
+
 ### 3. Calibration
-Sub-pages for **Default load settings**, **Refill Kit**, **Voltage**, **Fan**, **Steam** (steam-heater on/off toggle and temperature) and — on
-Bengle machines only — **Load Cells**, which walks through a load-cell calibration with a reference
-weight. Some values here are read from the machine but not saveable, depending on what the firmware
+Sub-pages for **Default load settings**, **Refill Kit**, **Voltage**, **Fan**, **Steam**
+(steam-heater on/off toggle and temperature), **Sensor Calibration** (temperature, pressure
+and flow, corrected against your own reference measurement — the page previews the result before it
+writes, because the firmware folds each write into the value it already holds) and — on Bengle machines only — **Load Cells**, which walks through a
+load-cell calibration with a reference weight. Some values here are read from the machine but not saveable, depending on what the firmware
 API supports.
 
 ### 4. Machine
-Sub-pages for **USB**, **Machine Information**, and — on Bengle machines only — **Cup Warmer** and
-**Lighting** (LED strip).
+Sub-pages for **Smart Charging**, **Machine Info**, and — on Bengle machines only — **Cup
+Warmer** and **Lighting** (LED strip).
+
+**Smart Charging** offers a night-mode schedule and live charging status. The machine serial number
+is on **Machine Info**.
 
 ### 5. Maintenance
-**Machine Descaling** and **Transport Mode** (air purge).
+Three sub-pages: **Clean** (a backflush cycle for the group head), **Machine Descaling**, and
+**Transport Mode** (air purge). Each walks the machine through its own procedure and can be
+stopped part-way. A sleeping DE1 is woken first.
+
+![The Clean page, ready to run a cleaning cycle](docs/media/maintenance-clean.jpg)
 
 ### 6. Skin
-**Theme & Updates** — light/dark theme, and the skin switcher. Applying a different skin reloads the
-page.
+Two sub-pages: **Theme** — light or dark — and **Active Skin**, the skin switcher. Applying a
+different skin reloads the page.
 
 ### 7. Language
 **Select Language → Display Language.** Choose the language for the interface. Switching takes
@@ -647,13 +705,18 @@ in instead.
 button to the header (§7). Requires `dye2.reaplugin` installed in Decaid.
 
 ### 9. Miscellaneous
-A group of sub-pages: **Decaid Settings**, **Brightness**, **Wake Lock**, **Presence
-Detection**, **Display Size**, **Temperature**, **Screen Saver**, **Keyboard Shortcuts** and
-**Home Assistant**.
+A group of sub-pages: **Decaid Settings**, **Brightness**, **Wake Lock**, **Presence Detection**,
+**Display Size**, **Temperature**, **Screen Saver**, **Keyboard Shortcuts**, **Home Assistant** and
+**Enable sounds**.
 
-**Display size (zoom)** is persisted locally — useful on unusual tablet resolutions. **Temperature**
-switches between °C and °F. **Smart charging** offers a night-mode schedule and live charging
-status.
+**Decaid Settings** carries Decaid's own build information and its update control — see §10.
+**Display size (zoom)** is persisted locally — useful on unusual tablet resolutions.
+**Temperature** switches between °C and °F.
+
+**Enable sounds** — a click on every tap. **Off by default.** The sound is de1app's own key click,
+so a tap in Streamline sounds like a tap in de1app. Controls click; labels and readouts do not.
+
+![The Enable sounds switch, off by default](docs/media/enable-sounds.jpg)
 
 #### Screen Saver
 
@@ -678,7 +741,8 @@ They do not change sleep timing or the image cycle.
 > again 46 ms later because hiding the overlay also sent a wake command.
 
 ### 10. Updates
-This page handles two separate updates: the machine's **DE1 firmware**, and **Decaid** itself.
+**Firmware Update** — the machine's **DE1 firmware**. Decaid's own update lives on the **Decaid
+Settings** page under Miscellaneous (§9); the two used to share one page.
 
 **DE1 firmware**
 
@@ -691,7 +755,7 @@ This page handles two separate updates: the machine's **DE1 firmware**, and **De
 - **Manual upload** — pick a firmware file yourself, then press **Upload**. A progress bar and a
   **Cancel** button appear while it runs.
 
-**Decaid**
+**Decaid** (Miscellaneous → Decaid Settings)
 
 - **Version and source** — version, build number, build time, branch, and commit.
 - **Check for Updates** — also runs on its own when you open the page. The button is hidden once
@@ -725,7 +789,7 @@ The keyboard shortcut reference (§15) lives under **Miscellaneous** (§9), not 
 | Page loads but everything is greyed out | Decaid not running or not reachable | Confirm Decaid's API is up on `:8080`; check `localStorage.reaHostname` |
 | Skin renders wrong on the tablet only | Outdated Android System WebView | Update it and restart the device (§4) |
 | Can't get out of a skin | — | Swipe right from the left edge of the screen |
-| Machine shows disconnected after a network blip | WebSocket reconnected and reset connection state | Wait — reconnect uses exponential backoff. If it persists, reconnect from Settings → Connections |
+| Machine shows disconnected after a network blip | WebSocket reconnected and reset connection state | Wait — reconnect uses exponential backoff. If it persists, reconnect from Settings → Connection (§13) |
 | Scale weight jumps or flickers | Normal noise; readings are throttled | If it never settles, disconnect and reconnect the scale |
 | Scale drops off every time the machine sleeps | Scale power mode is set to **Disconnect** | Change it in Settings → Connection → Scale (§13). The default is **Nothing** |
 | Edited profile disappeared | Your edited profiles live in Decaid's memory | Check you are on the same Decaid instance you saved from |
@@ -768,5 +832,6 @@ Bindings are remappable and stored in `localStorage` under `keyboardBindings`.
 | **Bengle** | The other machine Decaid supports alongside the DE1 |
 | **DYE2** | *Describe Your Espresso 2* — a separate Decaid plugin (`dye2.reaplugin`) for bean/grinder/notes, auto‑favourites and recipes. Off by default in Streamline.js |
 | **Workflow** | A profile plus its shot settings, bean and grinder as one unit |
+| **Assisted dial-in** | A Decaid plugin (`assisted-dialin.reaplugin`) that reads your shots and suggests a grind or dose change. Reached from the shot-history long-press menu (§12) |
 | **Content‑addressed** | Identified by a hash of the content, not by name |
 | **Snapshot** | One frame of live machine data on the WebSocket feed |
