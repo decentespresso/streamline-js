@@ -163,6 +163,23 @@ export function steamOffPatch() {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+/** A duration that is a steam time, else null (the off state's 0 included). */
+const steamDuration = (v) => (num(v) !== null && v >= MIN_STEAM_DURATION_S ? v : null);
+
+/**
+ * May a drift check reconcile this steam duration with the remembered one?
+ *
+ * The heater's off state writes duration 0 (steamOffPatch), and the machine
+ * echoes it back in the next shot-settings frame. Adopting that 0 as the
+ * remembered value loses the time to come back to, and the heater returned at
+ * 1 s (issue #191). An ABSENT duration still drifts: a field the workflow does
+ * not have is filled from the remembered value, not adopted.
+ *
+ * @param {*} duration  workflow steamSettings.duration / frame targetSteamDuration
+ */
+export function steamDurationResyncable(duration) {
+    return steamDuration(duration) !== null || num(duration) === null;
+}
 
 /**
  * The workflow patch that brings the heater back on.
@@ -192,8 +209,12 @@ const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
  */
 export function steamOnPatch({ recipe = {}, remembered = {}, profile = {}, currentFlow } = {}) {
     const temp = num(recipe.tempC) ?? num(remembered.temp) ?? 150;
-    const duration = num(recipe.durationS) ?? num(remembered.duration)
-        ?? num(profile.duration) ?? DEFAULT_STEAM_DURATION_S;
+    // A sub-minimum duration is the OFF state, not a time (issue #191: the off
+    // state's 0 could reach the remembered value and came back as 1 s). Treat it
+    // as "nothing remembered" so the next rung answers, like
+    // seedRememberedSteamValues and the profile fallback already do.
+    const duration = steamDuration(recipe.durationS) ?? steamDuration(remembered.duration)
+        ?? steamDuration(profile.duration) ?? DEFAULT_STEAM_DURATION_S;
     const patch = {
         targetTemperature: Math.round(clamp(temp, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP)),
         duration: Math.round(clamp(duration, MIN_STEAM_DURATION_S, MAX_STEAM_DURATION_S)),

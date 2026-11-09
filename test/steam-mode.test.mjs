@@ -13,6 +13,7 @@ import {
     steamOffPatch,
     steamOnPatch,
     steamDurationIntent,
+    steamDurationResyncable,
     steamDurationWrite,
     DEFAULT_STEAM_DURATION_S,
     MIN_STEAM_DURATION_S,
@@ -209,8 +210,27 @@ test('steamOnPatch: never re-arms outside the band the machine accepts', () => {
     // toggle showed on -- the exact fight the clamp exists to prevent.
     assert.equal(steamOnPatch({ remembered: { temp: 100 } }).targetTemperature, STEAM_ENABLED_MIN_TEMP);
     assert.equal(steamOnPatch({ remembered: { temp: 999 } }).targetTemperature, STEAM_ENABLED_MAX_TEMP);
-    assert.equal(steamOnPatch({ remembered: { duration: 0 } }).duration, MIN_STEAM_DURATION_S);
     assert.equal(steamOnPatch({ remembered: { duration: 9999 } }).duration, MAX_STEAM_DURATION_S);
+});
+
+// Issue #191: the off state's duration 0 reaching the remembered value brought
+// the heater back at 1 s.
+test('steamOnPatch: a sub-minimum duration is the off state, not a time', () => {
+    assert.equal(steamOnPatch({ remembered: { duration: 0 } }).duration, DEFAULT_STEAM_DURATION_S,
+        'a remembered 0 falls through to the default, not to 1 s');
+    assert.equal(steamOnPatch({ recipe: { durationS: 0 }, remembered: { duration: 40 } }).duration, 40,
+        "a recipe's 0 leaves the remembered time standing");
+    assert.equal(steamOnPatch({ remembered: { duration: 0 }, profile: { duration: 25 } }).duration, 25,
+        "the profile's saved time answers for a remembered 0");
+});
+
+test('steamDurationResyncable: the off state is not drift, an absent field is', () => {
+    assert.equal(steamDurationResyncable(40), true);
+    assert.equal(steamDurationResyncable(MIN_STEAM_DURATION_S), true);
+    assert.equal(steamDurationResyncable(0), false, "the off state's own 0");
+    assert.equal(steamDurationResyncable(0.5), false);
+    assert.equal(steamDurationResyncable(undefined), true, 'an absent field is filled from the remembered value');
+    assert.equal(steamDurationResyncable(null), true);
 });
 
 test('steamOnPatch: flow is left alone unless the machine has none to use', () => {

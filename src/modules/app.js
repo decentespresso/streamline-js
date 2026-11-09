@@ -22,7 +22,7 @@ import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-l
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { setMachineModel, isBengleMachine, setRefillKitPresent, isRefillKitPresent } from './machine.js';
 import { classifyStopReason, canonicalStopReason, STOP_TARGET_WEIGHT, STOP_TARGET_VOLUME, STOP_PROFILE_ENDED } from './stop-reason.js';
-import { resolveMilkProbePresence, MILK_PROBE_ABSENT_AFTER_MS, selectMilkProbeSensorId } from './steam-mode.js';
+import { resolveMilkProbePresence, MILK_PROBE_ABSENT_AFTER_MS, selectMilkProbeSensorId, steamDurationResyncable } from './steam-mode.js';
 import { readTimeToReadyFrame, heatingSecondsLeft } from './heating-countdown.js';
 import { workflowTileValues, tilesToPaint, profileChanged, WORKFLOW_EDIT_GUARD_MS } from './workflow-watch.js';
 import { isCupWarmerOn, readCupWarmerTarget, resolvePrewarm, getCupWarmerState, setCupWarmerState, patchCupWarmerState, invalidateCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY } from './cup-warmer.js';
@@ -1519,6 +1519,10 @@ function resyncDriftedShotSettings(data) {
         const value = data[field];
         if (value === undefined || value === lastSeenShotSettings[field]) continue;
         lastSeenShotSettings[field] = value;
+        // The heater's off state reports a steam duration of 0, which is not a
+        // time and must not be adopted over the one to come back to (issue #191)
+        // -- the same rule resyncSteamFromStore applies while steam is off.
+        if (field === 'targetSteamDuration' && !steamDurationResyncable(value)) continue;
         if (now - (lastResyncAt[field] ?? 0) < RESYNC_COOLDOWN_MS) continue;
         // Claimed before the await, not after: at frame rate a dozen more frames
         // arrive before this resolves, and every one of them would pass the
@@ -1784,9 +1788,13 @@ async function loadInitialData() {
         // Outside the guard: an absent steamSettings is not a reason to drop the
         // user's remembered targets. The milk stop keeps its own armed-only
         // guard — 0/absent there means the stop is off, a real choice.
-        api.resyncIfDrifted(api.STEAM_DURATION_LAST_VALUE_KEY, steamsettings?.duration, api.setTargetSteamDuration)
-            .then(v => { if (v != null) ui.updateSteamDisplay({ targetSteamDuration: v }); })
-            .catch(e => logger.warn('Steam duration resync failed:', e));
+        // Steam off reports duration 0: adopting it would lose the remembered
+        // time and the heater would come back at 1 s (issue #191).
+        if (steamDurationResyncable(steamsettings?.duration)) {
+            api.resyncIfDrifted(api.STEAM_DURATION_LAST_VALUE_KEY, steamsettings?.duration, api.setTargetSteamDuration)
+                .then(v => { if (v != null) ui.updateSteamDisplay({ targetSteamDuration: v }); })
+                .catch(e => logger.warn('Steam duration resync failed:', e));
+        }
         api.resyncIfDrifted(api.STEAM_FLOW_LAST_VALUE_KEY, steamsettings?.flow, api.setTargetSteamFlow)
             .then(v => { if (v != null) ui.updateSteamDisplay({ targetSteamFlow: v }); })
             .catch(e => logger.warn('Steam flow resync failed:', e));

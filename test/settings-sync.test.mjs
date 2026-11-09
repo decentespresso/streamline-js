@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { decideResync } from '../src/modules/resync-policy.js';
 import { profileAtBrewTemp } from '../src/modules/brew-temp.js';
 import { selectedRecipeSteam } from '../src/modules/dye-selection.js';
-import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, MIN_STEAM_DURATION_S } from '../src/modules/steam-mode.js';
+import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, steamDurationResyncable, MIN_STEAM_DURATION_S } from '../src/modules/steam-mode.js';
 
 // Persistence of the user's main-page settings: the shared KV record that
 // outranks a drifted workflow (milk stop, plus the resync rule every tile value
@@ -507,8 +507,9 @@ const SHARED_VALUE_CACHE = [
             setTargetHotWaterTemp: () => {},
             resyncIfDrifted: async (key, value) => { checked.push([key, value]); return pushes; },
         };
-        const fn = new Function('api', 'logger', 'Date',
-            `${body}\nreturn resyncDriftedShotSettings;`)(api, { warn() {} }, { now: () => clock.now });
+        const fn = new Function('api', 'logger', 'Date', 'steamDurationResyncable',
+            `${body}\nreturn resyncDriftedShotSettings;`)(api, { warn() {} }, { now: () => clock.now },
+            steamDurationResyncable);
         return { fn, checked, clock };
     };
 
@@ -582,6 +583,18 @@ const SHARED_VALUE_CACHE = [
         fn({ targetHotWaterVolume: 0 });
         fn({});
         assert.deepEqual(checked, [['last-hot-water-volume', 0]]);
+    });
+
+    test('the off state\'s steam duration of 0 is never adopted (issue #191)', () => {
+        // setSteamHeaterEnabled(false) writes duration 0 and the machine echoes
+        // it. Adopting it as the remembered time lost the duration to come back
+        // to, and the heater returned at MIN_STEAM_DURATION_S instead.
+        const { fn, checked } = build();
+        fn({ targetSteamDuration: 0, targetHotWaterVolume: 120 });
+        assert.deepEqual(checked, [['last-hot-water-volume', 120]]);
+        // A real time on a later frame is still reconciled.
+        fn({ targetSteamDuration: 40 });
+        assert.deepEqual(checked.at(-1), ['last-steam-duration', 40]);
     });
 }
 

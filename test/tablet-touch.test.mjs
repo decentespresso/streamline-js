@@ -13,7 +13,12 @@ test('long press uses pointer events without blocking touch start', () => {
     assert.match(helper, /addEventListener\('pointermove'/);
     assert.match(helper, /addEventListener\('pointercancel'/);
     assert.match(helper, /Math\.hypot\([\s\S]*movementThreshold/);
-    assert.doesNotMatch(helper, /touchstart|mousedown/);
+    assert.doesNotMatch(helper, /touchstart/);
+    // The one mouse listener left is the focus suppressor: tapping a control the
+    // zoomed canvas has clipped used to scroll #scaling-container to reveal it,
+    // moving the whole scaled page. It touches no touch event, so a scroll
+    // gesture over the control is still the browser's.
+    assert.match(helper, /addEventListener\('mousedown', event => event\.preventDefault\(\)\)/);
     assert.doesNotMatch(startPress, /preventDefault/);
     assert.match(helper, /stopImmediatePropagation/);
 });
