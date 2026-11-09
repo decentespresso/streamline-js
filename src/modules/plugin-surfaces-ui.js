@@ -52,8 +52,9 @@ const MUTED = 'var(--low-contrast-white)';
 
 // Text steps a plugin may ask for with `size`. `large` is the built-in Time | Flow
 // toggle's 21px on a 24px line. font/line: a line or toggle; pillFont/pill: a hint's
-// pill; hit: the touch height of a line or toggle (grows upward over the label, which is
-// not interactive); hitHint: a hint's, kept shorter so it stays off the value and the ratio
+// pill; hit: the touch height of a line or toggle (grows upward over the label on the tiles
+// whose label is not interactive -- see DOWN_TILES); hitHint: a hint's, kept shorter so it
+// stays off the value and the ratio
 // label; hitDown: the same on tiles whose label is a control, where it grows downward and
 // stops short of the first preset.
 // `small` is the original look and must not change.
@@ -62,7 +63,11 @@ const SIZE_SPEC = {
     medium: { font: 17, line: 20, pillFont: 15, pill: 20, hit: 32, hitHint: 28, hitDown: 24 },
     large: { font: 21, line: 24, pillFont: 19, pill: 24, hit: 40, hitHint: 32, hitDown: 28 },
 };
-const DOWN_TILES = ['steam', 'hotwater', 'flush']; // the label (or toggle) above is a control
+// The label (or toggle) above is a control, so a bigger touch box grows downward
+// instead of over it. Grind is here because its label is now a control too: it
+// opens the grinder (app.js). Only the box moves -- the text sits under the label
+// either way -- and at `small` the 24px box still laps a few px over the label.
+const DOWN_TILES = ['steam', 'hotwater', 'flush', 'grind'];
 const sizeAbove = size => SURFACE_SIZES[Math.max(0, SURFACE_SIZES.indexOf(size) - 1)];
 const largestSize = sizes => sizes.reduce((a, b) => (SURFACE_SIZES.indexOf(b) > SURFACE_SIZES.indexOf(a) ? b : a), 'small');
 
@@ -549,6 +554,13 @@ const callQueue = createCallQueue({
 const callKey = (plugin, surface) => (surface.kind === 'tile-hint' || surface.kind === 'tile-line' || surface.kind === 'ratio-action'
     ? `${plugin.id}:${surface.id}`
     : `${plugin.id}:${surface.tile}`);
+
+// Is a plugin's mode the one drawn on this tile right now? On flush that also means
+// the label belongs to the plugin: it is the only way back to the built-in row (see
+// paintToggle), so whoever else wired that label has to stand aside.
+export function pluginModeOn(tile) {
+    return !!selectedMode[tile];
+}
 
 // True while a call for this mode is being sent or the user is still stepping, so a
 // redraw must keep the value the user is moving rather than the plugin's older one.

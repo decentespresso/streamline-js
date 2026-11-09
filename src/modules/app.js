@@ -16,6 +16,7 @@ import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
 import { workflowGrindStep } from './grinder-sync.js';
+import { isDye2Enabled } from './dye2-enabled.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
 import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
@@ -2658,13 +2659,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // A tile's own label deep-links to that tile's settings category -- Steam
-        // to the page carrying the steam heater toggle, Hot Water to its own.
-        // The settings shell restores the saved location on mount, so writing it
-        // before loadPage is the whole mechanism.
-        for (const [labelId, category] of [['steam-label', 'steam'], ['hotwater-label', 'hotwater']]) {
+        // to the page carrying the steam heater toggle, Hot Water and Flush to
+        // their own. The settings shell restores the saved location on mount, so
+        // writing it before loadPage is the whole mechanism.
+        for (const [labelId, category] of [['steam-label', 'steam'], ['hotwater-label', 'hotwater'], ['flush-label', 'flush']]) {
             const label = document.getElementById(labelId);
             if (!label) continue;
-            const open = () => {
+            const open = async () => {
+                // Flush's label is also a plugin's way back to the built-in flush while a
+                // plugin flush mode is on -- the only way back, since that row carries no
+                // built-in option (plugin-surfaces-ui wires its own click on it then). Let
+                // the plugin have that tap; the deep-link is for the ordinary row.
+                if (labelId === 'flush-label') {
+                    const { pluginModeOn } = await import('./plugin-surfaces-ui.js');
+                    if (pluginModeOn('flush')) return;
+                }
                 writeSettingsLocation('quickadjustments', category);
                 loadPage('src/settings/settings.html');
             };
@@ -2676,6 +2685,41 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
                 e.preventDefault();
                 open();
+            });
+        }
+
+        // Grind leads to the grinder, and which grinder that is depends on who is
+        // keeping the record. DYE2 on: its own pages (dyeStrip picks between the
+        // armed item's editor and the grinder picker). DYE2 off: the only grinder
+        // the skin knows is the connected device, on the Connections page -- which
+        // sets no grinder on the workflow, but is the only grinder screen there is.
+        // Read at tap time: the flag is synchronized and hydrates after boot, so a
+        // decision made at wire time would be the default on a fresh tablet.
+        const grindLabel = document.getElementById('grind-label');
+        if (grindLabel) {
+            const openGrinder = async () => {
+                try {
+                    if (!isDye2Enabled()) {
+                        writeSettingsLocation('bluetooth', 'ble_grinder');
+                        loadPage('src/settings/settings.html');
+                        return;
+                    }
+                    // Imported here, not at the top: dyeStrip.js is ~90K and index.html
+                    // already loads it, so this resolves from the module cache.
+                    const { openGrinderSurface } = await import('./dyeStrip.js');
+                    await openGrinderSurface();
+                } catch (error) {
+                    logger.error('Grind label: could not open the grinder page', error);
+                }
+            };
+            grindLabel.addEventListener('pointerdown', () => {
+                prefetchSettingsPage().catch(() => {});
+            }, { once: true });
+            grindLabel.addEventListener('click', openGrinder);
+            grindLabel.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                openGrinder();
             });
         }
     } catch (error) {

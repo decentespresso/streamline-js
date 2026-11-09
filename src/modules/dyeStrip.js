@@ -878,6 +878,28 @@ function editFavourite(fav) {
     openPluginOverlay('auto-fav-edit');
 }
 
+// Where the Grind label goes while DYE2 is on, which is wherever the grinder is
+// recorded for what the barista is making. An armed recipe or favourite carries
+// its own grinder, and changing it there is the point: a recipe is its dial-in,
+// so a different grinder is a different recipe, and DYE2's own editor says so
+// (recipe-edit re-applies the recipe on save, so the new grinder reaches the
+// live workflow too). With nothing armed there is no item to edit and the
+// grinder belongs to the next shot alone: DYE2's grinder-picker writes it
+// straight onto the workflow.
+export async function openGrinderSurface() {
+    // activeItemId is a highlight, and in P mode nothing has refreshed it since boot
+    // (setStripMode only syncs on F/R): a recipe armed inside DYE2 would look like
+    // nothing armed, and the picker would write the workflow instead of the recipe.
+    // A no-op against a DYE2 that does not record its own dial-in.
+    await syncSelection().catch(() => {});
+    if (activeItemId == null) { openPluginOverlay('grinder-picker'); return; }
+    const recipe = recipeCache.find(r => r && r.id === activeItemId);
+    if (recipe) { editRecipe(recipe); return; }
+    const fav = favCache.find(f => f && f.id === activeItemId);
+    if (fav) { editFavourite(fav); return; }
+    openPluginOverlay('grinder-picker');
+}
+
 // ─── Plugin install / version state ───────────────────────────────────────────
 //
 // Streamline is a read-only consumer of DYE2's KV contract, so an outdated plugin
