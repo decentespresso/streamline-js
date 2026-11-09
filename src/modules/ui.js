@@ -1,4 +1,4 @@
-import { autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
+import { autoSteamPitcherDisabled, autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
 import { resolveStatusStateKey, isActionTailSubstate } from './machine-status-policy.js';
@@ -1216,7 +1216,10 @@ function updateSteamPresetDisplay() {
         button.style.fontSize = '';
         button.style.minWidth = selectedTarget ? '92px' : '72px';
         button.style.whiteSpace = 'nowrap';
-        button.disabled = currentMachineState !== 'idle' || calibratedSteamApplying || !calibratedSteamConfigured;
+        button.disabled = autoSteamPitcherDisabled(currentMachineState, {
+            busy: calibratedSteamApplying,
+            configurationReady: calibratedSteamConfigured,
+        });
     });
     const setup = document.getElementById('steam-auto-setup');
     if (setup) setup.style.display = calibratedSteamPitchers.length ? 'none' : '';
@@ -3837,7 +3840,7 @@ const SIDEBAR_GROUPS = {
     dose:     ['dose-section'],
     drink:    ['drink-section', 'drink-out-presets'],
     brew:     ['brew-section', 'temp-presets'],
-    steam:    ['steam-section', 'steam-presets', 'steam-flow-presets', 'steam-auto-presets'],
+    steam:    ['steam-section', 'steam-presets', 'steam-flow-presets', 'steam-milk-presets', 'steam-auto-presets'],
     flush:    ['flush-section', 'flush-presets'],
     hotwater: ['hotwater-section', 'hotwater-presets'],
 };
