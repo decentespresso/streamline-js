@@ -825,6 +825,13 @@ export function setupPressAndHold(element, clickCallback, longPressCallback, opt
     const duration = options.duration ?? LONG_PRESS_MS;
     const movementThreshold = options.movementThreshold ?? 10;
     element.style.touchAction = options.touchAction ?? 'manipulation';
+    // Tapping a control the zoomed canvas has clipped (the Hot Water presets are
+    // the bottom-most row, so they clip first) used to focus it, and the UA then
+    // scrolled #scaling-container to reveal it -- shifting the WHOLE scaled page
+    // (scaling.js only resets that scroll on the non-zoomed branch). Dropping
+    // mousedown's default drops focus-on-tap; click still fires and keyboard
+    // focus is untouched.
+    element.addEventListener('mousedown', event => event.preventDefault());
 
     let timer;
     let pointerId = null;
