@@ -3175,10 +3175,14 @@ export function updateMachineStatus(data) {
     // steam/flush/hotwater, the normal path renders Ready.
     if (isPouringDone && (isSteamState || isFlushState || isHotWaterState)) {
         if (isSteamState) {
-            const steamText = getTranslation('Steaming');
-            // Already frozen: the tail substates do not deliver, so the fold
-            // above stopped the clock at the last delivered millisecond.
-            setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${steamText}:</span> <span class="text-[var(--status-clickable-color)]">${steamElapsedSeconds(steamTimer, Date.now())}s</span>`);
+            // Delivery is over, so the counter goes with it (issue #193). Two Tap
+            // Stop holds the machine in the tail for ~10 s -- 5.7 s of puffing
+            // and 4.5 s of pouringDone in that capture -- and a frozen
+            // "Steaming: 18s" sat there for all of it, reading as a counter that
+            // had stuck rather than a steam that had finished. The fold above
+            // already stopped the clock at the last delivered millisecond; this
+            // drops the number from the line too and names the phase instead.
+            setMachineStatusContent(machineStatusEl, `<span class="text-[var(--status-ready-green)]">${getTranslation('Steam')}</span>`);
         } else if (isFlushState) {
             const flushText = getTranslation('Flush');
             const frozenValue = typeof machineStatusEl.currentFlushValue === 'number'
