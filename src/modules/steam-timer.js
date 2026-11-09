@@ -43,6 +43,32 @@ export function steamElapsedSeconds(timer, now) {
 }
 
 /**
+ * The steam debug trail (issue #192), as a decision rather than a log call.
+ *
+ * A report of a steam counter that read wrong arrives as a submitted log, and
+ * the substates it turns on are not in one: decaid logs on machine-STATE change
+ * only, and a tablet with verbose logging off records no per-frame trace at all.
+ * One line per substate change while the machine is in steam, plus the single
+ * frame that leaves it, is enough to tell a steam that never delivered from a
+ * counter that failed to count -- and it is short enough for logger.audit, which
+ * is always on.
+ *
+ * Returns null for a frame worth no line: outside steam with nothing open, or a
+ * repeat of the substate already reported.
+ *
+ * @param {string|null} lastKey  `nextKey` from the previous call, null at rest
+ * @param {{state:*, substate:*, seconds:number}} frame  seconds: what the status line shows
+ * @returns {{line:string, nextKey:string|null}|null}
+ */
+export function steamAuditFrame(lastKey, { state, substate, seconds }) {
+    const inSteam = state === 'steam';
+    if (!inSteam && !lastKey) return null;
+    const key = `${state ?? '?'}/${substate ?? '?'}`;
+    if (key === lastKey) return null;
+    return { line: `${key} ${seconds}s`, nextKey: inSteam ? key : null };
+}
+
+/**
  * Fold one machine frame in. Returns the next timer; never mutates.
  *
  * Leaving `steam` freezes rather than resets, so the frozen value stays readable

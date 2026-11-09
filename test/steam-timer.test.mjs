@@ -4,6 +4,7 @@ import {
     createSteamTimer,
     foldSteamFrame,
     isSteamDelivering,
+    steamAuditFrame,
     steamElapsedSeconds,
     STEAM_SESSION_GAP_MS,
 } from '../src/modules/steam-timer.js';
@@ -143,6 +144,64 @@ test('reading long after a frozen session returns the frozen value', () => {
         ['steam', 'puffing', 9000],
     ], { readAt: 120000 });
     assert.equal(seconds, 9);
+});
+
+// ── Steam debug trail (issue #192) ──────────────────────────────────────────
+
+// Drive frames through the audit decision the way updateMachineStatus does,
+// carrying the key forward, and collect the lines a submitted log would hold.
+function trail(frames) {
+    let key = null;
+    const lines = [];
+    for (const [state, substate, seconds] of frames) {
+        const out = steamAuditFrame(key, { state, substate, seconds });
+        if (!out) continue;
+        key = out.nextKey;
+        lines.push(out.line);
+    }
+    return lines;
+}
+
+test('the trail reports one line per substate change, plus the exit', () => {
+    // The #193 capture's shape: delivery, then the Two Tap Stop tail.
+    assert.deepEqual(trail([
+        ['idle', 'idle', 0],
+        ['steam', 'preparingForShot', 0],
+        ['steam', 'pouring', 0],
+        ['steam', 'pouring', 6],
+        ['steam', 'puffing', 18],
+        ['steam', 'pouringDone', 18],
+        ['idle', 'idle', 18],
+        ['idle', 'idle', 18],
+    ]), [
+        'steam/preparingForShot 0s',
+        'steam/pouring 0s',
+        'steam/puffing 18s',
+        'steam/pouringDone 18s',
+        'idle/idle 18s',
+    ]);
+});
+
+test('a steam that never delivers still leaves a trail saying so', () => {
+    // #192: the counter stayed at 0. Whether pouring ever arrived is the whole
+    // question, and this is the line that answers it.
+    assert.deepEqual(trail([
+        ['steam', 'preparingForShot', 0],
+        ['steam', 'preparingForShot', 0],
+        ['idle', 'idle', 0],
+    ]), ['steam/preparingForShot 0s', 'idle/idle 0s']);
+});
+
+test('frames outside steam are silent once the session has been closed out', () => {
+    assert.equal(steamAuditFrame(null, { state: 'idle', substate: 'idle', seconds: 0 }), null);
+    assert.equal(steamAuditFrame(null, { state: 'espresso', substate: 'pouring', seconds: 0 }), null);
+    assert.equal(steamAuditFrame(null, { state: undefined, substate: undefined, seconds: 0 }), null,
+        'a disconnect paint carries no state at all');
+});
+
+test('the exit line closes the session so the next steam opens a new trail', () => {
+    const exit = steamAuditFrame('steam/pouringDone', { state: 'idle', substate: 'idle', seconds: 9 });
+    assert.deepEqual(exit, { line: 'idle/idle 9s', nextKey: null });
 });
 
 test('folding is pure', () => {

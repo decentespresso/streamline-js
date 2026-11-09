@@ -3,7 +3,7 @@ import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 
 import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setSteamHeaterEnabled, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
 import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from './machine-status-policy.js';
-import { createSteamTimer, foldSteamFrame, steamElapsedSeconds } from './steam-timer.js';
+import { createSteamTimer, foldSteamFrame, steamElapsedSeconds, steamAuditFrame } from './steam-timer.js';
 import { openDB, getSetting } from './idb.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, formatScreensaverClockDate, formatScreensaverClockTime, screensaverClockPositionStyle } from './screensaver-clock.js';
 import { deriveSleepButtonAction, isWakePending, mayTapWakeMachine } from './screensaver-policy.js';
@@ -223,6 +223,8 @@ export function setWorkflowGrindStep(step) { workflowGrinderStep = Number.isFini
 // updateMachineStatus and read by the steam branch; the policy, including what
 // counts as delivery and when a session restarts, is in steam-timer.js.
 let steamTimer = createSteamTimer();
+// Last state/substate the steam debug trail reported; null while out of steam.
+let lastSteamAuditKey = null;
 
 // Tap feedback for icon buttons: flashes the active blue (see .icon-flash in
 // main.css). Restarts cleanly on rapid taps.
@@ -3069,7 +3071,18 @@ export function updateMachineStatus(data) {
     // whichever message won the status line. A language change replays the last
     // frame through here; folding it again is a no-op while frozen, and while
     // steam is running it only advances the clock that is running anyway.
-    steamTimer = foldSteamFrame(steamTimer, { state, substate, now: Date.now() });
+    const steamNow = Date.now();
+    steamTimer = foldSteamFrame(steamTimer, { state, substate, now: steamNow });
+    // Steam debug trail (issue #192): a counter that read wrong is reported as a
+    // submitted log, and nothing in one shows the substates the count follows.
+    // One audit line per substate change in steam, and one on the way out.
+    const steamAudit = steamAuditFrame(lastSteamAuditKey, {
+        state, substate, seconds: steamElapsedSeconds(steamTimer, steamNow),
+    });
+    if (steamAudit) {
+        lastSteamAuditKey = steamAudit.nextKey;
+        logger.audit('steam', steamAudit.line);
+    }
     // Puck (group-head) temperature only means anything while a shot is pulling,
     // so it joins the telemetry row for espresso and leaves again afterwards.
     const puckVisible = state === MachineState.ESPRESSO;
