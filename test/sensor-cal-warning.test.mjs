@@ -40,56 +40,60 @@ const { sensorCalWarningNextState } = new Function(`${body}
 
 const FRESH = { shown: false, ack: false };
 
-test('enter-page: the first render of a visit opens the warning', () => {
-    const { state, open } = sensorCalWarningNextState(FRESH, 'render');
+test('open Advanced: the first opening of a visit asks for the warning', () => {
+    const { state, open } = sensorCalWarningNextState(FRESH, 'open');
     assert.equal(open, true);
     assert.deepEqual(state, { shown: true, ack: false });
 });
 
-test('re-render: further renders before dismissal do not reopen it', () => {
-    let state = FRESH;
-    ({ state } = sensorCalWarningNextState(state, 'render')); // enter-page
-    for (const cause of ['render', 'render', 'render']) { // load completing, an edit, capture/apply/restore
-        const result = sensorCalWarningNextState(state, cause);
-        assert.equal(result.open, false, 'a later render must not reopen the warning');
-        state = result.state;
-    }
-    assert.deepEqual(state, { shown: true, ack: false });
+test('entering the page (a render) never opens the warning', () => {
+    const { state, open } = sensorCalWarningNextState(FRESH, 'render');
+    assert.equal(open, false);
+    assert.deepEqual(state, FRESH);
 });
 
-test('dismiss (Ok): acknowledging does not reopen it, and later renders still do not', () => {
-    let state = sensorCalWarningNextState(FRESH, 'render').state; // shown
-    let result = sensorCalWarningNextState(state, 'ack');
-    assert.equal(result.open, false);
-    assert.deepEqual(result.state, { shown: true, ack: true });
-
-    result = sensorCalWarningNextState(result.state, 'render'); // e.g. a later Apply
-    assert.equal(result.open, false);
-    assert.deepEqual(result.state, { shown: true, ack: true });
-});
-
-test('leave-page: navigating to another category re-arms both flags', () => {
-    let state = sensorCalWarningNextState(FRESH, 'render').state;
-    state = sensorCalWarningNextState(state, 'ack').state;
-    const result = sensorCalWarningNextState(state, 'leave');
-    assert.equal(result.open, false);
-    assert.deepEqual(result.state, { shown: false, ack: false });
-});
-
-test('re-enter: coming back after leaving shows the warning again', () => {
-    let state = sensorCalWarningNextState(FRESH, 'render').state;
-    state = sensorCalWarningNextState(state, 'ack').state;
-    state = sensorCalWarningNextState(state, 'leave').state;
-
-    const result = sensorCalWarningNextState(state, 'render');
+test('re-render of an open, unacknowledged Advanced re-fires open; the caller guards showModal on .open', () => {
+    let state = sensorCalWarningNextState(FRESH, 'open').state;
+    const result = sensorCalWarningNextState(state, 'open');
     assert.equal(result.open, true);
     assert.deepEqual(result.state, { shown: true, ack: false });
 });
 
-test('leaving without ever acknowledging still re-arms cleanly (Cancel path)', () => {
-    let state = sensorCalWarningNextState(FRESH, 'render').state; // shown, never acked
+test('dismiss (Ok): acknowledging stops any later open from asking again', () => {
+    let state = sensorCalWarningNextState(FRESH, 'open').state;
+    let result = sensorCalWarningNextState(state, 'ack');
+    assert.equal(result.open, false);
+    assert.deepEqual(result.state, { shown: true, ack: true });
+
+    result = sensorCalWarningNextState(result.state, 'open'); // e.g. toggle re-fired by a later Apply render
+    assert.equal(result.open, false);
+    assert.deepEqual(result.state, { shown: true, ack: true });
+});
+
+test('cancel: Advanced closes, nothing is acknowledged, and opening it again asks again', () => {
+    let state = sensorCalWarningNextState(FRESH, 'open').state;
+    const cancelled = sensorCalWarningNextState(state, 'cancel');
+    assert.equal(cancelled.open, false);
+    assert.deepEqual(cancelled.state, { shown: false, ack: false });
+    assert.equal(sensorCalWarningNextState(cancelled.state, 'open').open, true);
+});
+
+test('leave-page: navigating to another category re-arms both flags', () => {
+    let state = sensorCalWarningNextState(FRESH, 'open').state;
+    state = sensorCalWarningNextState(state, 'ack').state;
     const result = sensorCalWarningNextState(state, 'leave');
+    assert.equal(result.open, false);
     assert.deepEqual(result.state, { shown: false, ack: false });
+});
+
+test('re-enter: coming back after leaving asks again on the next Advanced open', () => {
+    let state = sensorCalWarningNextState(FRESH, 'open').state;
+    state = sensorCalWarningNextState(state, 'ack').state;
+    state = sensorCalWarningNextState(state, 'leave').state;
+
+    const result = sensorCalWarningNextState(state, 'open');
+    assert.equal(result.open, true);
+    assert.deepEqual(result.state, { shown: true, ack: false });
 });
 
 test('an unknown event is a no-op, never opening the warning', () => {
@@ -202,7 +206,7 @@ function simulateVisit(renders) {
 
 test('slow read: an unrelated render interrupts the open warning twice before the read lands -- one visible appearance total', () => {
     const { opens, dialogOpen, state } = simulateVisit([
-        { cause: 'render', wasOpenAtRender: false },  // page opens, warning shows -> appearance
+        { cause: 'open', wasOpenAtRender: false },  // page opens, warning shows -> appearance
         { cause: 'render', wasOpenAtRender: true },   // background settings refresh lands mid-flight, warning was up -> resumed, not a new appearance
         { cause: 'render', wasOpenAtRender: true },   // a second unrelated render, still un-acknowledged -> resumed again
         { cause: 'render', wasOpenAtRender: true },   // the slow calibration read itself finally completing
@@ -213,12 +217,12 @@ test('slow read: an unrelated render interrupts the open warning twice before th
 });
 
 test('once acknowledged, a later interruption (e.g. the slow read completing after Ok) does not bring it back', () => {
-    let state = sensorCalWarningNextState(FRESH, 'render').state; // shown
+    let state = sensorCalWarningNextState(FRESH, 'open').state; // shown
     state = sensorCalWarningNextState(state, 'ack').state;        // user clicked Ok -- dialog.open is now false
 
     // The calibration read finishes after the user already dismissed the
     // warning: wasOpenAtRender is false here because .close() already ran.
-    const { open } = sensorCalWarningNextState(state, 'render');
+    const { open } = sensorCalWarningNextState(state, 'open');
     assert.equal(sensorCalWarningShouldReopen(open, false), false);
 });
 
@@ -229,12 +233,12 @@ test('a keystroke/capture/apply/restore render can never carry wasOpenAtRender=t
     // here as: if the dialog were genuinely open, a user-driven render simply
     // cannot occur, so wasOpenAtRender=true never coincides with a
     // user-interaction cause in a real visit.
-    const state = sensorCalWarningNextState(FRESH, 'render').state; // dialog open, unacknowledged
+    const state = sensorCalWarningNextState(FRESH, 'open').state; // dialog open, unacknowledged
     // Even so, once acknowledged (the only way the user's own input reaches
     // this page while the state machine still reports shown=true), further
     // user-driven renders correctly stay closed:
     const acked = sensorCalWarningNextState(state, 'ack').state;
-    const { open } = sensorCalWarningNextState(acked, 'render'); // e.g. a keystroke
+    const { open } = sensorCalWarningNextState(acked, 'open'); // e.g. a keystroke
     assert.equal(sensorCalWarningShouldReopen(open, false), false);
 });
 

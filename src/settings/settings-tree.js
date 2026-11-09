@@ -37,7 +37,7 @@ export const SETTINGS_TREE = {
     'machine': {
         name: 'Machine',
         subcategories: [
-            { id: 'usbchargermode', name: 'USB', settingsCategory: 'usbchargermode' },
+            { id: 'usbchargermode', name: 'Smart Charging', settingsCategory: 'usbchargermode' },
             { id: 'cupwarmer', name: 'Cup Warmer', settingsCategory: 'cupwarmer', i18nKey: 'Cup Warmer', bengleOnly: true },
             { id: 'ledstrip', name: 'Lighting', settingsCategory: 'ledstrip', i18nKey: 'Lighting', bengleOnly: true },
             { id: 'machineinfo', name: 'Machine Information', settingsCategory: 'machineinfo', i18nKey: 'Machine Info' }
@@ -87,7 +87,8 @@ export const SETTINGS_TREE = {
             { id: 'tempunit', name: 'Temperature', settingsCategory: 'tempunit', i18nKey: 'Temperature' },
             { id: 'screensaver', name: 'Screen Saver', settingsCategory: 'screensaver' },
             { id: 'keyboard-shortcuts', name: 'Keyboard Shortcuts', settingsCategory: 'keyboard_shortcuts' },
-            { id: 'homeassistant', name: 'Home Assistant', settingsCategory: 'homeassistant', i18nKey: 'Home Assistant' }
+            { id: 'homeassistant', name: 'Home Assistant', settingsCategory: 'homeassistant', i18nKey: 'Home Assistant' },
+            { id: 'sounds', name: 'Enable sounds', settingsCategory: 'sounds' }
         ]
     },
     'updates': {

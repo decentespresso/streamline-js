@@ -49,20 +49,21 @@ export function steamFlowHighlightIndex(presets, flow) {
 
 // Steam-stop mode is a skin-side concept: reaprime stores only the independent
 // `stopAtTemperature` field (0 = off), not a mode enum. We derive 'temperature'
-// from a non-zero milk target; 'time' vs 'off' (both stopAtTemperature = 0) is
-// disambiguated by a skin-local preference. 'temperature' is never valid off a
-// Bengle.
+// from a non-zero milk target; otherwise it is 'time', disambiguated by a
+// skin-local preference. 'temperature' is never valid off a Bengle.
+//
+// There is no 'off' stop any more: unlimited steam is gone, so a stored 'off'
+// from an older build reads as 'time'. Deliberately not migrated -- the stored
+// value is harmless and a write here would fight the page's own save path.
 /**
  * Resolve the settings-page steam-stop mode.
  * @param {number} stopTemp  workflow.steamSettings.stopAtTemperature (0 = off)
- * @param {string|null} storedMode  skin-local preference ('off'|'time'|'temperature')
+ * @param {string|null} storedMode  skin-local preference ('time'|'temperature')
  * @param {boolean} isBengle  connected machine is a Bengle
- * @returns {'off'|'time'|'temperature'}
+ * @returns {'time'|'temperature'}
  */
 export function resolveSteamStopMode(stopTemp, storedMode, isBengle) {
     if (stopTemp > 0) return isBengle ? 'temperature' : 'time';
-    if (storedMode === 'off') return 'off';
-    if (storedMode === 'time') return 'time';
     if (storedMode === 'temperature') return isBengle ? 'temperature' : 'time';
     return 'time';
 }
@@ -86,8 +87,24 @@ export const ECO_STEAM_TEMP = 136;
 /** Idle time before the boiler is parked (de1app steam_eco_delay_seconds 600). */
 export const ECO_STEAM_DELAY_MS = 10 * 60 * 1000;
 
-/** Lowest steam target that means "steam is armed" -- below it the heater is off. */
+/**
+ * Lowest steam target that means "steam is armed" -- below it the heater is off.
+ *
+ * 135 is NOT a UI preference: Decaid decides `steamEnabled` as
+ * `targetTemperature >= 135` (de1_controller.dart and
+ * de1_controller.defaults.dart, three sites) and writes targetSteamTemp 0 to
+ * the machine when that is false. Setting a lower floor here would create a
+ * band where this app shows an armed temperature while the machine's heater is
+ * actually off.
+ */
 export const STEAM_ENABLED_MIN_TEMP = 135;
+
+/**
+ * Highest steam target offered. The DE1's targetSteamTemp is a single wire byte
+ * so 170 fits; rest_v1.yml documents the supported enabled range as 135-160 for
+ * DE1 and 135-165 for Bengle, so a machine may clamp its own ceiling below this.
+ */
+export const STEAM_ENABLED_MAX_TEMP = 170;
 
 /**
  * May eco steam take the boiler down right now?
@@ -107,6 +124,149 @@ export function shouldEnterEcoSteam({ enabled, machineState, configuredTemp }) {
     // Steam already off -> nothing to park, and entering would ARM a heater the
     // user turned off.
     return typeof configuredTemp === 'number' && configuredTemp >= STEAM_ENABLED_MIN_TEMP;
+}
+
+// ── Steam off / on transition ─────────────────────────────────────
+// One rule for every way into and out of steam-off, so the toggle, the duration
+// field and the main-page tile can never disagree about it.
+//
+// targetTemperature is the ONLY truth for "off" (STEAM_ENABLED_MIN_TEMP above),
+// which is what Decaid, DYE2 and any other skin write too. duration 0 rides
+// along so a bare "0" never reads as a very short steam time -- note this
+// deliberately overrides rest_v1.yml, where duration 0 means "no timer": the
+// skin no longer offers unlimited steam at all.
+
+/** Steam duration (s) applied when the heater comes on with nothing remembered. */
+export const DEFAULT_STEAM_DURATION_S = 30;
+
+/** Shortest duration that is a duration rather than the off state. */
+export const MIN_STEAM_DURATION_S = 1;
+
+/** The DE1's ceiling for TargetSteamLength -- a single wire byte. */
+export const MAX_STEAM_DURATION_S = 255;
+
+/** Lowest steam flow the machine accepts (settings steamFlowInput.min). */
+export const MIN_STEAM_FLOW = 0.4;
+
+/**
+ * Is the machine's steam heater off?
+ * @param {*} targetTemperature  workflow.steamSettings.targetTemperature
+ */
+export function isSteamOff(targetTemperature) {
+    return !(typeof targetTemperature === 'number' && targetTemperature >= STEAM_ENABLED_MIN_TEMP);
+}
+
+/** The workflow patch that switches the heater off. */
+export function steamOffPatch() {
+    return { targetTemperature: 0, duration: 0 };
+}
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+/** A duration that is a steam time, else null (the off state's 0 included). */
+const steamDuration = (v) => (num(v) !== null && v >= MIN_STEAM_DURATION_S ? v : null);
+
+/**
+ * May a drift check reconcile this steam duration with the remembered one?
+ *
+ * The heater's off state writes duration 0 (steamOffPatch), and the machine
+ * echoes it back in the next shot-settings frame. Adopting that 0 as the
+ * remembered value loses the time to come back to, and the heater returned at
+ * 1 s (issue #191). An ABSENT duration still drifts: a field the workflow does
+ * not have is filled from the remembered value, not adopted.
+ *
+ * @param {*} duration  workflow steamSettings.duration / frame targetSteamDuration
+ */
+export function steamDurationResyncable(duration) {
+    return steamDuration(duration) !== null || num(duration) === null;
+}
+
+/**
+ * The workflow patch that brings the heater back on.
+ *
+ * Precedence per field: the selected DYE2 recipe, then the remembered value,
+ * then the loaded profile's own saved number, then a default -- so a recipe
+ * that names only a temperature still gets its duration from what the user last
+ * used (dye2 KV_CONTRACT steamTempC / steamTimeS / steamFlowMls).
+ *
+ * The profile rung is the answer to "we do not know what they last used": a
+ * profile (a favourite included) carries the steam duration and flow the user
+ * saved against it, which beats a stock number. Below that the defaults are
+ * themselves tile presets -- DEFAULT_STEAM_DURATION_S is the second steam-time
+ * preset, and 150 C sits mid-band between STEAM_ENABLED_MIN_TEMP and MAX.
+ * Nothing here can return a value that leaves the heater off: every field is
+ * clamped into the enabled band below.
+ *
+ * Flow is left alone unless the machine's own flow is unusable: the off state
+ * never writes flow, so there is normally nothing to put back (issue #143's
+ * rule, applied per field -- a value the machine already holds was set by the
+ * user or another app and is not ours to overwrite).
+ *
+ * @param {{tempC?:*, durationS?:*, flow?:*}} recipe    selected DYE2 recipe's steam fields
+ * @param {{temp?:*, duration?:*, flow?:*}} remembered  the shared last-* values
+ * @param {{duration?:*, flow?:*}} profile  the loaded profile's saved steam values
+ * @param {*} currentFlow  workflow.steamSettings.flow
+ */
+export function steamOnPatch({ recipe = {}, remembered = {}, profile = {}, currentFlow } = {}) {
+    const temp = num(recipe.tempC) ?? num(remembered.temp) ?? 150;
+    // A sub-minimum duration is the OFF state, not a time (issue #191: the off
+    // state's 0 could reach the remembered value and came back as 1 s). Treat it
+    // as "nothing remembered" so the next rung answers, like
+    // seedRememberedSteamValues and the profile fallback already do.
+    const duration = steamDuration(recipe.durationS) ?? steamDuration(remembered.duration)
+        ?? steamDuration(profile.duration) ?? DEFAULT_STEAM_DURATION_S;
+    const patch = {
+        targetTemperature: Math.round(clamp(temp, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP)),
+        duration: Math.round(clamp(duration, MIN_STEAM_DURATION_S, MAX_STEAM_DURATION_S)),
+    };
+    if (num(currentFlow) === null || currentFlow < MIN_STEAM_FLOW) {
+        const flow = num(recipe.flow) ?? num(remembered.flow) ?? num(profile.flow);
+        if (flow !== null && flow >= MIN_STEAM_FLOW) patch.flow = flow;
+    }
+    return patch;
+}
+
+/**
+ * What a duration write should do, given the heater's current target
+ * temperature.
+ *
+ * The duration and the target temperature are the two halves of one state, and
+ * two surfaces read different halves: the main-page tile shows "Off" from the
+ * duration, the Settings heater toggle from the temperature. A write that moves
+ * only the duration therefore leaves them contradicting each other -- the tile
+ * counting seconds for a heater the toggle (correctly) reports as off.
+ *
+ *  'off'    -- below the shortest duration: switch the heater off, both halves.
+ *  'write'  -- heater already on: the duration alone is the whole change.
+ *  'rearm'  -- heater off and the user asked for this duration: bring the
+ *              temperature back with it.
+ *  'skip'   -- heater off and this is a background replay (a drift resync, a
+ *              profile's saved settings). Leave it off; the same rule
+ *              resyncSteamFromStore applies to the whole check.
+ *
+ * @param {*} targetTemperature  workflow.steamSettings.targetTemperature
+ * @param {*} duration  the duration being written
+ * @param {{rearm?:boolean}} opts  rearm: this write is the user's own intent
+ * @returns {'off'|'write'|'rearm'|'skip'}
+ */
+export function steamDurationWrite(targetTemperature, duration, { rearm = false } = {}) {
+    const value = typeof duration === 'string' ? parseFloat(duration) : duration;
+    if (!(value >= MIN_STEAM_DURATION_S)) return 'off';
+    if (!isSteamOff(targetTemperature)) return 'write';
+    return rearm ? 'rearm' : 'skip';
+}
+
+/**
+ * The duration the user asked for, folded into an on/off decision: anything
+ * below MIN_STEAM_DURATION_S (0 included, and the numpad's empty box) is Off.
+ * @param {*} raw  typed, stepped or parsed duration
+ * @returns {{off:boolean}|{off:false, duration:number}}
+ */
+export function steamDurationIntent(raw) {
+    const v = num(typeof raw === 'string' ? parseFloat(raw) : raw);
+    if (v === null) return null;                       // unparseable: change nothing
+    if (v < MIN_STEAM_DURATION_S) return { off: true };
+    return { off: false, duration: Math.round(Math.min(v, MAX_STEAM_DURATION_S)) };
 }
 
 // ── Milk-probe presence ──────────────────────────────────────────────────────
@@ -162,17 +322,14 @@ export function selectMilkProbeSensorId(sensors) {
 
 /**
  * Gate a resolved steam-stop mode on probe presence: 'temperature' is only
- * offerable with a probe attached; without one it falls back to the
- * previously-set non-temperature mode ('time' or 'off'; anything else → 'time').
+ * offerable with a probe attached; without one the only other stop is 'time'.
  * Non-temperature modes pass through untouched.
- * @param {'off'|'time'|'temperature'} mode  from resolveSteamStopMode
+ * @param {'time'|'temperature'} mode  from resolveSteamStopMode
  * @param {boolean} probePresent
- * @param {string|null} fallbackMode  skin-local record of the last non-temperature mode
- * @returns {'off'|'time'|'temperature'}
+ * @returns {'time'|'temperature'}
  */
-export function applyMilkProbeGate(mode, probePresent, fallbackMode) {
-    if (mode !== 'temperature' || probePresent) return mode;
-    return fallbackMode === 'off' ? 'off' : 'time';
+export function applyMilkProbeGate(mode, probePresent) {
+    return (mode !== 'temperature' || probePresent) ? mode : 'time';
 }
 
 /**

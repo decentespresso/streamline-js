@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
 import { isCustomSaverBrightness, setCustomSaverBrightnessEnabled, getSaverBrightness, setSaverBrightness, SAVER_BRIGHTNESS_DEFAULT } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
@@ -10,7 +10,7 @@ import { loadPage } from '../modules/router.js'; // Singular and correctly forma
 import { logger } from '../modules/logger.js';
 import { isBengleMachine, setMachineModel } from '../modules/machine.js';
 import { brightnessNotices, QUEUED_NOTICE, LOW_BATTERY_NOTICE, GO_TO_SETTING_LABEL, LOW_BATTERY_SETTING_CATEGORY, REQUESTED_APPLIED_TEMPLATE, requestedBrightnessReadout } from '../modules/brightness-notice.js';
-import { resolveSteamStopMode, applyMilkProbeGate } from '../modules/steam-mode.js';
+import { resolveSteamStopMode, applyMilkProbeGate, steamDurationIntent, steamOffPatch, steamOnPatch, isSteamOff, MIN_STEAM_DURATION_S, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP } from '../modules/steam-mode.js';
 import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { wakeProfileChoices } from '../modules/wake-profile.js';
@@ -20,7 +20,7 @@ import { LED_SEQUENCE_KEY, MIN_STEP_DURATION_MS, MAX_STEP_DURATION_MS, LED_TRIGG
 import { requestStart as ledRunRequestStart, requestStop as ledRunRequestStop, forceStop as ledRunForceStop, onRunChange as ledRunOnChange, getRunState as ledRunGetState, onMachineStateChange as ledRunOnMachineStateChange, noteStoredPalette as ledRunNoteStoredPalette } from '../modules/led-strip-runner.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
-import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS } from '../modules/sensor-cal.js';
+import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
@@ -31,14 +31,16 @@ import { haYamlBlocks } from '../modules/home-assistant.js';
 import { loadIro } from '../modules/vendor-loader.js';
 import { readSettingsLocation, writeSettingsLocation } from './settings-location.js';
 import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
-import { adoptFromMachine, diffUserSettings, restorePatches, splitDifferences } from './settings-restore.js';
+import { adoptFromMachine, diffUserSettings, isOutOfRange, normalizeSettingValue, rejectedWrites, restorePatches, splitDifferences } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
-         minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl } from './plugin-view.js';
+         minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl,
+         AUTO_FLOW_CAL_PLUGIN_ID, isFlowCalPluginManaging } from './plugin-view.js';
 import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
 import { parseSkinAnswer } from '../modules/plugin-surfaces.js';
 import { FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA, buildFeedbackDescription } from './feedback-report.js';
+import { TOUCH_SOUND_KEY, isTouchSoundEnabled, playTouchSound } from '../modules/touch-sound.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -64,20 +66,29 @@ const SETTINGS_NUMPAD_CONFIGS = {
     'sensor-cal-pressure-measured':    { title: 'MEASURED BAR',      unit: 'bar',  min: 0, max: 20,  fieldType: 'settings-sensor-cal-pressure-measured' },
     'sensor-cal-flow-measured':        { title: 'MEASURED FLOW',     unit: 'ml/s', min: 0, max: 20,  fieldType: 'settings-sensor-cal-flow-measured' },
     steamCalibTempInput:     { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 135, max: 170,  fieldType: 'settings-steam-calib-temp' },
+    // min 0 so the numpad can express Off; anything typed below
+    // STEAM_ENABLED_MIN_TEMP lands as Off rather than as a temperature.
     steamTempInput:          { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 0,   max: 170,  fieldType: 'settings-steam-temp' },
-    steamDurationInput:      { title: 'STEAM DURATION',      unit: 'sec',  min: 10,  max: 120,  fieldType: 'settings-steam-duration' },
+    // 255 is the DE1's own ceiling, not a UI preference: TargetSteamLength is a
+    // single byte on the wire (unified_de1.parsing.dart reads it with getUint8),
+    // so anything above 255 cannot be held by the machine at all.
+    steamDurationInput:      { title: 'STEAM DURATION',      unit: 'sec',  min: 0,   max: 255,  fieldType: 'settings-steam-duration' },
     steamFlowInput:          { title: 'STEAM FLOW',          unit: 'ml/s', min: 0.4, max: 2.5,  fieldType: 'settings-steam-flow' },
-    hotWaterTempInput:       { title: 'HOT WATER TEMP',      unit: '°C',   min: 50,  max: 95,   fieldType: 'settings-hw-temp' },
-    hotWaterVolumeInput:     { title: 'HOT WATER VOLUME',    unit: 'ml',   min: 10,  max: 500,  fieldType: 'settings-hw-volume' },
     hotWaterDurationInput:   { title: 'HOT WATER DURATION',  unit: 'sec',  min: 5,   max: 120,  fieldType: 'settings-hw-duration' },
-    hotWaterFlowInput:       { title: 'HOT WATER FLOW',      unit: 'ml/s', min: 0.1, max: 8,    fieldType: 'settings-hw-flow' },
+    // 1-10 ml/s. Decaid does not validate this field at all -- it passes
+    // hotWaterData.flow straight to the DE1's hotWaterFlowRate MMR -- and its
+    // own two reference points disagree: the hot-water form slider is 1.0-8.0
+    // (hot_water_form.dart) while HotWaterData.defaults() ships flow 10, above
+    // that slider's own max. 10 is the ceiling that makes Decaid's default a
+    // legal value instead of something this page flags on a factory machine.
+    hotWaterFlowInput:       { title: 'HOT WATER FLOW',      unit: 'ml/s', min: 1,   max: 10,   fieldType: 'settings-hw-flow' },
     heaterPh1FlowInput:      { title: 'HEATER WARMUP FLOW',  unit: 'ml/s', min: 0,   max: 10,   fieldType: 'settings-heater-ph1' },
     heaterPh2FlowInput:      { title: 'HEATER TEST FLOW',    unit: 'ml/s', min: 0,   max: 10,   fieldType: 'settings-heater-ph2' },
     heaterIdleTempInput:     { title: 'IDLE TEMPERATURE',    unit: '°C',   min: 0,   max: 99,   fieldType: 'settings-heater-idle-temp' },
     heaterPh2TimeoutInput:   { title: 'HEATER TEST TIMEOUT', unit: 'sec',  min: 0,   max: 60,   fieldType: 'settings-heater-ph2-timeout' },
     weightFlowMultiplierInput: { title: 'WEIGHT FLOW MULT',  unit: '',     min: 0,              fieldType: 'settings-weight-mult' },
     volumeFlowMultiplierInput: { title: 'VOLUME FLOW MULT',  unit: '',     min: 0,              fieldType: 'settings-volume-mult' },
-    hotWaterFlowMultiplierInput: { title: 'HW FLOW MULT',    unit: 's',    min: 0,              fieldType: 'settings-hw-flow-mult' },
+    hotWaterFlowMultiplierInput: { title: 'HW FLOW MULT',    unit: '',     min: 0,              fieldType: 'settings-hw-flow-mult' },
     // Native type=number fields migrated onto the in-app numpad for a single,
     // consistent numeric-entry surface on the tablet (desktop keeps the native
     // control, since attachSettingsNumpad is gated on shouldUseNumpad()). The
@@ -300,7 +311,9 @@ async function flushPendingChanges() {
     if (pendingChanges.workflow.steamSettings) {
         const steam = pendingChanges.workflow.steamSettings;
         tasks.push(updateWorkflow({ steamSettings: steam }, 'settings.steam'));
-        if (isNum(steam.duration)) persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, steam.duration);
+        // Enabled values only, same rule as the temperature below: 0 is the
+        // heater switched off, and the key is what we switch back ON to.
+        if (steam.duration > 0) persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, steam.duration);
         if (isNum(steam.flow)) persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, steam.flow);
         // Enabled temperatures only: 0 is the heater switched off, and the main
         // page reads this key to decide what to switch back ON to when steam is
@@ -528,6 +541,14 @@ function updateSettingsContentArea(category) {
         sensorCalLoadError = '';
         ({ shown: sensorCalWarningShown, ack: sensorCalWarningAck } = sensorCalWarningNextState(
             { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'leave').state);
+        sensorCalAdvancedOpen = false;
+        sensorCalFlowError = '';
+        // Re-read the multiplier and who owns it on the next visit. The plugin
+        // moves the value between visits, and can be switched off from its own
+        // page, so a value cached for the whole app session goes stale on a
+        // control the user cannot correct.
+        sensorCalFlowLoaded = false;
+        sensorCalFlowManaged = null;
         document.getElementById('sensor-cal-warning-modal')?.close();
     }
     // Leaving the Cup Warmer page → stop its ~5 s revalidate poll.
@@ -599,20 +620,11 @@ function updateSettingsContentArea(category) {
         }
         if (category === 'calib_sensors') {
             setTimeout(initSensorCal, 0);
-            // Every render of this page (load completing, capture, edits,
-            // apply/restore) reaches this same branch -- sensorCalWarningNextState
-            // only opens on the first one of a visit, so the modal no longer
-            // reopens on each subsequent re-render.
-            const { state, open } = sensorCalWarningNextState(
-                { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'render');
-            sensorCalWarningShown = state.shown;
-            sensorCalWarningAck = state.ack;
-            // `open` alone would leave the warning gone for good the moment an
-            // unrelated render interrupts it before the user has acted on it
-            // -- see sensorCalWarningShouldReopen for why folding in
-            // sensorCalWarningWasOpen (captured above, before the rebuild) is
-            // safe against reopening on a user-driven render.
-            if (sensorCalWarningShouldReopen(open, sensorCalWarningWasOpen)) setTimeout(sensorCalShowWarning, 0);
+            // The warning guards the Advanced table only, and is opened by
+            // sensorCalAdvancedToggle -- not by rendering. A render can still
+            // destroy it mid-flight (every render rebuilds the <dialog>), so
+            // an interrupted showing is resumed on the fresh node.
+            if (sensorCalWarningShouldReopen(false, sensorCalWarningWasOpen)) setTimeout(sensorCalShowWarning, 0);
         }
         // Step 4's live readout needs the scale WS — claim it on every render
         // of the page at step 4 (idempotent), so returning to a resumed wizard
@@ -622,6 +634,30 @@ function updateSettingsContentArea(category) {
         // After translatePage(), so the marks land on the text actually shown.
         highlightSearchInContent();
     }
+}
+
+
+// The range hint that sits beside a numeric settings label, and the one place
+// that decides how a value outside that range is shown.
+//
+// Normally the muted hint the Figma settings pattern specifies (20px, 60%
+// opacity, beside the blue label). When the machine reports a value the range
+// does not contain, the hint turns red and names the offending value, so the
+// page never silently shows a number it claims is impossible -- see
+// isOutOfRange in settings-restore.js for why it is shown rather than clamped.
+//
+// Figma has no error state for a settings field (its Style Guide carries
+// Action/Background/Buttons/Text/Border/Status.Ongoing and no danger token),
+// so this reuses the red these settings pages already use for their
+// "Failed to load settings" state.
+function rangeHint(min, max, unit, value, decimals = 0) {
+    const fmt = n => Number(n).toFixed(decimals);
+    const suffix = unit ? ` ${unit}` : '';
+    const range = `${fmt(min)} – ${fmt(max)}${suffix}`;
+    if (!isOutOfRange(value, min, max)) {
+        return `<span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${range}</span>`;
+    }
+    return `<span class="text-[20px] font-normal text-red-500" data-out-of-range="true">${range} · ${getTranslation('machine reports')} ${fmt(value)}${suffix}</span>`;
 }
 
 // Helper function to check if settings are loaded
@@ -726,8 +762,8 @@ async function saveSettingsBackup() {
 // Two halves: remember what the user saved here (syncMachineSettingsRecord),
 // and, when the machine later reports something else, decide what that means
 // (checkMachineSettingsDrift). A change made elsewhere is adopted, not undone;
-// only a value Decaid resets on connect is put back -- see settings-restore.js
-// for what is tracked, what is left alone and why.
+// only a value an older Decaid resets on connect is put back -- see
+// settings-restore.js for what is tracked, what is left alone and why.
 
 const USER_MACHINE_SETTINGS_KEY = 'userMachineSettings';
 
@@ -768,6 +804,17 @@ async function syncMachineSettingsRecord(written = {}) {
         settingsCache.de1Advanced = de1Advanced;
         const existing = await readUserMachineSettings();
         await writeUserMachineSettings(adoptFromMachine(existing, { de1, de1Advanced }, written));
+        // Only the save path passes `written`, so every other caller stays silent.
+        // The read-back happens in the same breath as the write (see flushPendingChanges),
+        // so a machine that needs a moment, or a reboot, also lands here: report what
+        // was observed, not a diagnosis.
+        for (const r of rejectedWrites(written, { de1, de1Advanced })) {
+            logger.warn(`Machine still reports ${r.key} as ${JSON.stringify(r.actual)} after a write asking for ${JSON.stringify(r.asked)}`);
+            const label = r.key === 'usb' ? 'USB Charger Mode' : r.key;
+            const state = normalizeSettingValue(r.key, r.actual);
+            const shown = state === true ? 'on' : state === false ? 'off' : String(state);
+            ui.showToast(`Your machine still reports ${label} as ${shown}`, 5000, 'error');
+        }
     } catch (e) {
         // A failed read-back leaves the record as it was: better to ask about a
         // difference later than to record a value the machine never confirmed.
@@ -791,7 +838,9 @@ async function checkMachineSettingsDrift() {
     });
     if (!differences.length) return;
 
-    const { restore, adopt } = splitDifferences(differences);
+    // Which differences count as a reset depends on the Decaid being talked to.
+    // preloadSettings() has already run, so appInfo is in the cache.
+    const { restore, adopt } = splitDifferences(differences, settingsCache.appInfo?.version);
     if (adopt.length) {
         logger.info(`Machine settings changed elsewhere, keeping: ${adopt.map(d => d.key).join(', ')}`);
     }
@@ -964,6 +1013,8 @@ export function renderSettingsContent(category) {
             return renderBrightnessSettings();
         case 'wakelock':
             return renderWakeLockSettings();
+        case 'sounds':
+            return renderSoundSettings();
         case 'presence':
             return renderPresenceSettings();
         case 'unitssettings':
@@ -1468,14 +1519,15 @@ export function renderFanThresholdSettings(settings) {
     `;
 }
 
-// Render USB Charger settings — combines USB charger toggle + Smart Charging controls
+// Render the Smart Charging page: charging mode, night mode and live status.
+// No manual USB switch -- see the note in the markup below.
 export function renderUsbChargerModeSettings(settings) {
     const reaSettings = settingsCache.rea;
     if (!settings || !reaSettings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
                 <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                    <p class="leading-[1.2]">USB</p>
+                    <p class="leading-[1.2]" data-i18n-key="Smart Charging">${getTranslation('Smart Charging')}</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
             </div>
@@ -1486,18 +1538,9 @@ export function renderUsbChargerModeSettings(settings) {
     const nightModeEnabled = reaSettings.nightModeEnabled || false;
     const sleepTime = reaSettings.nightModeSleepTime ?? 1320;
     const morningTime = reaSettings.nightModeMorningTime ?? 420;
-    const chargingState = reaSettings.chargingState;
     // Native time picker (dropdown + spinner) follows color-scheme, not our
     // CSS vars — match it to the active theme so it renders dark.
     const pickerScheme = (localStorage.getItem('theme') || 'light') === 'dark' ? 'dark' : 'light';
-
-    const phaseLabels = {
-        inactive: 'Inactive',
-        normal: 'Normal',
-        hovering: 'Hovering',
-        chargingToMax: 'Charging to Max',
-        sleeping: 'Sleeping'
-    };
 
     // Sleep/Morning share one row — they're both night-mode params, so nesting
     // them keeps the page short instead of two full-height stacked sections.
@@ -1538,55 +1581,25 @@ export function renderUsbChargerModeSettings(settings) {
         </div>
     ` : '';
 
-    const statusSection = chargingState ? `
-        <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
-
-        <div class="content-stretch flex flex-col items-start relative w-full">
-            <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
-                    <p class="leading-[1.2]" data-i18n-key="Charging Status">Charging Status</p>
-                </div>
-                <div class="grid grid-cols-2 gap-x-8 gap-y-4 w-full text-[22px] text-[var(--text-primary)]">
-                    <span class="font-semibold" data-i18n-key="Battery">Battery</span>
-                    <span>${chargingState.batteryPercent ?? '--'}%${chargingState.isEmergency ? ' (emergency)' : ''}</span>
-                    <span class="font-semibold" data-i18n-key="Phase">Phase</span>
-                    <span>${getTranslation(phaseLabels[chargingState.currentPhase] || chargingState.currentPhase || '--')}</span>
-                    <span class="font-semibold">USB</span>
-                    <span>${getTranslation(chargingState.usbChargerOn ? 'ON' : 'OFF')}</span>
-                </div>
-            </div>
-        </div>
-    ` : '';
 
     return `
         <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
 
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                <p class="leading-[1.2]">USB</p>
+                <p class="leading-[1.2]" data-i18n-key="Smart Charging">${getTranslation('Smart Charging')}</p>
             </div>
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div class="flex items-center justify-between gap-[24px] w-full">
-                <div class="flex flex-col gap-[4px]">
-                    <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
-                        <p class="leading-[1.2]" id="usbChargerModeLabel" data-i18n-key="USB Charger Mode">USB Charger Mode</p>
-                    </div>
-                </div>
-                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                    <!-- Default on: an unset usb value means the machine never had
-                         the setting written, and USB power is on out of the box. -->
-                    <input type="checkbox" id="usbChargerModeToggle"
-                           class="sr-only peer"
-                           ${(settings.usb === false || settings.usb === 'disable') ? '' : 'checked'}
-                           onchange="window.updateDe1Setting('usb', this.checked ? 'enable' : 'disable')">
-                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                </label>
-            </div>
-
-            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
-
+            <!-- No manual USB switch here. Decaid's battery controller owns the DE1's
+                 allowUSBCharging register: it writes setUsbChargerMode(decision) on a
+                 60s loop from Charging Mode and the battery level, re-asserts "off"
+                 every 5 minutes while a managed mode says don't charge, and forces it
+                 ON below 15% and whenever Charge-to-100% transitions to charging
+                 (reaprime battery_controller.dart / charging_logic.dart). A toggle
+                 here could not hold its value in ANY mode, so it only ever lied about
+                 the machine. Charging Mode below is the control; the live state is in
+                 Charging Status. -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
                     <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
@@ -1633,7 +1646,6 @@ export function renderUsbChargerModeSettings(settings) {
                 </label>
             </div>
 
-            ${statusSection}
         </div>
     `;
 }
@@ -2370,13 +2382,32 @@ function refreshBrightnessNotices(brightness, frame = displayState()) {
 // Jump from a settings notice to the control it points at, through the same
 // delegated nav clicks a user would make (main category button, then subcategory).
 function jumpToSettingCategory(settingsCategory) {
-    const mainCategory = Object.keys(settingsTree).find(key =>
-        settingsTree[key].subcategories.some(sub => sub.settingsCategory === settingsCategory));
+    // Plugin rows are appended to the Extensions subnav dynamically, so the
+    // static tree never lists them.
+    const mainCategory = pluginIdFromCategory(settingsCategory) !== null
+        ? 'extensions'
+        : Object.keys(settingsTree).find(key =>
+            settingsTree[key].subcategories.some(sub => sub.settingsCategory === settingsCategory));
     if (!mainCategory) return;
     const mainButton = document.getElementById(`${mainCategory}-btn`);
     if (!mainButton) return;
     mainButton.click();
-    document.querySelector(`#sub-categories-panel .settings-subnav-btn[data-category="${CSS.escape(settingsCategory)}"]`)?.click();
+    clickSubcategoryWhenReady(settingsCategory);
+}
+
+// A static category's rows are in the DOM the moment its main button is
+// clicked. The Extensions rows for plugins are not: they come from the async
+// plugin list, so querying once lands on whatever row Extensions defaults to
+// (Shot Uploader) and the jump looks like it went to the wrong place. Wait for
+// the row instead, with a deadline so a category that never appears gives up.
+function clickSubcategoryWhenReady(settingsCategory, deadline = Date.now() + 2000) {
+    const row = document.querySelector(`#sub-categories-panel .settings-subnav-btn[data-category="${CSS.escape(settingsCategory)}"]`);
+    if (row) { row.click(); return; }
+    if (Date.now() >= deadline) {
+        logger.warn(`Settings jump: no subcategory row for ${settingsCategory}`);
+        return;
+    }
+    setTimeout(() => clickSubcategoryWhenReady(settingsCategory, deadline), 50);
 }
 
 let settingsJumpBinding = null;
@@ -2397,6 +2428,29 @@ function bindSettingsJump() {
 }
 
 // Render Wake Lock settings
+// One toggle, one string: the click the skin plays on a tap, off by default.
+// Deliberately no heading or description beyond the label -- the label is the
+// whole setting, and every extra sentence is another translation to carry.
+export function renderSoundSettings() {
+    const enabled = isTouchSoundEnabled();
+    return `
+        <div class="space-y-6 px-[60px] py-[80px]">
+            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
+                <div class="flex items-center justify-between">
+                    <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Enable sounds">Enable sounds</label>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="touch-sound-toggle" class="sr-only peer"
+                               ${enabled ? 'checked' : ''}
+                               onchange="handleTouchSoundToggle(this.checked)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 export function renderWakeLockSettings() {
     // Prefer REA's live DisplayState; fall back to last-known localStorage intent
     // only before the first display frame has arrived. wakeLockOverride (not
@@ -2939,24 +2993,18 @@ function getMilkProbe() {
     return window.app?.getMilkProbe?.() ?? { present: false, temperature: 0 };
 }
 
-// Last non-temperature stop mode the user chose ('time'|'off') — what the page
-// falls back to while the probe is absent. Probe loss is NOT display-only:
-// ui.js un-arms an active stop on the machine (stopAtTemperature = 0) and
-// lands the stop-mode record on this fallback (onMilkProbeUpdate below mirrors
-// the un-arm into this page's cached/staged workflow), so re-attaching the
-// probe restores the Milk Temp OPTION but not the mode — Milk Temp comes back
-// only when the user re-selects it (or an armed stop survived, e.g. a boot
-// with the probe attached).
-function getSteamStopFallbackMode() {
-    try {
-        return localStorage.getItem('streamline.steamStopModeFallback');
-    } catch (e) { return null; }
-}
+// Probe loss is NOT display-only: ui.js un-arms an active stop on the machine
+// (stopAtTemperature = 0) and records 'time' as the fallback stop mode
+// (onMilkProbeUpdate below mirrors the un-arm into this page's cached/staged
+// workflow), so re-attaching the probe restores the Milk Temp OPTION but not
+// the mode — Milk Temp comes back only when the user re-selects it (or an
+// armed stop survived, e.g. a boot with the probe attached). ui.js still reads
+// the fallback record for the tile's own Time|Flow pair.
 
 // The steam page's effective stop mode: the resolved mode gated on probe
 // presence ('temperature' is not offerable without a probe).
 function getEffectiveSteamStopMode(probePresent) {
-    return applyMilkProbeGate(getSteamStopMode(), probePresent, getSteamStopFallbackMode());
+    return applyMilkProbeGate(getSteamStopMode(), probePresent);
 }
 
 // Live milk-probe feed from app.js (one call per machine snapshot, ~10 Hz).
@@ -2998,8 +3046,8 @@ window.onMilkProbeUpdate = function(present, temperatureC) {
 export function renderSteamSettings() {
     if (!settingsCache.de1 && !settingsCache.workflow) {
         return `
-            <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="content-stretch flex flex-col gap-[45px] items-start relative w-full">
+                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
                     <p class="leading-[1.2]">${getTranslation('Steam')} ${getTranslation('Settings')}</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
@@ -3008,7 +3056,17 @@ export function renderSteamSettings() {
     }
 
     const steamSettings = settingsCache.workflow?.steamSettings || {};
-    const targetTemp = steamSettings.targetTemperature ?? 150;
+    // 0 is the heater switched off, not a temperature. Showing it would put a
+    // value outside the range this page advertises into the field (the same
+    // class of bug as the out-of-range values reported for hot water), so the
+    // stepper keeps showing the temperature we would switch back ON to and
+    // greys out while the master toggle below is off -- exactly what
+    // renderCalibSteamSettings already does with the same remembered value.
+    const steamHeaterOn = !isSteamOff(steamSettings.targetTemperature ?? 150);
+    const targetTemp = steamHeaterOn
+        ? steamSettings.targetTemperature
+        : (lastEnabledSteamCalibTemp ?? 150);
+    seedRememberedSteamValues();
     const duration = steamSettings.duration ?? 60;
     const flow = steamSettings.flow ?? 0.9;
     const stopTemp = steamSettings.stopAtTemperature ?? 0;
@@ -3020,27 +3078,44 @@ export function renderSteamSettings() {
     const stopMode = getEffectiveSteamStopMode(probe.present); // 'off' | 'time' | 'temperature'
     const milkTarget = stopTemp > 0 ? Math.round(stopTemp) : 60;
 
-    // Steam-stop segmented button (mimics the gatewayMode segmented control).
+    // Steam-stop choice: two compact pills on the label's own line, like every
+    // other control on this page (Steam temperature, Duration, Flow all put a
+    // narrow control to the right of their label, and Steam Purge Mode uses the
+    // same 200px width). The old full-width joined segments were the Figma
+    // "Setting Tabs Multi-Choice" pattern, which fitted three choices; with Off
+    // gone there are two, and a stretched pair read as a banner rather than a
+    // control.
+    //
+    // 72px tall to match the +/- steppers it sits among, not the 96px the
+    // full-width row needed. Separate pills, so no shared seam and no -1px
+    // margin trick.
     // A disabled button (Milk Temp with no probe) renders grayed and inert.
+    const SEG_BASE = `w-[200px] h-[72px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[24px] flex items-center justify-center text-center transition-colors duration-200`;
+    const SEG_INACTIVE = 'bg-[var(--box-color)] border border-[var(--border-primary)] text-[#b6c3d7]';
     const stopSegBtn = (value, label, disabled = false) => {
         if (disabled) {
-            return `<button class="flex-1 h-[96px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-not-allowed transition-colors duration-200 bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7] opacity-40"
-                    aria-pressed="false" aria-disabled="true" disabled data-i18n-key="${label}">${getTranslation(label)}</button>`;
+            // Not `disabled`: a disabled button fires no click, and the reason it
+            // is unavailable now lives in a toast rather than in a line of copy
+            // sitting under the control. aria-disabled still tells assistive tech.
+            return `<button class="${SEG_BASE} cursor-pointer ${SEG_INACTIVE} opacity-40"
+                    aria-pressed="false" aria-disabled="true" onclick="window.explainSteamStopUnavailable()"
+                    data-i18n-key="${label}">${getTranslation(label)}</button>`;
         }
         const active = stopMode === value;
-        return `<button class="flex-1 h-[96px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-pointer transition-colors duration-200 ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+        return `<button class="${SEG_BASE} cursor-pointer ${active ? 'bg-[var(--button-primary-bg)] text-white' : SEG_INACTIVE}"
                     aria-pressed="${active}"
                     onclick="window.setSteamStopMode('${value}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
     };
+    // No "Off" stop: unlimited steam is gone, and Off on this page means the
+    // heater only. A steam time of 0 switches the heater off instead.
     const stopDescriptions = {
-        off: 'Steam runs until you stop it (subject to the machine safety timeout).',
         time: 'Steam stops automatically after the set duration.',
         temperature: 'Steam stops automatically when the milk reaches the target temperature.'
     };
 
     return `
-        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+        <div class="content-stretch flex flex-col gap-[45px] items-start relative w-full">
+            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
                 <p class="leading-[1.2]">${getTranslation('Steam')} ${getTranslation('Settings')}</p>
             </div>
 
@@ -3048,9 +3123,9 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Steam temperature">Steam temperature</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(0)}, ${tempInputValue(135)} – ${tempInputValue(165)} ${tempUnitLabel()}</span>
+                            ${rangeHint(tempInputValue(STEAM_ENABLED_MIN_TEMP), tempInputValue(STEAM_ENABLED_MAX_TEMP), tempUnitLabel(), steamHeaterOn ? tempInputValue(targetTemp) : undefined)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3059,11 +3134,19 @@ export function renderSteamSettings() {
                                     <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
                                 </svg>
                             </button>
+                            <!-- Off is a state of this field, not a number: below the enabled floor the
+                                 slot reads "Off" in place of a temperature and the master toggle follows.
+                                 The input stays in the DOM either way so the numpad keeps its target. -->
                             <div class="flex items-center justify-center" style="width: 130px;">
+                                ${steamHeaterOn ? `
                                 <input type="text" inputmode="numeric" pattern="[0-9]*" id="steamTempInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${tempInputValue(targetTemp)}" step="1" min="${tempInputValue(0)}" max="${tempInputValue(165)}"
-                                       onchange="window.updateSteamSetting('targetTemperature', Math.round(window.tempInputToCelsius(this.value)))">
+                                       value="${tempInputValue(targetTemp)}" step="1"
+                                       onchange="window.setSteamTempFromInput(this.value)">
                                 <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">${tempUnitLabel()}</span>
+                                ` : `
+                                <input type="hidden" id="steamTempInput" value="${tempInputValue(targetTemp)}">
+                                <p class="text-center text-[var(--text-primary)] text-[24px] font-bold w-full" data-i18n-key="Off">${getTranslation('Off')}</p>
+                                `}
                             </div>
                             <button aria-label="Increase steam temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustSteamTemp(1);">
@@ -3073,15 +3156,21 @@ export function renderSteamSettings() {
                             </button>
                         </div>
                     </div>
-                    <p class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] leading-[1.2]" data-i18n-key="The lowest setting turns the steam heater off">The lowest setting turns the steam heater off</p>
                 </div>
             </div>
 
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+            <!-- Steam heater master switch -->
+            ${steamHeaterToggleRow(steamHeaterOn)}
+
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Eco steam -->
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
-                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Eco steam">Eco steam</p>
-                    <p class="text-[20px] font-normal opacity-60 leading-[1.2]" data-i18n-key="After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.">After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.</p>
+                    <p class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] leading-[1.2]" data-i18n-key="After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.">After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.</p>
                 </div>
                 <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                     <input type="checkbox" id="eco-steam-toggle"
@@ -3093,13 +3182,15 @@ export function renderSteamSettings() {
                 </label>
             </div>
 
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Steam Flow -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow">Flow</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">0.4 – 2.5 ml/s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.steamFlowInput.min, SETTINGS_NUMPAD_CONFIGS.steamFlowInput.max, 'ml/s', flow, 1)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3125,28 +3216,31 @@ export function renderSteamSettings() {
                 </div>
             </div>
 
-            <!-- Steam Stop mode -->
+
+            <!-- Steam Stop mode. Bengle only: Milk Temp is the only alternative to
+                 Time, so without a probe-capable machine there is no choice to
+                 offer -- the Duration field above IS the stop, and a lone Time
+                 button would be a control that does nothing. -->
+            ${bengle ? `
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
-                <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
-                    <p class="leading-[1.2]" data-i18n-key="Steam Stop">Steam Stop</p>
-                </div>
-                <div class="flex gap-[16px] w-full">
-                    ${stopSegBtn('off', 'Off')}
-                    ${stopSegBtn('time', 'Time')}
-                    ${bengle ? stopSegBtn('temperature', 'Milk Temp', !probe.present) : ''}
+                <div class="flex items-center justify-between gap-[14px] w-full">
+                    <p class="font-['Inter:Bold',sans-serif] font-bold leading-[1.2] not-italic text-[var(--action-label)] text-[30px]" data-i18n-key="Steam Stop">Steam Stop</p>
+                    <div class="flex gap-[20px] items-center">
+                        ${stopSegBtn('time', 'Time')}
+                        ${stopSegBtn('temperature', 'Milk Temp', !probe.present)}
+                    </div>
                 </div>
                 <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${stopDescriptions[stopMode]}">${getTranslation(stopDescriptions[stopMode])}</p>
-                ${bengle && !probe.present ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] opacity-60 text-[24px] w-full" data-i18n-key="Requires the Bengle milk temperature probe.">${getTranslation('Requires the Bengle milk temperature probe.')}</p>
-                ` : ''}
             </div>
+            ` : ''}
 
             <!-- Stop at Milk Temperature (Milk Temp mode — Bengle) -->
             ${stopMode === 'temperature' && bengle ? `
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Stop at Milk Temperature (°C)">Stop at Milk Temperature (°C)</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(30)} – ${tempInputValue(80)} ${tempUnitLabel()}</span>
                         </div>
@@ -3178,17 +3272,21 @@ export function renderSteamSettings() {
                 </div>
             </div>
             ` : ''}
-            <!-- Steam Duration: the Time stop itself, and the backstop under a
-                 Milk Temp stop -- the machine stops on whichever comes first, so a
-                 probe that never reaches target still has a cap. Only an Off stop
-                 has no duration at all. -->
-            ${stopMode === 'time' || stopMode === 'temperature' ? `
+            <!-- Steam Duration, Milk Temp stop only: there it is the BACKSTOP under
+                 the probe -- the machine stops on whichever comes first, so a probe
+                 that never reaches target still has a cap -- and the main-page tile
+                 cannot reach it, because an armed milk stop takes the tile's small
+                 slot (steamSlotField) and its mode pair becomes Milk|Flow.
+                 Under a Time stop the tile DOES own the duration (Time mode's big
+                 number, and the small slot in Flow mode), so a copy here would be a
+                 second control for the same value. -->
+            ${stopMode === 'temperature' ? `
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="${stopMode === 'temperature' ? 'Max duration (seconds)' : 'Duration (seconds)'}">${getTranslation(stopMode === 'temperature' ? 'Max duration (seconds)' : 'Duration (seconds)')}</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">10 – 120 s</span>
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                            <p class="leading-[1.2]" data-i18n-key="Duration (seconds)">${getTranslation('Duration (seconds)')}</p>
+                            ${rangeHint(MIN_STEAM_DURATION_S, SETTINGS_NUMPAD_CONFIGS.steamDurationInput.max, 's', duration || undefined)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease steam duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -3198,10 +3296,18 @@ export function renderSteamSettings() {
                                 </svg>
                             </button>
                             <div class="flex items-center justify-center" style="width: 130px;">
+                                ${duration === 0 ? `
+                                <!-- 0s is the heater off, the same state the toggle below shows.
+                                     The main page renders it the same way (ui.formatSteamDuration),
+                                     so neither place shows a bare "0" that reads as a short time. -->
+                                <input type="hidden" id="steamDurationInput" value="0">
+                                <p class="text-center text-[var(--text-primary)] text-[24px] font-bold w-full" data-i18n-key="Off">${getTranslation('Off')}</p>
+                                ` : `
                                 <input type="text" inputmode="numeric" pattern="[0-9]*" id="steamDurationInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${duration}" step="5" min="10" max="120"
-                                       onchange="window.updateSteamSetting('duration', parseInt(this.value))">
+                                       value="${duration}" step="5"
+                                       onchange="window.setSteamDurationFromInput(this.value)">
                                 <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">s</span>
+                                `}
                             </div>
                             <button aria-label="Increase steam duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustSteamDuration(5);">
@@ -3212,9 +3318,6 @@ export function renderSteamSettings() {
                         </div>
                     </div>
                 </div>
-                ${stopMode === 'temperature' ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] opacity-60 text-[24px] w-full pt-[12px]" data-i18n-key="Steam also stops after this long if the milk never reaches the target.">${getTranslation('Steam also stops after this long if the milk never reaches the target.')}</p>
-                ` : ''}
             </div>
             ` : ''}
 
@@ -4361,8 +4464,9 @@ export function renderHotWaterSettings() {
     }
 
     const hotWaterData = settingsCache.workflow?.hotWaterData || {};
-    const targetTemp = hotWaterData.targetTemperature ?? 75;
-    const volume = hotWaterData.volume ?? 50;
+    // Target temperature and volume are not here: the main-page Hot Water tile
+    // is the editor for both (its two-value pair), and a second set of steppers
+    // on this page was the same number twice.
     const duration = hotWaterData.duration ?? 30;
     const flow = hotWaterData.flow ?? 2.5;
     // Stop-at-weight toggle + its lookahead multiplier — Rea (not workflow) settings.
@@ -4378,77 +4482,13 @@ export function renderHotWaterSettings() {
                 <p class="leading-[1.2]" data-i18n-key="Hot Water Settings">Hot Water Settings</p>
             </div>
 
-            <!-- Hot Water Temperature -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
-                <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Target Temperature (°C)">Target Temperature (°C)</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(50)} – ${tempInputValue(95)} ${tempUnitLabel()}</span>
-                        </div>
-                        <div class="flex gap-[20px] h-[72px] items-center">
-                            <button aria-label="Decrease hot water temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterTemp(-1);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                            <div class="flex items-center justify-center" style="width: 130px;">
-                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="hotWaterTempInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${tempInputValue(targetTemp)}" step="1" min="${tempInputValue(50)}" max="${tempInputValue(95)}"
-                                       onchange="window.updateHotWaterSetting('targetTemperature', Math.round(window.tempInputToCelsius(this.value)))">
-                                <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">${tempUnitLabel()}</span>
-                            </div>
-                            <button aria-label="Increase hot water temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterTemp(1);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hot Water Volume -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
-                <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Volume">Volume</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">10 – 500 ml</span>
-                        </div>
-                        <div class="flex gap-[20px] h-[72px] items-center">
-                            <button aria-label="Decrease hot water volume" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterVolume(-10);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                            <div class="flex items-center justify-center" style="width: 130px;">
-                                <input type="text" inputmode="numeric" pattern="[0-9]*" id="hotWaterVolumeInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                       value="${volume}" step="10" min="10" max="500"
-                                       onchange="window.updateHotWaterSetting('volume', parseInt(this.value))">
-                                <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">ml</span>
-                            </div>
-                            <button aria-label="Increase hot water volume" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                    onclick="window.flashPlusMinusButton(this); window.adjustHotWaterVolume(10);">
-                                <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Hot Water Duration -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Duration (seconds)">Duration (seconds)</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">5 – 120 s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterDurationInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterDurationInput.max, 's', duration)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water duration" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4478,9 +4518,9 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow">Flow</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">0.1 – 8.0 ml/s</span>
+                            ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.max, 'ml/s', flow, 1)}
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4509,7 +4549,7 @@ export function renderHotWaterSettings() {
             <!-- Stop Hot Water at Weight (needs a scale connected to take effect) -->
             <div class="flex items-center justify-between gap-[24px] w-full">
                 <div class="flex flex-col gap-[4px]">
-                    <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                    <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Stop at Weight">Stop at Weight</p>
                         <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Requires a connected scale">Requires a connected scale</span>
                     </div>
@@ -4529,9 +4569,9 @@ export function renderHotWaterSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow Multiplier">Flow Multiplier</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">Lookahead for stop-at-weight</span>
+                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Higher stops the water sooner">Higher stops the water sooner</span>
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease hot water flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -4544,7 +4584,6 @@ export function renderHotWaterSettings() {
                                 <input type="text" inputmode="decimal" id="hotWaterFlowMultiplierInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
                                        value="${hwFlowMult}" step="0.05" min="0"
                                        onchange="window.updateReaSetting('hotWaterFlowMultiplier', parseFloat(this.value))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">s</span>
                             </div>
                             <button aria-label="Increase hot water flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHotWaterFlowMultiplier(0.05);">
@@ -5146,14 +5185,48 @@ export function renderCalibVoltageSettings() {
 }
 
 
-// Target temperature to switch the steam heater back on to. Captured when the
-// toggle goes off (the workflow then holds 0), so the stepper keeps showing a
-// real temperature and switching on returns to it.
+// Values to switch the steam heater back on to. Captured when it goes off (the
+// workflow then holds 0 for both), so the steppers keep showing real numbers
+// and switching on returns to them. Seeded from the shared last-* keys on first
+// render, so an app that boots with steam already off still knows them.
 let lastEnabledSteamCalibTemp = null;
+let lastEnabledSteamDuration = null;
+let rememberedSteamSeeded = false;
+
+async function seedRememberedSteamValues() {
+    if (rememberedSteamSeeded) return;
+    rememberedSteamSeeded = true;
+    try {
+        const [temp, duration] = await Promise.all([
+            readSharedValue(STEAM_TEMP_LAST_VALUE_KEY),
+            readSharedValue(STEAM_DURATION_LAST_VALUE_KEY),
+        ]);
+        if (lastEnabledSteamCalibTemp === null && temp > 0) lastEnabledSteamCalibTemp = temp;
+        if (lastEnabledSteamDuration === null && duration > 0) lastEnabledSteamDuration = duration;
+    } catch (e) { /* defaults cover it */ }
+}
+
+// Shared "Steam heater" on/off row (Quick Adjustments -> Steam and Calibration -> Steam).
+// Carries no page sizing; each page's container sets the width.
+function steamHeaterToggleRow(heaterOn) {
+    return `
+        <div class="flex items-center justify-between gap-[20px] w-full">
+            <p class="font-bold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="Steam heater">${getTranslation('Steam heater')}</p>
+            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                <input type="checkbox" class="sr-only peer" id="steamHeaterToggle" ${heaterOn ? 'checked' : ''}
+                       onchange="window.setSteamHeaterOn(this.checked)">
+                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+            </label>
+        </div>
+    `;
+}
 
 export function renderCalibSteamSettings() {
     const workflowTemp = settingsCache.workflow?.steamSettings?.targetTemperature ?? 155;
-    const heaterOn = workflowTemp > 0;
+    // isSteamOff, not > 0: a target between 1 and the enabled floor is a heater
+    // the machine has switched off, and the toggle must say so (#1079).
+    const heaterOn = !isSteamOff(workflowTemp);
     const targetTemp = heaterOn ? workflowTemp : (lastEnabledSteamCalibTemp ?? 150);
     const dim = heaterOn ? '' : 'opacity-40 cursor-not-allowed';
     const dis = heaterOn ? '' : 'disabled';
@@ -5198,15 +5271,7 @@ export function renderCalibSteamSettings() {
                         Set steam temperature (135-170°C)
                     </p>
                 </div>
-                <div class="flex items-center justify-between gap-[20px] w-[590px]">
-                    <p class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="Steam heater">Steam heater</p>
-                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                        <input type="checkbox" class="sr-only peer" id="steamHeaterToggle" ${heaterOn ? 'checked' : ''}
-                               onchange="window.setSteamHeaterOn(this.checked)">
-                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                    </label>
-                </div>
+                <div class="w-[590px]">${steamHeaterToggleRow(heaterOn)}</div>
             </div>
         </div>
     `;
@@ -5235,21 +5300,42 @@ let sensorCalWarningAck = false;
 // renders until Ok was clicked. "shown" gates opening; "ack" is still
 // tracked for callers that care whether the user actually clicked through.
 let sensorCalWarningShown = false;
+// The Advanced disclosure's open state. Every render rebuilds the <details>
+// from a template string, so without this it would fold shut mid-typing.
+let sensorCalAdvancedOpen = false;
+
+// Flow estimation calibration (Decaid GET|POST /machine/calibration): an
+// absolute set, unlike the sensor corrections above. null = the machine
+// reported nothing, so the control stays disabled rather than show a fake 1.0.
+let sensorCalFlow = null;
+let sensorCalFlowLoaded = false;
+let sensorCalFlowLoading = false;
+let sensorCalFlowError = '';
+let sensorCalFlowBusy = false;
+// null until the plugin read resolves (or fails, which counts as false).
+let sensorCalFlowManaged = null;
+let sensorCalFlowTimer = null;
+const SENSOR_CAL_FLOW_DEBOUNCE_MS = 600;
 
 // ─── sensor-cal warning visit policy ────────────────────────────────────────
 // Pure state transition, DOM-free on purpose: test/sensor-cal-warning.test.mjs
 // slices this block straight out of the source (see that file's header) so
 // coverage can't silently drift from what actually ships in this legacy file.
-// Events: 'render' (page mount or any later re-render), 'ack' (Ok clicked),
+// Events: 'open' (the Advanced disclosure was opened), 'ack' (Ok clicked),
+// 'cancel' (Cancel clicked -- Advanced closes, so opening it asks again),
 // 'leave' (navigated to a different settings category).
+// 'open' is idempotent until acknowledged: the browser re-fires the details
+// toggle event on every re-render of an open disclosure, and the caller
+// guards showModal() on .open.
 function sensorCalWarningNextState(state, event) {
     switch (event) {
-        case 'render':
-            return state.shown
+        case 'open':
+            return state.ack
                 ? { state, open: false }
-                : { state: { shown: true, ack: state.ack }, open: true };
+                : { state: { shown: true, ack: false }, open: true };
         case 'ack':
             return { state: { shown: state.shown, ack: true }, open: false };
+        case 'cancel':
         case 'leave':
             return { state: { shown: false, ack: false }, open: false };
         default:
@@ -5260,8 +5346,8 @@ function sensorCalWarningNextState(state, event) {
 
 // ─── sensor-cal warning reopen-after-interruption policy ───────────────────
 // Whether THIS render should (re)open the dialog, combining what
-// sensorCalWarningNextState('render') decided (`open`: true only for the
-// very first render of a visit) with whether the dialog that render is about
+// sensorCalWarningNextState decided (`open`: true only when the Advanced
+// disclosure was just opened) with whether the dialog that render is about
 // to destroy was actually showing when the render started (`wasOpen`, read
 // straight from the browser -- see updateSettingsContentArea, which captures
 // it before contentArea.innerHTML tears the old <dialog> down).
@@ -5359,11 +5445,43 @@ function shouldStartSensorCalLoad({ loaded, loading, error }) {
 }
 // ── end sensor-cal load re-entry policy ─────────────────────────────────────
 
+// Same shape as the sensor read: one attempt, no self-retry on failure (the
+// error clears on Retry or on leaving). A failure here never touches the
+// sensor table's state.
+// Fails open: any plugin read error means "not managed", never an error line.
+async function sensorCalReadFlowManaged() {
+    try {
+        const [plugins, settings] = await Promise.all([getPlugins(), getPluginSettings(AUTO_FLOW_CAL_PLUGIN_ID)]);
+        return isFlowCalPluginManaging(plugins, settings);
+    } catch (error) {
+        logger.warn('Auto Flow Calibration plugin state unavailable:', error);
+        return false;
+    }
+}
+
+async function sensorCalLoadFlow() {
+    if (sensorCalFlowLoaded || sensorCalFlowLoading || sensorCalFlowError) return;
+    sensorCalFlowLoading = true;
+    try {
+        const [reading, managed] = await Promise.all([getMachineCalibration(), sensorCalReadFlowManaged()]);
+        sensorCalFlow = clampFlowMultiplier(reading?.flowMultiplier);
+        sensorCalFlowManaged = managed;
+        sensorCalFlowLoaded = true; // an unusable value leaves the control disabled, without a retry loop
+    } catch (error) {
+        logger.error('Failed to read flow calibration:', error);
+        sensorCalFlowError = error.message;
+    } finally {
+        sensorCalFlowLoading = false;
+        sensorCalRerenderIfVisible();
+    }
+}
+
 async function initSensorCal() {
     // The live column is fed by the snapshot socket, which nobody has opened
     // if the app booted straight onto this page (a reload while in Settings).
     ensureMachineSnapshotSocket();
     sensorCalStartLive();
+    sensorCalLoadFlow();
     if (!shouldStartSensorCalLoad({ loaded: sensorCalLoaded, loading: sensorCalLoading, error: sensorCalLoadError })) return;
     sensorCalLoading = true;
     sensorCalLoadError = '';
@@ -5578,7 +5696,7 @@ function sensorCalShowWarning() {
 
 function sensorCalWarningModal() {
     return `
-            <dialog id="sensor-cal-warning-modal" class="modal">
+            <dialog id="sensor-cal-warning-modal" class="modal" oncancel="window.sensorCalWarningCancel()">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
                     <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2" data-i18n-key="Sensor Calibration">Sensor Calibration</h3>
                     <p class="text-[24px] text-[var(--text-primary)] leading-[1.4] break-words" data-i18n-key="Bad calibration settings might make your espresso machine unuseable.  Only proceed if you have been told to or have read the relevant manual sections and know what you are doing.">Bad calibration settings might make your espresso machine unuseable.  Only proceed if you have been told to or have read the relevant manual sections and know what you are doing.</p>
@@ -5594,6 +5712,61 @@ function sensorCalWarningModal() {
                     </div>
                 </div>
             </dialog>`;
+}
+
+function sensorCalFlowCard() {
+    const managed = sensorCalFlowManaged === true;
+    const disabled = sensorCalFlow === null || sensorCalFlowManaged === null || managed;
+    const btnState = disabled ? 'disabled style="opacity:0.4"' : '';
+    // While the plugin owns the value, the label and the range line dim with the
+    // controls (same 0.4 as the +/- buttons, inline because app.css is generated
+    // and a new utility class would not be in it). The notice and its button stay
+    // at full strength: the dimmed half is what you cannot touch, the bright half
+    // is why, and where to go instead. The hint is muted by COLOUR rather than a
+    // second opacity, so dimming it here does not compound into near-invisible.
+    const mutedWhenManaged = managed ? 'style="opacity:0.4"' : '';
+    // The range line stays in BOTH states. It says what the number is and what
+    // normal looks like, which is what someone reads a value they cannot change
+    // to find out -- and the plugin's own MinimumMultiplier/MaximumMultiplier are
+    // not these bounds, so this stays the DE1's range either way.
+    const hint = `<p ${mutedWhenManaged} class="text-[20px] font-normal leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.">Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.</p>`;
+    const notice = managed
+        ? `<p class="text-[20px] font-normal leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Flow calibration is managed automatically by the Auto Flow Calibration plugin.">Flow calibration is managed automatically by the Auto Flow Calibration plugin.</p>
+           <button class="${SENSOR_CAL_SMALL_BTN} bg-[var(--button-primary-bg)] text-white self-start mt-[4px]" data-settings-jump="${escapeHtml(pluginCategoryFor(AUTO_FLOW_CAL_PLUGIN_ID))}" data-i18n-key="Open plugin settings">Open plugin settings</button>`
+        : '';
+    // Laid out like Quick Adjustments > Steam: a full-width row, label and its
+    // supporting lines on the left, the stepper on the right, a rule underneath.
+    // The old fixed 590px bordered card ignored the page's width and floated in
+    // the middle of it, which read as a stray box rather than a setting.
+    return `
+            <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
+                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                    <p id="flow-estimation-multiplier-label" ${mutedWhenManaged} class="leading-[1.2]" data-i18n-key="Flow Estimation Calibration Multiplier">Flow Estimation Calibration Multiplier</p>
+                    ${hint}
+                    ${notice}
+                    ${sensorCalFlowError ? `<p class="text-[20px] font-normal leading-[1.2] text-red-500">${escapeHtml(sensorCalFlowError)}</p>` : ''}
+                </div>
+                <div class="flex gap-[20px] h-[72px] items-center shrink-0">
+                    <button id="flow-estimation-mult-minus" aria-label="Decrease flow estimation calibration multiplier" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                            onclick="window.flashPlusMinusButton(this); window.sensorCalFlowAdjust(-1);">
+                        <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="flex items-center justify-center" style="width: 130px;">
+                        <input type="text" inputmode="decimal" id="flow-estimation-mult-input" aria-labelledby="flow-estimation-multiplier-label" ${disabled ? 'disabled' : ''} class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
+                               value="${sensorCalFlow === null ? '' : sensorCalFlow.toFixed(2)}"
+                               onchange="window.sensorCalFlowInput(this.value)">
+                    </div>
+                    <button id="flow-estimation-mult-plus" aria-label="Increase flow estimation calibration multiplier" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                            onclick="window.flashPlusMinusButton(this); window.sensorCalFlowAdjust(1);">
+                        <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>`;
 }
 
 export function renderSensorCalSettings() {
@@ -5636,7 +5809,15 @@ export function renderSensorCalSettings() {
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div class="w-full">${body}</div>
+            ${sensorCalFlowCard()}
+
+            <details id="sensor-cal-advanced" class="w-full" ${sensorCalAdvancedOpen ? 'open' : ''}
+                     ontoggle="window.sensorCalAdvancedToggle(this.open)">
+                <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[22px] font-bold text-[var(--text-secondary)] py-[8px]">
+                    <span data-i18n-key="Advanced">Advanced</span> ▾
+                </summary>
+                <div class="w-full pt-[8px]">${body}</div>
+            </details>
             ${sensorCalWarningModal()}
         </div>
     `;
@@ -7724,7 +7905,7 @@ function getCategoryTitle(category) {
         case 'flush': return 'Flush Settings';
         case 'de1': return 'DE1 Settings';
         case 'fanthreshold': return 'Fan Threshold Settings';
-        case 'usbchargermode': return 'USB Charger Settings';
+        case 'usbchargermode': return 'Smart Charging';
         case 'cupwarmer': return 'Cup Warmer';
         case 'ledstrip': return 'Lighting';
         case 'machineinfo': return 'Machine Info';
@@ -8594,18 +8775,86 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         document.getElementById('sensor-cal-warning-modal')?.close();
     };
 
-    // Declining leaves the page entirely rather than sitting on a live
-    // calibration screen the user just said they did not want. Reuses the
-    // settings sub-nav so the highlighted menu item follows.
-    window.sensorCalWarningCancel = function() {
-        document.getElementById('sensor-cal-warning-modal')?.close();
-        document.querySelector('.settings-subnav-btn[data-category="calib_defaultload"]')?.click();
+    // Opening Advanced is what asks. The browser also fires this on every
+    // re-render of an already-open disclosure; sensorCalWarningNextState is a
+    // no-op once acknowledged and sensorCalShowWarning guards on .open.
+    window.sensorCalAdvancedToggle = function(isOpen) {
+        sensorCalAdvancedOpen = isOpen;
+        if (!isOpen) return;
+        const { state, open } = sensorCalWarningNextState(
+            { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'open');
+        sensorCalWarningShown = state.shown;
+        sensorCalWarningAck = state.ack;
+        if (open) sensorCalShowWarning();
     };
+
+    // Declining folds Advanced shut again and stays on the page: the flow
+    // control above it was never behind the warning.
+    window.sensorCalWarningCancel = function() {
+        ({ shown: sensorCalWarningShown, ack: sensorCalWarningAck } = sensorCalWarningNextState(
+            { shown: sensorCalWarningShown, ack: sensorCalWarningAck }, 'cancel').state);
+        sensorCalAdvancedOpen = false;
+        const dlg = document.getElementById('sensor-cal-warning-modal');
+        if (dlg?.open) dlg.close();
+        const details = document.getElementById('sensor-cal-advanced');
+        if (details) details.open = false;
+    };
+
+    // +/- step; typing goes through sensorCalFlowInput. Both clamp, paint
+    // immediately, and share one debounced write.
+    window.sensorCalFlowAdjust = function(direction) {
+        if (sensorCalFlow === null) return;
+        sensorCalFlowSet(sensorCalFlow + direction * FLOW_MULTIPLIER_STEP);
+    };
+
+    window.sensorCalFlowInput = function(raw) {
+        const value = clampFlowMultiplier(raw);
+        if (value === null) { sensorCalRerenderIfVisible(); return; } // snap the box back
+        sensorCalFlowSet(value);
+    };
+
+    function sensorCalFlowSet(candidate) {
+        const value = clampFlowMultiplier(candidate);
+        if (value === null || sensorCalFlow === null) return;
+        sensorCalFlow = value;
+        sensorCalFlowError = '';
+        sensorCalRerenderIfVisible();
+        clearTimeout(sensorCalFlowTimer);
+        sensorCalFlowTimer = setTimeout(sensorCalFlowFlush, SENSOR_CAL_FLOW_DEBOUNCE_MS);
+    }
+
+    // POST the settled value, then paint what the machine reports. One write
+    // in flight at a time; an edit made during it schedules another flush.
+    async function sensorCalFlowFlush() {
+        sensorCalFlowTimer = null;
+        if (sensorCalFlowBusy) {
+            sensorCalFlowTimer = setTimeout(sensorCalFlowFlush, SENSOR_CAL_FLOW_DEBOUNCE_MS);
+            return;
+        }
+        const sent = sensorCalFlow;
+        if (sent === null) return;
+        sensorCalFlowBusy = true;
+        try {
+            await setMachineCalibration(sent);
+            const reading = await getMachineCalibration();
+            const reported = clampFlowMultiplier(reading?.flowMultiplier);
+            // Keep an edit made while the write was in flight; it has its own flush.
+            if (sensorCalFlow === sent) sensorCalFlow = reported;
+        } catch (error) {
+            logger.error('Flow calibration write failed:', error);
+            sensorCalFlowError = error.message;
+            ui.showToast(`Calibration failed: ${error.message}`, 5000, 'error');
+        } finally {
+            sensorCalFlowBusy = false;
+            sensorCalRerenderIfVisible();
+        }
+    }
 
     // Clearing the error re-opens initSensorCal's re-entry gate, so the
     // re-render below performs exactly one fresh attempt.
     window.sensorCalRetryLoad = function() {
         sensorCalLoadError = '';
+        sensorCalFlowError = '';
         sensorCalRerender();
     };
 
@@ -8625,10 +8874,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if (captured === null || measured === null) return;
         const blocked = correctionBlocked(target.kind, captured, sensorCalToCelsius(id, measured));
         if (blocked) { entry.error = blocked; sensorCalRerender(); return; }
-        // Captured BEFORE the write: this is what Restore puts back.
-        const priorValue = entry.current;
         entry.busy = true; entry.error = ''; sensorCalRerender();
         try {
+            // Re-read the stored trim rather than trust the one from page load: it may have
+            // changed elsewhere since. This is what Restore puts back, so it must be the
+            // value the machine holds right now, captured BEFORE the write.
+            await sensorCalRead(id);
+            const priorValue = entry.current;
             await setSensorCalibration(id, captured, sensorCalToCelsius(id, measured));
             // The 202 is the BLE write ack, not a settled value — read it back
             // rather than paint the preview as fact.
@@ -9133,9 +9385,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             ui.showToast('Skin set. Loading it now.', 6000, 'success');
             // The redirect lands on the port Decaid is serving *at that moment*,
             // and the webview only allows it once its own view has picked the new
-            // port up. Give it a beat: too early and the navigation is treated as
-            // an external link and opens in the system browser instead.
-            await new Promise(r => setTimeout(r, 1200));
+            // port up. Too early and the navigation is treated as an external link
+            // and opens in the system browser instead (#186). Nothing is exposed to
+            // the page to say the SkinView is ready, so this is a guess: 5 s, as
+            // asked for in #186, because 1.2 s lost on a slow tablet. The real fix
+            // is a readiness signal from Decaid (decaid#1108).
+            await new Promise(r => setTimeout(r, 5000));
             const enterSkin = () => window.location.assign(
                 `${window.location.protocol}//${window.location.hostname}:3000/?_=${Date.now()}`);
             enterSkin();
@@ -9260,31 +9515,14 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         const input = document.getElementById('hotWaterFlowInput');
         if (input) {
             let newValue = parseFloat(input.value) + change;
-            newValue = Math.max(0.1, Math.min(8, newValue));
+            newValue = Math.max(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.min,
+                                Math.min(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.max, newValue));
             input.value = newValue.toFixed(1);
             input.dispatchEvent(new Event('change'));
         }
     };
 
-    window.adjustHotWaterTemp = function(change) {
-        const input = document.getElementById('hotWaterTempInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(tempInputValue(50), Math.min(tempInputValue(95), newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
-        }
-    };
 
-    window.adjustHotWaterVolume = function(change) {
-        const input = document.getElementById('hotWaterVolumeInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(10, Math.min(500, newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
-        }
-    };
 
     window.adjustHotWaterDuration = function(change) {
         const input = document.getElementById('hotWaterDurationInput');
@@ -9417,49 +9655,107 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // remembers enabled values) -- api.setSteamHeaterEnabled writes at once and
     // would fight this page's Save model.
     window.setSteamHeaterOn = function(on) {
-        const current = settingsCache.workflow?.steamSettings?.targetTemperature ?? 0;
-        let value = 0;
+        const steam = settingsCache.workflow?.steamSettings ?? {};
         if (on) {
-            value = lastEnabledSteamCalibTemp ?? (current > 0 ? current : 150);
-        } else if (current > 0) {
-            lastEnabledSteamCalibTemp = current;
+            // steamOnPatch clamps into the enabled band: re-arming to a
+            // remembered value below the floor would leave the heater off and
+            // the toggle fighting the user.
+            const patch = steamOnPatch({
+                remembered: {
+                    temp: lastEnabledSteamCalibTemp ?? (steam.targetTemperature > 0 ? steam.targetTemperature : null),
+                    duration: lastEnabledSteamDuration ?? (steam.duration > 0 ? steam.duration : null),
+                },
+                currentFlow: steam.flow,
+            });
+            for (const [field, value] of Object.entries(patch)) updateSteamSetting(field, value);
+        } else {
+            if (steam.targetTemperature > 0) lastEnabledSteamCalibTemp = steam.targetTemperature;
+            if (steam.duration > 0) lastEnabledSteamDuration = steam.duration;
+            for (const [field, value] of Object.entries(steamOffPatch())) updateSteamSetting(field, value);
         }
-        updateSteamSetting('targetTemperature', value);
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
-    // 0 is off, 135-165 is the enabled range (rest_v1.yml SteamSettings), and
-    // nothing in between is a real setting -- Decaid reads anything under the
-    // range as off. So the buttons step between off and the bottom of the range
-    // instead of walking the user through 134 meaningless degrees. The floor
-    // used to be 135 with a label promising that "below 130" turned the heater
-    // off, which the buttons could not reach at all.
+    // Off is one end of this control, not a separate switch: stepping below the
+    // enabled floor turns the heater off (and flips the master toggle, which
+    // renders from the same value), stepping up from off re-arms at the
+    // remembered temperature. Both directions go through setSteamHeaterOn so
+    // there is still a single writer for the off/on transition.
+    //
+    // Driven by the staged workflow value rather than by parsing the box,
+    // because while off the box shows the word "Off" and has no number in it.
+    //
+    // Steps are in DISPLAY units (one press = 1 °C or 1 °F); only the value
+    // written to the workflow is converted back to Celsius.
+    function steamTempC() {
+        return settingsCache.workflow?.steamSettings?.targetTemperature ?? 0;
+    }
+
     window.adjustSteamTemp = function(change) {
-        const input = document.getElementById('steamTempInput');
-        if (!input) return;
-        const off = tempInputValue(0);
-        const min = tempInputValue(135);
-        const current = parseInt(input.value, 10);
-        let newValue;
-        if (current <= off) {
-            newValue = change > 0 ? min : off;              // off -> bottom of range
-        } else {
-            newValue = current + change;
-            if (newValue < min) newValue = off;             // below the range -> off
-            else newValue = Math.min(tempInputValue(165), newValue);
+        if (steamTempC() < STEAM_ENABLED_MIN_TEMP) {
+            if (change > 0) window.setSteamHeaterOn(true);  // off -> remembered temperature
+            return;                                         // already off; stepping down is a no-op
         }
-        input.value = newValue;
-        input.dispatchEvent(new Event('change'));
+        const nextDisplay = tempInputValue(steamTempC()) + change;
+        if (nextDisplay < tempInputValue(STEAM_ENABLED_MIN_TEMP)) {
+            window.setSteamHeaterOn(false);                 // stepped below the floor -> off
+            return;
+        }
+        const capped = Math.min(tempInputValue(STEAM_ENABLED_MAX_TEMP), nextDisplay);
+        updateSteamSetting('targetTemperature', Math.round(tempInputToCelsius(capped)));
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
-    window.adjustSteamDuration = function(change) {
-        const input = document.getElementById('steamDurationInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(10, Math.min(120, newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
+    // Typed or numpad entry. Anything below the enabled floor -- including 0 --
+    // is Off rather than a temperature, which is also what Decaid does with it.
+    window.setSteamTempFromInput = function(raw) {
+        const display = parseFloat(raw);
+        if (!Number.isFinite(display)) {
+            if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+            return;                                         // unparseable: repaint, change nothing
         }
+        const celsius = Math.round(tempInputToCelsius(display));
+        if (celsius < STEAM_ENABLED_MIN_TEMP) { window.setSteamHeaterOn(false); return; }
+        updateSteamSetting('targetTemperature', Math.min(STEAM_ENABLED_MAX_TEMP, celsius));
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+    };
+
+    // Staged value, not the box: at 0 the box reads "Off" and the input behind
+    // it is hidden (so it carries no change handler to round-trip through).
+    //
+    // Off is one end of this control as well as of the temperature: stepping
+    // below the shortest duration switches the heater off, and stepping up from
+    // Off re-arms at the remembered duration rather than at one step -- the
+    // user asked for steam back, not for one second of it.
+    window.adjustSteamDuration = function(change) {
+        const cfg = SETTINGS_NUMPAD_CONFIGS.steamDurationInput;
+        const previous = settingsCache.workflow?.steamSettings?.duration ?? 0;
+        if (previous === 0) {
+            if (change > 0) window.setSteamHeaterOn(true);
+            return;                                     // already off; stepping down is a no-op
+        }
+        const newValue = Math.max(cfg.min, Math.min(cfg.max, previous + change));
+        if (newValue < MIN_STEAM_DURATION_S) { window.setSteamHeaterOn(false); return; }
+        if (newValue === previous) return;
+        updateSteamSetting('duration', newValue);
+        const input = document.getElementById('steamDurationInput');
+        if (input) input.value = newValue;
+        if ((previous === 0) !== (newValue === 0) && activeSettingsCategory) {
+            updateSettingsContentArea(activeSettingsCategory);
+        }
+    };
+
+    // Typed or numpad entry. Anything below the shortest duration -- 0 and an
+    // empty box included -- is Off rather than a very short steam time.
+    window.setSteamDurationFromInput = function(raw) {
+        const intent = steamDurationIntent(raw);
+        if (!intent) {                                  // unparseable: repaint, change nothing
+            if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+            return;
+        }
+        if (intent.off) { window.setSteamHeaterOn(false); return; }
+        updateSteamSetting('duration', intent.duration);
+        if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
     };
 
     window.adjustSteamFlow = function(change) {
@@ -9482,18 +9778,23 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
     };
 
-    // Steam-stop mode toggle (Off | Time | Milk Temp). Stages stopAtTemperature and
+    // Steam-stop mode toggle (Time | Milk Temp). Stages stopAtTemperature and
     // re-renders so the correct dependent field (Duration or Milk target) is revealed.
     window.setEcoSteam = setEcoSteamEnabled;
+
+    // Why Milk Temp is greyed out, on demand instead of as standing copy.
+    window.explainSteamStopUnavailable = function() {
+        ui.showToast(getTranslation('Requires the Bengle milk temperature probe.'), 3000, 'info');
+    };
 
     window.setSteamStopMode = function(mode) {
         // Milk Temp is unofferable without the probe (button renders disabled —
         // this guard is belt-and-braces against a stale DOM).
         if (mode === 'temperature' && !getMilkProbe().present) return;
         // A hand-picked mode overrides any pending probe-loss restore, exactly
-        // like a tap on the main-page tile — without this, an Off/Time stop
-        // chosen here while the probe is away is auto-re-armed to Milk the
-        // moment the probe returns.
+        // like a tap on the main-page tile — without this, a Time stop chosen
+        // here while the probe is away is auto-re-armed to Milk the moment the
+        // probe returns.
         ui.clearMilkStopProbeRestore();
         try {
             localStorage.setItem('streamline.steamStopMode', mode);
@@ -9943,6 +10244,14 @@ window.handleBrightnessChange = async function(value) {
 };
 
 // Wake Lock handlers
+// Turning it on plays the click itself: the toggle is the only place where
+// "what does this sound like" is the question being asked, and the tap that
+// flipped it is the user gesture the AudioContext needs.
+window.handleTouchSoundToggle = function(enabled) {
+    try { localStorage.setItem(TOUCH_SOUND_KEY, enabled ? 'true' : 'false'); } catch (e) { /* private mode */ }
+    if (enabled) playTouchSound();
+};
+
 window.handleWakeLockToggle = async function(enabled) {
     try {
         if (enabled) {

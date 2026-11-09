@@ -11,6 +11,8 @@ import {
     pluginCategoryFor,
     pluginIdFromCategory,
     isPluginSettingVisible,
+    isFlowCalPluginManaging,
+    AUTO_FLOW_CAL_PLUGIN_ID,
 } from '../src/settings/plugin-view.js';
 
 // plugin-view.js is the pure metadata -> view-model layer the generic plugin
@@ -244,4 +246,29 @@ test('an unreachable bridge yields no rows instead of throwing', () => {
 test('a malformed entry in the list does not take the whole nav down', () => {
     const rows = pluginNavEntries([null, { name: 'no id' }, { id: 'ok.reaplugin', name: 'Ok' }]);
     assert.deepEqual(rows.map(r => r.pluginId), ['ok.reaplugin']);
+});
+
+test('isFlowCalPluginManaging resolves loaded + Enabled + !DryRun', () => {
+    const manifest = { Enabled: { type: 'boolean', default: true }, DryRun: { type: 'boolean', default: false } };
+    const plugin = (extra = {}) => ({ id: AUTO_FLOW_CAL_PLUGIN_ID, loaded: true, settings: manifest, ...extra });
+
+    assert.equal(isFlowCalPluginManaging([plugin()], { Enabled: true, DryRun: false }), true);
+    assert.equal(isFlowCalPluginManaging([{ id: 'other.reaplugin', loaded: true }], { Enabled: true }), false);
+    assert.equal(isFlowCalPluginManaging([], {}), false);
+    assert.equal(isFlowCalPluginManaging(null, {}), false);
+    assert.equal(isFlowCalPluginManaging([plugin({ loaded: false })], { Enabled: true, DryRun: false }), false);
+    assert.equal(isFlowCalPluginManaging([plugin()], { Enabled: false }), false);
+    assert.equal(isFlowCalPluginManaging([plugin()], { Enabled: true, DryRun: true }), false);
+    // {} = no stored settings -> manifest defaults
+    assert.equal(isFlowCalPluginManaging([plugin()], {}), true);
+    assert.equal(isFlowCalPluginManaging([plugin({ loaded: false })], {}), false);
+    // manifest default Enabled=false with nothing stored
+    const offByDefault = plugin({ settings: { ...manifest, Enabled: { type: 'boolean', default: false } } });
+    assert.equal(isFlowCalPluginManaging([offByDefault], {}), false);
+    assert.equal(isFlowCalPluginManaging([offByDefault], { Enabled: true }), true);
+    // null / undefined settings behave like {}
+    assert.equal(isFlowCalPluginManaging([plugin()], null), true);
+    assert.equal(isFlowCalPluginManaging([plugin()], undefined), true);
+    // no manifest settings at all -> Enabled true, DryRun false
+    assert.equal(isFlowCalPluginManaging([{ id: AUTO_FLOW_CAL_PLUGIN_ID, loaded: true }], undefined), true);
 });

@@ -35,3 +35,23 @@ const TAIL_SUBSTATES = ['pouringDone', 'puffing'];
 export function isActionTailSubstate(substate) {
     return TAIL_SUBSTATES.includes(substate);
 }
+
+// Retry for a refill kit that has stopped, in the status line.
+//
+// de1app's "Please add water" page makes the whole page one retry button --
+// start_refill_kit on any tap, never gated (skins/default/standard_includes.tcl)
+// -- and gates only the hint that advertises it: refill_kit_retry_button
+// (de1plus/vars.tcl) shows "Touch screen to retry" while the DE1 substate is
+// not 0, which during Refill is substate 0x11, "Have we given up on a refill?".
+//
+// Decaid collapses that substate into MachineSubstate.idle (de1.utils.dart,
+// decentespresso/decaid#1062), so a kit that is filling and a kit that has
+// given up arrive here as the same frame. The retry is therefore offered for as
+// long as the state lasts, which is what de1app's own tap target does anyway.
+//
+// It is gated on the kit instead of on the substate: without a kit nothing is
+// waiting to be told to try again, and the only fix is to pour water in. null
+// (machine info not read yet) is not a kit.
+export function offerRefillRetry(state, refillKitPresent) {
+    return state === 'needsWater' && refillKitPresent === true;
+}

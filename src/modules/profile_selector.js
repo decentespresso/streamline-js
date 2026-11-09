@@ -1,10 +1,11 @@
-import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings, DEFAULT_DOSE_WEIGHT } from './profileManager.js';
+import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, applySavedSteamSettings } from './profileManager.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
 import { logger } from './logger.js';
 import { initResizablePanels, showToast, initFullscreenHandler, updateProfileName, setupPressAndHold, flashIconButton } from './ui.js';
 import { sendProfile, getWorkflow, updateWorkflow, deleteProfile, updateProfileVisibility, getProfileLineage } from './api.js';
 import { profileSendBlocked, setPendingProfileSend } from './profile-send-gate.js';
+import { profileSwitchDial } from './profile-overrides.js';
 import { recipeIdPatch } from './dye-selection.js';
 import { currentMachineState } from './api.js';
 import { initChart, plotProfile } from './chart.js';
@@ -280,15 +281,10 @@ async function handleConfirm() {
     }
     const profile = profileRecord.profile;
     const meta = profileRecord.metadata || {};
-    // Same fallback chains as sendProfileRecordToMachine (profileManager) --
-    // keep them in step. Neither dose nor grind is a
-    // profile field (see DEFAULT_DOSE_WEIGHT), so behind the user's saved override
-    // for this profile there is only the last number they set anywhere. Yield is a
-    // profile field, so the recipe answers for it.
-    const savedGrind = meta.grinderSetting ?? lastGrinderSetting();
-    const grindContext = savedGrind != null ? { grinderSetting: savedGrind } : { grinderSetting: null };
-    const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
-    const effectiveYield = meta.targetYield        ?? parseFloat(profile.target_weight);
+    // The same dial-in rule as every other way into a profile switch: this
+    // profile's saved dose and grind, nothing where it has none so the live
+    // values stand, and the yield the profile itself asks for.
+    const dial = profileSwitchDial(meta, profile.target_weight);
     // Same saved-override fold sendProfileRecordToMachine does -- this page is the other way into a profile
     // switch, and without it a brew-temp edit is lost coming through here.
     const profileToSend = withSavedBrewTemp(profile, meta);
@@ -325,25 +321,11 @@ async function handleConfirm() {
             }
         }
 
-        // Update workflow with profile's target weight before sending the profile
-        // This ensures that the target weight from the profile is applied to the workflow
-        if (profile.target_weight) {
-            const workflowUpdate = {
-                profile: profileToSend,
-                context: {
-                    targetDoseWeight,
-                    targetYield: effectiveYield,
-                    ...grindContext,
-                    // Profile change: release the recipe (dye2#36).
-                    ...recipeIdPatch(null)
-                }
-            };
-
-            sentworkflow = await updateWorkflow(workflowUpdate, 'profile.send');
-        } else {
-            const displayYield = isNaN(effectiveYield) ? 0 : effectiveYield;
-            sentworkflow = await updateWorkflow({ profile: profileToSend, context: { targetDoseWeight, targetYield: displayYield, ...grindContext, ...recipeIdPatch(null) } }, 'profile.send');
-        }
+        sentworkflow = await updateWorkflow({
+            profile: profileToSend,
+            // Profile change: release the recipe (dye2#36).
+            context: { ...dial, ...recipeIdPatch(null) },
+        }, 'profile.send');
 
         const verified = sentworkflow.profile.title === profile.title;
         if (verified) {
@@ -481,11 +463,8 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
             const pr = availableProfiles[key];
             if (pr?.profile) {
                 const meta = pr.metadata || {};
-                // Same chain as handleConfirm and the favourite buttons: the user's
-                // override for this profile, then the last dose they set anywhere.
-                const targetDoseWeight = meta.targetDoseWeight ?? lastTargetDoseWeight() ?? DEFAULT_DOSE_WEIGHT;
-                const yieldVal = meta.targetYield ?? parseFloat(pr.profile.target_weight);
-                const grind    = meta.grinderSetting ?? lastGrinderSetting();
+                // Same rule as handleConfirm and the favourite buttons.
+                const dial = profileSwitchDial(meta, pr.profile.target_weight);
                 // ...and the same mid-shot guard, for the same reason: this is a
                 // profile switch, so it would rewrite the frames of a running
                 // shot (profile-send-gate.js). Hold it for the end of the shot.
@@ -498,7 +477,7 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
                     // Assigning from here switches the machine to the profile, so it
                     // owes the same saved overrides as the other two ways in: the
                     // brew temp folded onto the profile, and steam pushed after.
-                    await updateWorkflow({ profile: withSavedBrewTemp(pr.profile, meta), context: { targetDoseWeight, targetYield: isNaN(yieldVal) ? 0 : yieldVal, grinderSetting: grind, ...recipeIdPatch(null) } }, 'profile.send');
+                    await updateWorkflow({ profile: withSavedBrewTemp(pr.profile, meta), context: { ...dial, ...recipeIdPatch(null) } }, 'profile.send');
                     await applySavedSteamSettings(meta);
                     setActiveProfile(key);
                     updateProfileName(pr.profile.title);

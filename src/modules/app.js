@@ -1,4 +1,4 @@
-import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShots, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket } from './api.js';
+import { connectWebSocket, getWorkflow, connectScaleWebSocket, ensureGatewayModeTracking, reconnectingWebSocket, getDevices, reconnectDevice, scanForDevices,connectShotSettingsWebSocket, getDe1AdvancedSettings, updateShotSettingsCache, getDe1Settings, MachineState, getShots, connectScaleDevice, tareScale, connectTimeToReadyWebSocket, connectShotStateWebSocket, sendDeviceCommand, saveScaleDeviceId, getScaleDeviceId, getDeviceWebSocket, initDeviceWebSocketWithCallback, connectDeviceWebSocket, connectDisplayWebSocket, restoreBrightnessFromStorage, getMachineInfo, getMachineState, setMachineState, getReaSettings, getAppInfo, getCachedRefillKitSetting, getSensors, connectSensorSnapshotWebSocket, closeSensorSnapshotWebSocket, getGrinder } from './api.js';
 import { initScaling } from './scaling.js';
 import * as chart from './chart.js';
 import * as ui from './ui.js';
@@ -11,17 +11,18 @@ import { shouldReloadForLatestShot } from './history-pager.js';
 import * as shotData from './shotData.js';
 import * as profileManager from './profileManager.js';
 import * as api from './api.js';
-import { loadPage, initRouter, isSubPage, prefetchSettingsPage } from './router.js';
+import { loadPage, initRouter, isSubPage, prefetchSettingsPage, prefetchSubpages } from './router.js';
 import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
+import { workflowGrindStep } from './grinder-sync.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
 import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { setMachineModel, isBengleMachine, setRefillKitPresent, isRefillKitPresent } from './machine.js';
 import { classifyStopReason, canonicalStopReason, STOP_TARGET_WEIGHT, STOP_TARGET_VOLUME, STOP_PROFILE_ENDED } from './stop-reason.js';
-import { resolveMilkProbePresence, MILK_PROBE_ABSENT_AFTER_MS, selectMilkProbeSensorId } from './steam-mode.js';
+import { resolveMilkProbePresence, MILK_PROBE_ABSENT_AFTER_MS, selectMilkProbeSensorId, steamDurationResyncable } from './steam-mode.js';
 import { readTimeToReadyFrame, heatingSecondsLeft } from './heating-countdown.js';
 import { workflowTileValues, tilesToPaint, profileChanged, WORKFLOW_EDIT_GUARD_MS } from './workflow-watch.js';
 import { isCupWarmerOn, readCupWarmerTarget, resolvePrewarm, getCupWarmerState, setCupWarmerState, patchCupWarmerState, invalidateCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY } from './cup-warmer.js';
@@ -140,19 +141,21 @@ function initMobileValueInputs({ openModal, shouldUseNumpad }) {
                             window.app.ui.updateTemperatureValue(tempC);
                         } else if (type === 'steam-duration') {
                             // The numpad blanks a bare "0" to '' — treat empty/NaN as 0.
-                            // 0 = steam timer off: steam runs until the user stops it.
-                            // Duration does NOT touch the heater (rest_v1.yml:
-                            // SteamSettings.duration "does not control steam-heater
-                            // preheating"); that is Settings > Calibration > Steam.
+                            // 0 switches the steam heater off: api.setTargetSteamDuration
+                            // routes it to the heater switch, which also remembers the
+                            // duration to come back to.
                             const v = (newVal === '' || isNaN(parseFloat(newVal))) ? 0 : parseFloat(newVal);
                             window.app.ui.updateSteamDisplay({ targetSteamDuration: v });
-                            window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v));
+                            window.app.ui.pushSteamSetting('duration', window.app.api.setTargetSteamDuration(v, { rearm: true }));
                             // Per-profile save, same call the tile's +/- and presets make
                             // (ui.js) — this full-screen numpad entry point is mobile/tablet
                             // only (initMobileValueInputs guards on shouldUseNumpad()) and
                             // was missing it entirely, so a value typed here never stuck
                             // across a profile switch even though +/- worked fine.
-                            window.app?.saveContextToActiveProfile?.({ targetSteamDuration: v });
+                            // Off is a machine state, not a per-profile steam time: saving
+                            // 0 here would switch the heater off every time this profile
+                            // loaded.
+                            if (v > 0) window.app?.saveContextToActiveProfile?.({ targetSteamDuration: v });
                         } else if (type === 'steam-flow') {
                             // Numpad blanks a bare "0" to ''. Unlike duration, 0 steam
                             // flow has no meaning (steam is gated on duration, not flow),
@@ -489,7 +492,18 @@ function handleDeviceWsData(data) {
 }
 
 function onScaleReconnect() {
-    logger.info('Scale WebSocket reconnected.');
+    // Decaid's {"status":"connected"} frame: the authoritative scale link signal,
+    // so a settled scale that sends no weight (Acaia at 0.0 g) still reads connected.
+    // ponytail: wiring only, no new test; scaleAutoRetryDecision stays covered in test/scale-connect.test.mjs.
+    logger.info('Scale connected (status frame).');
+    isScaleKnown = true;
+    if (!isScaleConnected) {
+        isScaleConnected = true;
+        window.onScaleConnectionChange?.(true);
+    }
+    clearScaleAutoRetry();
+    const info = document.getElementById('scale-info-container');
+    if (info) info.style.display = '';
 }
 
 function onScaleDisconnect() {
@@ -1098,9 +1112,8 @@ function handleScaleData(data) {
         }
     }
 
-    // Receiving any message means the websocket and BLE link are up.
-    // The timeout in api.js will trigger a disconnect if data stops flowing.
-
+    // Connected state comes from onScaleReconnect (status frame); a weight frame
+    // is only a belt-and-braces fallback here.
     if (currentWeight !== null && currentWeight !== undefined) {
         // We have a weight, so we are fully connected.
         if (!isScaleConnected) {
@@ -1506,6 +1519,10 @@ function resyncDriftedShotSettings(data) {
         const value = data[field];
         if (value === undefined || value === lastSeenShotSettings[field]) continue;
         lastSeenShotSettings[field] = value;
+        // The heater's off state reports a steam duration of 0, which is not a
+        // time and must not be adopted over the one to come back to (issue #191)
+        // -- the same rule resyncSteamFromStore applies while steam is off.
+        if (field === 'targetSteamDuration' && !steamDurationResyncable(value)) continue;
         if (now - (lastResyncAt[field] ?? 0) < RESYNC_COOLDOWN_MS) continue;
         // Claimed before the await, not after: at frame rate a dozen more frames
         // arrive before this resolves, and every one of them would pass the
@@ -1539,6 +1556,7 @@ async function loadInitialData() {
 
         const workflow = await getWorkflow();
         logger.debug("Workflow data received:", workflow);
+        syncWorkflowGrindStep(workflow);
 
         const profile = workflow?.profile;
         const context = workflow?.context;
@@ -1770,9 +1788,13 @@ async function loadInitialData() {
         // Outside the guard: an absent steamSettings is not a reason to drop the
         // user's remembered targets. The milk stop keeps its own armed-only
         // guard — 0/absent there means the stop is off, a real choice.
-        api.resyncIfDrifted(api.STEAM_DURATION_LAST_VALUE_KEY, steamsettings?.duration, api.setTargetSteamDuration)
-            .then(v => { if (v != null) ui.updateSteamDisplay({ targetSteamDuration: v }); })
-            .catch(e => logger.warn('Steam duration resync failed:', e));
+        // Steam off reports duration 0: adopting it would lose the remembered
+        // time and the heater would come back at 1 s (issue #191).
+        if (steamDurationResyncable(steamsettings?.duration)) {
+            api.resyncIfDrifted(api.STEAM_DURATION_LAST_VALUE_KEY, steamsettings?.duration, api.setTargetSteamDuration)
+                .then(v => { if (v != null) ui.updateSteamDisplay({ targetSteamDuration: v }); })
+                .catch(e => logger.warn('Steam duration resync failed:', e));
+        }
         api.resyncIfDrifted(api.STEAM_FLOW_LAST_VALUE_KEY, steamsettings?.flow, api.setTargetSteamFlow)
             .then(v => { if (v != null) ui.updateSteamDisplay({ targetSteamFlow: v }); })
             .catch(e => logger.warn('Steam flow resync failed:', e));
@@ -1831,6 +1853,27 @@ const WORKFLOW_REFRESH_MIN_GAP_MS = 250; // focus + visibilitychange can both fi
 const WORKFLOW_READBACK_FOLLOWUP_MS = 1500; // a plugin reacting to our write
 const tileEditPending = () => ui.msSinceTileInteraction() < WORKFLOW_EDIT_GUARD_MS || api.hasWorkflowWriteInFlight();
 let lastWorkflowTiles = null;
+
+// The workflow's grinder id last looked up; the poll calls this every tick, so only a change fetches.
+// ponytail: keyed on the id alone, so a grinder whose step is edited in Decaid while it stays
+// selected reaches the tile at the next restart. Watch the grinder itself if that matters.
+let lastWorkflowGrinderId;
+// Feed the Grind tile the small step of the grinder the workflow names. Never throws.
+async function syncWorkflowGrindStep(workflow) {
+    const id = workflow?.context?.grinderId || null;
+    if (id === lastWorkflowGrinderId) return;
+    lastWorkflowGrinderId = id;
+    if (!id) { ui.setWorkflowGrindStep(null); return; }
+    try {
+        ui.setWorkflowGrindStep(workflowGrindStep(await getGrinder(id)));
+    } catch (e) {
+        // Drop the memo so the next poll retries: Decaid can 503 while it is still
+        // warming up, which is exactly when loadInitialData asks. Holding the id here
+        // would leave the tile on the default step for the rest of the session.
+        lastWorkflowGrinderId = undefined;
+        logger.warn('Grinder lookup for the grind step failed:', e);
+    }
+}
 let lastWorkflowRefreshAt = 0;
 let workflowWatchStarted = false;
 // Set by a plugin's workflow-refresh; cleared only once a read has succeeded, so
@@ -1895,6 +1938,7 @@ async function refreshWorkflowTiles() {
         return;
     }
     if (!workflow) return;
+    syncWorkflowGrindStep(workflow);
 
     // The user touched a tile while the read was in flight. Painting (or moving
     // the baseline) would overwrite that edit with the older server value, so
@@ -2224,6 +2268,9 @@ async function initMainPageOnce() {
         window.app.saveGrindToActiveProfile = (val) => profileManager.saveGrindToActiveProfile(val);
         window.app.saveContextToActiveProfile = (fields) => profileManager.saveContextToActiveProfile(fields);
         window.app.getActiveProfileRecord = () => profileManager.getActiveProfileRecord();
+        // Last rung of the steam re-arm chain. Registered rather than imported:
+        // profileManager imports api.js, so the dependency only runs one way.
+        api.setSteamProfileFallback(() => profileManager.activeProfileSteamFallback());
         const workflow = await loadInitialData();
         await initializeDe1Connection();
         connectWebSocket(handleData, onMachineSnapshotSocketOpen);
@@ -2375,6 +2422,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             ['numpad-modal.css', 'time-picker-modal.css']
                 .forEach(file => loadStyle(`src/css/${file}`).catch(() => {}));
             initHelpLauncher();
+            // Boot, not the main-page mount: the skin can land on any route, and
+            // the toggle for this lives in Settings -- a listener that waited for
+            // the dashboard would leave the setting silent on the page that
+            // turns it on. One document-level listener that reads the setting
+            // per tap, so it costs nothing while off and needs no reload.
+            import('./touch-sound.js').then(m => m.initTouchSound())
+                .catch(error => logger.warn('Touch sound failed to start:', error));
             Promise.all([
                 import('./numpad-modal.js'),
                 import('./time-picker-modal.js')
@@ -2406,6 +2460,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Pre-warm settings cache so the settings page opens without redirecting on slow Rea responses
         prefetchSettingsToIDB(initialWorkflow);
 
+        // Compile the three big subpage modules while the tablet is idle, so the
+        // first tap on Settings / Profiles / Edit doesn't pay for it. Boot is
+        // finished by here; the call schedules itself on idle from there.
+        prefetchSubpages();
+
         logger.info('App initialization finished successfully.');
 
         // Check if user is on desktop (Windows or macOS) to determine if we should show fullscreen prompt
@@ -2414,33 +2473,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                       (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
         const isStandalone = window.navigator.standalone === true;
 
-        // Detect in-app webview: no Chrome/Safari/Firefox branding despite being on mobile,
-        // or explicit webview signals (wv flag on Android, no window.safari on iOS)
-        const ua = navigator.userAgent;
-        const isAndroidWebView = /Android/.test(ua) && /wv/.test(ua);
-        const isIOSWebView = isIOS && !isStandalone && !/Safari\//.test(ua);
-        const isDecentWebView = ua.includes('Decent');
-        // Canonical signal: the reaprime/Decent host injects window.__DECENT_HOST__
-        // into the tablet webview. It's the most reliable tablet/kiosk indicator
-        // (the UA-sniffing above misses hosts that don't brand their UA), and it's
-        // absent in a normal desktop browser — so this only ever hides the
-        // fullscreen control on-device, never for a desktop user. Ceiling: a host
-        // that neither brands its UA nor injects the global is still treated as a
-        // browser (acceptable — the button is harmless there).
-        const isDecentHost = !!window.__DECENT_HOST__;
-        const isWebView = isAndroidWebView || isIOSWebView || isDecentWebView || isDecentHost;
-
-        if (isWebView) {
-            // A root class, not an inline style on the one button that exists right
-            // now: index.html, profile_selector.html and settings.html each carry
-            // their own #fullscreen-toggle-btn, and the router injects the sub-page
-            // ones long after this runs -- so hiding by id here only ever covered
-            // the main page. CSS on <html> covers every page, present and future.
-            // The host OS owns fullscreen in a webview, so the button is never
-            // useful there. See main.css; help-overlay.css deliberately overrides
-            // this on the main page to keep the slot laid out for the help button.
-            document.documentElement.classList.add('is-webview');
-        }
+        // Webview detection lives in the inline <script> in index.html (it must run
+        // before first paint); it leaves the result as a root class.
+        const isWebView = document.documentElement.classList.contains('is-webview');
 
         // Function to determine if we're in fullscreen mode
         // This accounts for both browser fullscreen API and web view fullscreen scenarios
@@ -2622,23 +2657,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // The "Steam" label deep-links to Settings > Calibration > Steam. The
-        // settings shell restores the saved location on mount, so writing it
+        // A tile's own label deep-links to that tile's settings category -- Steam
+        // to the page carrying the steam heater toggle, Hot Water to its own.
+        // The settings shell restores the saved location on mount, so writing it
         // before loadPage is the whole mechanism.
-        const steamLabel = document.getElementById('steam-label');
-        if (steamLabel) {
-            const openSteamSettings = () => {
-                writeSettingsLocation('calibration', 'calib_steam');
+        for (const [labelId, category] of [['steam-label', 'steam'], ['hotwater-label', 'hotwater']]) {
+            const label = document.getElementById(labelId);
+            if (!label) continue;
+            const open = () => {
+                writeSettingsLocation('quickadjustments', category);
                 loadPage('src/settings/settings.html');
             };
-            steamLabel.addEventListener('pointerdown', () => {
+            label.addEventListener('pointerdown', () => {
                 prefetchSettingsPage().catch(() => {});
             }, { once: true });
-            steamLabel.addEventListener('click', openSteamSettings);
-            steamLabel.addEventListener('keydown', (e) => {
+            label.addEventListener('click', open);
+            label.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' && e.key !== ' ') return;
                 e.preventDefault();
-                openSteamSettings();
+                open();
             });
         }
     } catch (error) {

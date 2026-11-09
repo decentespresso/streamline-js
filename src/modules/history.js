@@ -14,7 +14,9 @@ import { ASSISTED_DIALIN_PLUGIN_ID, findAssistedDialInPlugin, buildAssistedDialI
 import { openBeanScaleCaptureModal } from './bean-scale-modal.js';
 import { openBeanSelectionModal } from './bean-selection-modal.js';
 import { VISUALIZER_PLUGIN_ID, visualizerAccountConfigured } from './visualizer-account.js';
-import { openPluginOverlay, isDye2Enabled } from './dyeStrip.js';
+// Gate only -- the 90K dyeStrip.js that owns openPluginOverlay is imported at
+// tap time below, so it stays off the boot graph.
+import { isDye2Enabled } from './dye2-enabled.js';
 
 const PAGE_SIZE = 20;
 let shots = [];
@@ -395,13 +397,16 @@ const SHOT_HISTORY_EDIT_TAP_SELECTOR =
 // Gated on the DYE2 master switch, so with DYE2 off the panel keeps its long-press
 // menu only. DYE2 saves/deletes and comes back through the overlay's `return` URL;
 // the close hook then repaints this panel with whatever actually landed on the bridge.
-function openShotInDye2() {
+async function openShotInDye2() {
     if (!isDye2Enabled()) return;
     const shot = shots[currentShotIndex];
     if (!shot?.id) {
         showToast(getTranslation('No shot selected'), 2400, 'warning');
         return;
     }
+    // ponytail: imported here, not at module scope -- this is dyeStrip.js's only
+    // use on the main page, and the gate above already proved DYE2 is on.
+    const { openPluginOverlay } = await import('./dyeStrip.js');
     openPluginOverlay('edit-shot', { shotId: shot.id }, (refresh, editedShotId) => {
         if (!refresh) return;
         // DYE2 hands back the shot it was showing on the way out: the arrows may have
@@ -431,7 +436,9 @@ function setupHistoryLongPress() {
         // block's own padding is not a control. A long press is swallowed by
         // setupPressAndHold.
         if (!event?.target?.closest?.(SHOT_HISTORY_EDIT_TAP_SELECTOR)) return;
-        openShotInDye2();
+        // Async now that dyeStrip.js loads on demand: catch, or a failed import
+        // surfaces as an unhandled rejection instead of a log line.
+        openShotInDye2().catch(error => logger.warn('Could not open the shot in DYE2:', error));
     }, () => {
         // Dial-in entries only appear when the plugin is installed and loaded, so
         // nobody taps one just to get a "not installed" toast. Uses the cached

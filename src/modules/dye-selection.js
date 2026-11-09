@@ -197,16 +197,28 @@ export function armedSelectionId(sel, { recipes, favs }) {
 }
 
 /**
- * The steam temperature the selected DYE2 recipe wants, or null. Used when steam
- * is re-armed from off so the recipe's temperature wins over the remembered one.
- * Below 135C the machine treats the target as off, so such values are ignored.
+ * The steam settings the selected DYE2 recipe wants, each null when the recipe
+ * does not carry it. Used when steam is re-armed from off so the recipe wins
+ * over the remembered values, per field (dye2 KV_CONTRACT: steamTempC /
+ * steamTimeS / steamFlowMls, all optional on a recipe).
+ *
+ * Below 135C the machine treats the target as off, so such temperatures are
+ * ignored rather than re-arming the heater to a value that means off.
  */
-export function selectedRecipeSteamTemp(sel, recipes) {
-    if (!sel || sel.kind !== 'recipe' || sel.id == null || !Array.isArray(recipes)) return null;
-    const recipe = recipes.find(r => r && String(r.id) === String(sel.id));
-    const t = Number(recipe?.dashboardVariables?.steamTempC);
-    return Number.isFinite(t) && t >= 135 ? Math.round(t) : null;
+export function selectedRecipeSteam(sel, recipes) {
+    const empty = { tempC: null, durationS: null, flow: null };
+    if (!sel || sel.kind !== 'recipe' || sel.id == null || !Array.isArray(recipes)) return empty;
+    const vars = recipes.find(r => r && String(r.id) === String(sel.id))?.dashboardVariables;
+    if (!vars) return empty;
+    const positive = (v) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+    const t = Number(vars.steamTempC);
+    return {
+        tempC: Number.isFinite(t) && t >= 135 ? Math.round(t) : null,
+        durationS: positive(vars.steamTimeS),
+        flow: positive(vars.steamFlowMls),
+    };
 }
+
 
 /**
  * The R strip as fixed positional slots, like the profile strip. DYE2 recipe ids are

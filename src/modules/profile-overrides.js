@@ -52,6 +52,34 @@ function pick(fields) {
     return out;
 }
 
+/**
+ * The dial-in context a profile switch sends: this profile's saved overrides,
+ * and NOTHING where it has none. The workflow deep-merges, so an omitted field
+ * leaves whatever is live alone -- whoever set it, this skin or DYE2 or another
+ * tablet.
+ *
+ * The gap used to be filled from the skin's own localStorage note of "the last
+ * number set on a Streamline tile", which no other client ever updated, and the
+ * grind was sent as an explicit null when there was nothing to fill it with. So
+ * a profile switch after a DYE2 dial-in reinstated the previous recipe's dose
+ * and wiped its grind (#189). "The last number the user set" now means anywhere,
+ * which is what it reads as.
+ *
+ * Yield is the exception and is always sent: it IS a profile field, so the
+ * profile being switched to answers for it, overridden by the user's own.
+ *
+ * @param {object} meta  the profile record's metadata, overrides already folded on
+ * @param {*} profileTargetWeight  profile.target_weight (may be a legacy TCL string)
+ */
+export function profileSwitchDial(meta, profileTargetWeight) {
+    const dial = {};
+    if (meta?.targetDoseWeight != null) dial.targetDoseWeight = meta.targetDoseWeight;
+    if (meta?.grinderSetting != null) dial.grinderSetting = meta.grinderSetting;
+    const parsedYield = parseFloat(meta?.targetYield ?? profileTargetWeight);
+    dial.targetYield = Number.isFinite(parsedYield) ? parsedYield : 0;
+    return dial;
+}
+
 /** Every saved override, by profile id. */
 export function getAllProfileOverrides() {
     return overrides;

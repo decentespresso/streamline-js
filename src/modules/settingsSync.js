@@ -56,14 +56,17 @@ export const SYNCED_KEYS = [
     'waterTankUnit',
     'waterRefillLevel',
     'keyboardBindings',
-    'lastGrinderSetting',
-    'lastTargetDoseWeight',
+    // Settings > Connections > Grinder: whether the Grind tile follows the
+    // grinder and whether it may set it (src/modules/grinder-runtime.js).
+    'grinder-follow',
+    'grinder-send',
     'streamline.steamStopMode',
     'streamline.steamStopModeFallback',
     'streamline.cupWarmerTarget',
     'streamline.dye2Enabled',
     'streamline.dyeStripMode',
     'streamline.ecoSteam',
+    'streamline.touchSound',
     'streamline.ledSequences',
     'streamline.settings.location',
     'tempUnit',
@@ -84,6 +87,50 @@ export const SYNCED_KEYS = [
 ];
 
 const synced = new Set(SYNCED_KEYS);
+
+// Key FAMILIES, for preferences whose key carries an id so they cannot be
+// listed one by one: a per-field step size and the user's edits to a plugin
+// tile's mode presets. Everything a prefix matches is mirrored exactly like a
+// listed key. Keep these narrow -- a prefix is checked on every localStorage
+// write, and anything it catches becomes durable, shared state.
+export const SYNCED_PREFIXES = [
+    'plugin-stepsize:',        // src/modules/ui.js, STEPSIZE_KEY(field)
+    'plugin-mode-presets:',    // src/modules/plugin-tile-modes.js, editsKey()
+];
+
+export function isSynced(key) {
+    return synced.has(key) || SYNCED_PREFIXES.some(prefix => key.startsWith(prefix));
+}
+
+// Keys the user changed whose push to KV did not land -- either the write gate
+// was still shut (no successful read this session) or the POST failed. Kept in
+// localStorage so the NEXT boot's hydrate can still let them win over KV,
+// instead of the change dying with the page: that is how a freshly chosen dark
+// theme used to be reverted by a stale KV value on the next skin entry.
+// Deliberately not a synced key, so the mirror ignores it.
+export const PENDING_KEY = 'streamline.settingsPending';
+
+export function readPending(storage) {
+    try {
+        const raw = JSON.parse(storage.getItem(PENDING_KEY) || '[]');
+        return new Set(Array.isArray(raw) ? raw.filter(isSynced) : []);
+    } catch { return new Set(); }
+}
+
+export function writePending(storage, keys) {
+    const list = [...keys].filter(isSynced);
+    try {
+        if (list.length) storage.setItem(PENDING_KEY, JSON.stringify(list));
+        else storage.removeItem(PENDING_KEY);
+    } catch { /* private mode */ }
+}
+
+export function addPending(storage, key) {
+    const keys = readPending(storage);
+    if (keys.has(key)) return;
+    keys.add(key);
+    writePending(storage, keys);
+}
 
 // Nothing may be written to KV until the durable copy has been READ at least
 // once. This is the invariant that makes the mirror safe, and losing it is what
@@ -108,7 +155,7 @@ const synced = new Set(SYNCED_KEYS);
 // of an already-present local value counts: on a wiped store the first write of
 // a key is a boot default (language, help launch count), and that must lose to
 // the durable copy.
-export function createWriteGate({ push: sendPush, drop: sendDrop }) {
+export function createWriteGate({ push: sendPush, drop: sendDrop, onDirty = () => {} }) {
     let open = false;
     const dirty = new Set();
     return {
@@ -120,7 +167,7 @@ export function createWriteGate({ push: sendPush, drop: sendDrop }) {
         clearDirty() { dirty.clear(); },
         push(key, value, previous = null) {
             if (open) sendPush(key, value);
-            else if (previous !== null && previous !== undefined) dirty.add(key);
+            else if (previous !== null && previous !== undefined) { dirty.add(key); onDirty(key); }
         },
         // Suppressed while closed for the same reason as push: a removeItem (or
         // a clear()) driven by wiped local storage must not delete the durable
@@ -142,19 +189,22 @@ export function installMirror(storageProto, push, drop) {
         // unchanged value never becomes a KV write.
         const str = String(value);
         const previous = this.getItem(key);
-        const changed = synced.has(key) && previous !== str;
+        const changed = isSynced(key) && previous !== str;
         setItem.call(this, key, value);
         if (changed) push(key, str, previous);
     };
     storageProto.removeItem = function (key) {
         removeItem.call(this, key);
-        if (synced.has(key)) drop(key);
+        if (isSynced(key)) drop(key);
     };
     // clear() is a reset, and a reset the user asked for should clear the
     // durable copy too — otherwise the next boot hydrates it all back.
     storageProto.clear = function () {
+        // Family keys are not enumerable from a list -- read them off the store
+        // while it still has them.
+        const present = Object.keys(this).filter(isSynced);
         clear.call(this);
-        for (const key of synced) drop(key);
+        for (const key of new Set([...synced, ...present])) drop(key);
     };
     storageProto.__streamlineMirrored = true;
     return () => { Object.assign(storageProto, { setItem, removeItem, clear }); delete storageProto.__streamlineMirrored; };
@@ -179,11 +229,20 @@ export function decideMerge(local, remote, locallyChanged = false) {
 // anything the user changed while the gate was shut: `dirty`, a Set of keys).
 // `write` is the *unwrapped* setter — hydrating must not echo straight back to
 // the server. Returns what changed, for the caller and for the test.
+export function keysToMerge(snapshot, dirty = new Set()) {
+    const keys = new Set(SYNCED_KEYS);
+    // A family key exists only where it was written, so take it from whichever
+    // side has it: KV (set on another device, or by this one before a wipe) or
+    // `dirty` (changed here, push not confirmed).
+    for (const key of [...Object.keys(snapshot), ...dirty]) if (isSynced(key)) keys.add(key);
+    return keys;
+}
+
 export async function hydrate(storage, remote, write, push, dirty = new Set()) {
     const applied = {};
     const seeded = {};
     const snapshot = remote && typeof remote === 'object' ? remote : {};
-    for (const key of SYNCED_KEYS) {
+    for (const key of keysToMerge(snapshot, dirty)) {
         const value = snapshot[key];
         const local = storage.getItem(key);
         const action = decideMerge(local, value, dirty.has(key));
@@ -294,9 +353,14 @@ async function boot() {
     const rawSetItem = proto.setItem;
     const gate = createWriteGate({
         push: (key, value) => setKVValue(SETTINGS_NAMESPACE, key, value)
-            .catch(e => logger.info(`settings push ${key} failed: ${e.message}`)),
+            .catch(e => {
+                // The change is still only local; remember it for the next boot.
+                addPending(localStorage, key);
+                logger.info(`settings push ${key} failed: ${e.message}`);
+            }),
         drop: (key) => deleteKVValue(SETTINGS_NAMESPACE, key)
             .catch(e => logger.info(`settings drop ${key} failed: ${e.message}`)),
+        onDirty: (key) => addPending(localStorage, key),
     });
     installMirror(proto, gate.push, gate.drop);
 
@@ -305,16 +369,23 @@ async function boot() {
     const apply = async (remote) => {
         // Keys the user changed while the gate was shut win over KV and are
         // pushed up by hydrate(); everything else follows KV.
-        const dirty = gate.dirtyKeys();
+        // ...including changes an EARLIER session could not push (readPending):
+        // without them a stale KV value would win and silently undo the change.
+        const dirty = new Set([...gate.dirtyKeys(), ...readPending(localStorage)]);
         const { applied } = await hydrate(
             localStorage, remote, rawSetItem,
             (key, value) => setKVValue(SETTINGS_NAMESPACE, key, value)
-                .catch(e => logger.info(`settings push ${key} failed: ${e.message}`)),
+                .catch(e => {
+                    addPending(localStorage, key);
+                    logger.info(`settings push ${key} failed: ${e.message}`);
+                }),
             dirty,
         );
         // The read succeeded, so writing back is safe from here on.
         gate.open();
         gate.clearDirty();
+        // hydrate() has pushed every seed; a push that fails re-adds its own key.
+        writePending(localStorage, []);
 
         // The theme was already applied by the inline script in index.html, before
         // this ran — re-apply it if KV disagreed.

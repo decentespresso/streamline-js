@@ -6,12 +6,11 @@ import { createScaleSampleBuffer } from './calibrated-steam.js';
 import { clampAutoSteamSettings } from './auto-steam-safety.js';
 import { AUTO_STEAM_SESSION_KEY, readAutoSteamSession } from './auto-steam-session.js';
 import { openDB, getSetting, setSetting } from './idb.js';
-import { buildCalibrateBody, classifyCalState } from './loadcell-cal.js';
 import { deriveDisplayAction, isScreensaverSuppressed } from './screensaver-policy.js';
-import { splitNdjson, advanceFirmwareState, initialFirmwareState } from './firmware-progress.js';
 import { parseSse } from './derek-stream.js';
-import { assertDeclaredFields } from './workflow-fields.js';
-import { selectedRecipeSteamTemp } from './dye-selection.js';
+import { assertDeclaredFields, workflowPatchKeys } from './workflow-fields.js';
+import { selectedRecipeSteam } from './dye-selection.js';
+import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, MIN_STEAM_DURATION_S } from './steam-mode.js';
 import {
     SAVER_BRIGHTNESS_KEY, SAVER_BRIGHTNESS_CUSTOM_KEY,
     resolveSaverBrightness, parseSaverBrightnessSetting,
@@ -22,6 +21,26 @@ export let reaHostname = localStorage.getItem('reaHostname') || window.location.
 export const REA_PORT = 8080;
 export let API_BASE_URL = `http://${reaHostname}:${REA_PORT}/api/v1`;
 export const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+
+// ponytail: in-flight dedupe, no TTL -- a caller can never be handed a value
+// older than its own call, so this is free correctness-wise. Boot has several
+// modules asking for /plugins, /devices and /workflow in the same tick (five
+// /plugins reads inside 16ms, measured); they now share one round trip.
+// Applied only to the small read-only GETs below, never to a write.
+const inFlightGets = new Map();
+function dedupedGet(key, request) {
+    let pending = inFlightGets.get(key);
+    if (!pending) {
+        pending = request().finally(() => inFlightGets.delete(key));
+        inFlightGets.set(key, pending);
+    }
+    // Each waiter gets its own copy: callers merge into these objects
+    // (workflow especially), and a shared one would couple them. JSON
+    // round-trip, not structuredClone -- these are JSON wire payloads, so it
+    // is lossless here, and structuredClone is Chromium 98 (see
+    // test/webview-compat.test.mjs; the tablets run older WebViews).
+    return pending.then(value => (value && typeof value === 'object' ? JSON.parse(JSON.stringify(value)) : value));
+}
 
 export const MachineState = {
     BOOTING: 'booting',
@@ -158,11 +177,13 @@ export function updateShotSettingsCache(newSettings) {
 }
 
 export async function getDevices() {
-    const response = await fetch(`${API_BASE_URL}/devices`);
-    if (!response.ok) {
-        throw new Error('Failed to get devices');
-    }
-    return response.json();
+    return dedupedGet('devices', async () => {
+        const response = await fetch(`${API_BASE_URL}/devices`);
+        if (!response.ok) {
+            throw new Error('Failed to get devices');
+        }
+        return response.json();
+    });
 }
 
 export async function getScaleInfo() {
@@ -193,13 +214,15 @@ export async function getGrinderDevices() {
 
 /** GET /grinder/info -> { deviceId, capabilities, observations?, controls?, surfaces? }, or null. */
 export async function getGrinderInfo() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/grinder/info`);
-        return response.ok ? await response.json() : null;
-    } catch (error) {
-        logger.debug('Grinder info unavailable:', error);
-        return null;
-    }
+    return dedupedGet('grinder/info', async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/grinder/info`);
+            return response.ok ? await response.json() : null;
+        } catch (error) {
+            logger.debug('Grinder info unavailable:', error);
+            return null;
+        }
+    });
 }
 
 /** PUT /devices/disconnect. Throws when Decaid refuses. */
@@ -242,17 +265,19 @@ export function connectGrinderSnapshot(onSnapshot, onOpen = null) {
 // reaprime's SensorInfo.toJson(). Returns [] (not a throw) on any failure so
 // callers can poll this without special-casing errors.
 export async function getSensors() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/sensors`);
-        if (!response.ok) {
-            logger.warn(`Failed to get sensors (status ${response.status})`);
+    return dedupedGet('sensors', async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/sensors`);
+            if (!response.ok) {
+                logger.warn(`Failed to get sensors (status ${response.status})`);
+                return [];
+            }
+            return await response.json();
+        } catch (error) {
+            logger.warn('Error fetching sensors:', error);
             return [];
         }
-        return await response.json();
-    } catch (error) {
-        logger.warn('Error fetching sensors:', error);
-        return [];
-    }
+    });
 }
 
 // How long we are willing to hold a caller on a scan before answering from the
@@ -387,6 +412,9 @@ export async function getScaleCalibrationState() {
 }
 
 async function pollScaleCalibration(command) {
+    // ponytail: loaded on demand. Load-cell calibration is a Bengle-only
+    // Settings flow, so its helpers have no business on the boot graph.
+    const { classifyCalState } = await import('./loadcell-cal.js');
     const deadline = Date.now() + CAL_POLL_TIMEOUT_MS;
     for (;;) {
         await new Promise((resolve) => setTimeout(resolve, CAL_POLL_INTERVAL_MS));
@@ -430,6 +458,7 @@ export async function calibrateScale(command, grams) {
         logger.info(`Scale calibration: ${command}${grams != null ? ` @ ${grams}g` : ''}`);
         if (command === 'abort') calAbortRequested = true;
         else calAbortRequested = false;
+        const { buildCalibrateBody } = await import('./loadcell-cal.js');
         const response = await fetch(`${API_BASE_URL}/machine/scaleCalibration`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -502,6 +531,35 @@ export async function setSensorCalibration(target, de1ReportedValue, measuredVal
     if (!response.ok) {
         const errorBody = await response.json().catch(() => null);
         throw new Error(errorBody?.error || `Calibration write failed. Status: ${response.status}`);
+    }
+}
+
+// The DE1's flow-estimation calibration (MMR calFlowEst), at
+// /machine/calibration — NOT the per-sensor /machine/calibration/{target}
+// above. Unlike those, this one is an ABSOLUTE set: POSTing 1.0 twice lands
+// on 1.0 twice. Decaid accepts 0.13–2.0 and answers 202 once the write is
+// queued, so callers re-read rather than assume.
+
+/** @returns {Promise<{flowMultiplier: number}>} */
+export async function getMachineCalibration() {
+    const response = await fetch(`${API_BASE_URL}/machine/calibration`);
+    if (!response.ok) {
+        throw new Error(`Failed to read flow calibration. Status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+/** @param {number} flowMultiplier absolute value, 0.13–2.0 */
+export async function setMachineCalibration(flowMultiplier) {
+    logger.info(`Flow estimation calibration: set ${flowMultiplier}`);
+    const response = await fetch(`${API_BASE_URL}/machine/calibration`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flowMultiplier }),
+    });
+    if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.error || `Flow calibration write failed. Status: ${response.status}`);
     }
 }
 
@@ -639,9 +697,8 @@ export function connectScaleWebSocket(onData, onReconnect, onDisconnect) {
     scaleWebSocket.onopen = () => {
         calibratedSteamSamples.clear();
         logger.info('Scale WebSocket (re)connected.');
-        if (onReconnect) {
-            onReconnect();
-        }
+        // Socket-open is not scale-connected: onReconnect fires only from the
+        // server's {"status":"connected"} frame below (replayed on open).
     };
 
     scaleWebSocket.onmessage = (event) => {
@@ -1302,6 +1359,14 @@ export async function getKVKeys(namespace) {
     return response.json(); // array of key strings
 }
 
+// Decaid stores a key exactly as the request path spelled it, so a key we had
+// to escape on the way in ('plugin-stepsize:dose' -> 'plugin-stepsize%3Adose')
+// is listed escaped. Undo that, or the caller never matches it to the name it
+// wrote (settingsSync.hydrate would silently skip the key).
+export function decodeKVKey(key) {
+    try { return decodeURIComponent(key); } catch { return key; }
+}
+
 // Whole namespace in one request. `?full=1` is newer than the plain key list —
 // an older Decaid ignores it and answers with the key array, so fall back to
 // fetching each key rather than failing the caller.
@@ -1309,9 +1374,13 @@ export async function getKVAll(namespace) {
     const response = await fetch(`${API_BASE_URL}/store/${encodeURIComponent(namespace)}?full=1`);
     if (!response.ok) throw new Error(`KV getAll failed: ${response.status}`);
     const body = await response.json();
-    if (!Array.isArray(body)) return body || {};
     const out = {};
-    for (const key of body) out[key] = await getKVValue(namespace, key);
+    if (!Array.isArray(body)) {
+        for (const [key, value] of Object.entries(body || {})) out[decodeKVKey(key)] = value;
+        return out;
+    }
+    // getKVValue escapes what it is given, so ask for the decoded name.
+    for (const key of body.map(decodeKVKey)) out[key] = await getKVValue(namespace, key);
     return out;
 }
 
@@ -1587,13 +1656,13 @@ export async function updateWorkflow(data, writer) {
     assertDeclaredFields(writer, data);
     workflowWritesInFlight += 1;
     try {
-        return await putWorkflow(data);
+        return await putWorkflow(data, writer);
     } finally {
         workflowWritesInFlight -= 1;
     }
 }
 
-async function putWorkflow(data) {
+async function putWorkflow(data, writer = 'unknown') {
     // Deep copy to avoid side effects on the original object.
     const dataToSend = JSON.parse(JSON.stringify(data));
 
@@ -1634,6 +1703,18 @@ async function putWorkflow(data) {
             }
         }
     }
+
+    if (dataToSend.profile) {
+        const steps = Array.isArray(dataToSend.profile.steps) ? dataToSend.profile.steps.length : 'n/a';
+        logger.audit(`profile to machine: "${dataToSend.profile.title}" (${steps} steps)`);
+    }
+
+    // Which writer touched which fields, on every write. The workflow deep-merges
+    // and has no revision, so a lost edit is only ever visible as the ORDER of
+    // these lines (#189) -- and a report arrives as a log, not as a repro. Field
+    // paths only, never values: the context carries coffee, barista and drinker
+    // names.
+    logger.audit(`workflow PUT by ${writer}: ${workflowPatchKeys(dataToSend).sort().join(' ') || '(nothing)'}`);
 
     const response = await fetch(`${API_BASE_URL}/workflow`, {
         method: 'PUT',
@@ -1744,6 +1825,16 @@ export const BRIGHTNESS_LAST_VALUE_KEY = 'last-brightness';
 // per-installation (not per-device) settings in one KV bucket.
 const SETTINGS_NAMESPACE = 'streamline-app';
 
+// ponytail: 2s read cache, write-through on persist. resyncDriftedShotSettings
+// re-runs the drift check on every shotSettings frame that moves a field, and
+// its 30s cooldown is RELEASED whenever a check found nothing to push -- so a
+// steam/hot-water tile being adjusted turned into one /store GET per field per
+// frame. A hit this fresh cannot be stale in a way that matters: the only other
+// writer is another device, and the very next frame re-checks it anyway.
+// Ceiling: a cross-device write is seen up to 2s late. Set to 0 to disable.
+const SHARED_VALUE_TTL_MS = 2000;
+const sharedValueCache = new Map(); // key -> { value, at }
+
 export async function persistLastValue(key, value) {
     try {
         await openDB();
@@ -1760,7 +1851,13 @@ export async function persistSharedValue(key, value) {
     persistLastValue(key, value);
     try {
         await setValueInStore(SETTINGS_NAMESPACE, key, value);
+        // Write-through, not invalidate: the value we just stored IS the
+        // freshest truth, so the next read must not pay a round trip for it.
+        sharedValueCache.set(key, { value, at: Date.now() });
     } catch (e) {
+        // A failed write leaves the store holding something we don't know --
+        // drop the entry rather than serve a value that never landed.
+        sharedValueCache.delete(key);
         logger.warn(`Failed to persist ${key} to KV store:`, e);
     }
 }
@@ -1770,8 +1867,16 @@ export async function persistSharedValue(key, value) {
 // has a record (or both failed) -- callers treat that as "the user never set
 // this", not as a value.
 export async function readSharedValue(key) {
+    const cached = sharedValueCache.get(key);
+    // null is a real answer here ("never set"), so presence is the test, not truthiness.
+    if (cached && Date.now() - cached.at < SHARED_VALUE_TTL_MS) return cached.value;
     try {
-        return await getValueFromStore(SETTINGS_NAMESPACE, key);
+        // dedupedGet as well as the TTL: the cache only fills once a response
+        // lands, so two reads of the same key issued in the same tick (boot
+        // runs several resync passes at once) would both miss it.
+        const value = await dedupedGet(`store:${key}`, () => getValueFromStore(SETTINGS_NAMESPACE, key));
+        sharedValueCache.set(key, { value, at: Date.now() });
+        return value;
     } catch (e) {
         logger.warn(`readSharedValue: KV lookup failed for ${key}, falling back to local cache:`, e);
         try {
@@ -1882,39 +1987,52 @@ export async function setTargetSteamTemp(temp) {
 
 // The steam-heater switch behind setSteamHeaterEnabled.
 //
-// The heater is switched off only by targetTemperature 0 (same rule the DE1
-// firmware path has always had: de1app binary.tcl zeroes the target below
-// 135C). Steam duration is a separate setting -- rest_v1.yml,
-// SteamSettings.duration: "This does not control steam-heater preheating" --
-// and 0 there means "no timer", so setTargetSteamDuration never calls this.
-// Off (argument 0) remembers the current temperature; on (anything else)
-// returns to it.
+// The heater is switched off by targetTemperature 0 (same rule the DE1 firmware
+// path has always had: de1app binary.tcl zeroes the target below 135C), and the
+// skin zeroes the duration with it so no surface can show a bare "0" that reads
+// as a very short steam time. This deliberately overrides rest_v1.yml, where
+// SteamSettings.duration 0 means "no timer": the skin no longer offers
+// unlimited steam, so 0 has only one meaning left.
 //
-// The temperature to come back to is read from the workflow at the moment we
-// switch off -- one GET, only on that transition. With no remembered value the
-// enable path sends no temperature at all rather than inventing one.
-async function steamHeaterFor(duration) {
-    if (duration === 0) {
-        const current = (await getWorkflow().catch(() => null))?.steamSettings?.targetTemperature;
-        if (current > 0) await persistSharedValue(STEAM_TEMP_LAST_VALUE_KEY, current);
-        return { targetTemperature: 0 };
+// The values to come back to are read at the moment we switch off -- one GET,
+// only on that transition -- with the shared last-* keys as the fallback and a
+// selected DYE2 recipe winning over both, per field.
+// Where the re-arm's last rung comes from: the loaded profile's own saved steam
+// values. Injected rather than imported, because profileManager imports this
+// module and owns which profile is active. app.js wires it at boot; unset, the
+// chain simply falls through to steamOnPatch's defaults.
+let steamProfileFallback = null;
+export function setSteamProfileFallback(provider) { steamProfileFallback = provider; }
+
+async function steamHeaterFor(on) {
+    const current = (await getWorkflow().catch(() => null))?.steamSettings ?? {};
+    if (!on) {
+        if (current.targetTemperature > 0) await persistSharedValue(STEAM_TEMP_LAST_VALUE_KEY, current.targetTemperature);
+        if (current.duration > 0) await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, current.duration);
+        return steamOffPatch();
     }
     // Re-arm only from off. A temperature already above 0 was set by the user or
     // another app since we last remembered one, and is not ours to put back (#143).
-    const current = (await getWorkflow().catch(() => null))?.steamSettings?.targetTemperature;
-    if (current > 0) return {};
-    // A selected DYE2 recipe that carries a steam temperature wins over the
-    // remembered one (same DYE2 gate as recipeHoldsDial in profileManager.js).
+    if (!isSteamOff(current.targetTemperature)) return {};
+    // A selected DYE2 recipe's own steam settings win over the remembered ones
+    // (same DYE2 gate as recipeHoldsDial in profileManager.js).
+    let recipe = {};
     if (localStorage.getItem('streamline.dye2Enabled') === 'true') {
         const [sel, recipes] = await Promise.all([
             getKVValue(DYE2_KV_NAMESPACE, 'selection').catch(() => null),
             getDye2KvArray('recipes').catch(() => null),
         ]);
-        const recipeTemp = selectedRecipeSteamTemp(sel, recipes);
-        if (recipeTemp != null) return { targetTemperature: recipeTemp };
+        recipe = selectedRecipeSteam(sel, recipes);
     }
-    const remembered = await readSharedValue(STEAM_TEMP_LAST_VALUE_KEY);
-    return remembered > 0 ? { targetTemperature: Math.round(remembered) } : {};
+    const [temp, duration, flow] = await Promise.all([
+        readSharedValue(STEAM_TEMP_LAST_VALUE_KEY),
+        readSharedValue(STEAM_DURATION_LAST_VALUE_KEY),
+        readSharedValue(STEAM_FLOW_LAST_VALUE_KEY),
+    ]);
+    let profile = {};
+    try { profile = (await steamProfileFallback?.()) ?? {}; }
+    catch (e) { logger.warn('Profile steam fallback failed:', e); }
+    return steamOnPatch({ recipe, remembered: { temp, duration, flow }, profile, currentFlow: current.flow });
 }
 
 // KV first, machine second, like the hot-water setters above. PUT /workflow can
@@ -1924,10 +2042,33 @@ async function steamHeaterFor(duration) {
 // and the tile's number would be the only trace of their intent left anywhere.
 // Writing it first makes the store the record of intent, which is what
 // resyncSteamFromStore replays when a push doesn't land.
-export async function setTargetSteamDuration(duration) {
+export async function setTargetSteamDuration(duration, { rearm = false } = {}) {
     if (isAutoSteamActive()) throw new Error('Use a pitcher preset in Auto mode, or switch to Flow or Time.');
     const value = parseFloat(duration);
-    return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () => updateWorkflow({ steamSettings: { duration: value } }, 'api.steamDuration'));
+    // The duration and the target temperature are the two halves of the off
+    // state, and they are never written apart -- see steamDurationWrite. Pass
+    // rearm for a duration the USER set: it brings the temperature back with it
+    // instead of leaving the tile counting seconds for a heater that is off.
+    const current = (await getWorkflow().catch(() => null))?.steamSettings?.targetTemperature;
+    switch (steamDurationWrite(current, value, { rearm })) {
+        // 0 is the heater off, and it must not be remembered: the last-* keys
+        // hold what we switch back ON to.
+        case 'off': return setSteamHeaterEnabled(false);
+        // A background replay into a heater the user switched off. Writing the
+        // KV key here too would leave it disagreeing with the workflow for good,
+        // and the drift check replaying this on every cooldown.
+        case 'skip': return null;
+        case 'rearm': {
+            // Tagged as the heater writer, not the duration one: this write
+            // carries the temperature back too, and api.steamDuration owns only
+            // steamSettings.duration (workflow-fields.js).
+            const patch = await steamHeaterFor(true);
+            return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () =>
+                updateWorkflow({ steamSettings: { ...patch, duration: value } }, 'api.steamHeater'));
+        }
+        default:
+            return pushRemembered(STEAM_DURATION_LAST_VALUE_KEY, value, async () => updateWorkflow({ steamSettings: { duration: value } }, 'api.steamDuration'));
+    }
 }
 
 export function isAutoSteamActive() {
@@ -1939,11 +2080,11 @@ export async function writeAutoSteamSettings(steam) {
 }
 
 // Steam-heater switch for procedures that must not run against a hot steam
-// boiler (descaling) and for the Settings > Calibration > Steam toggle:
-// switching off stores the current target, switching back on returns to it.
-// The duration is deliberately untouched, so the user's steam time survives.
+// boiler (descaling), for the steam pages' toggle and for the main-page tile's
+// duration stepping through 0: switching off stores the current temperature and
+// duration, switching back on returns to them.
 export async function setSteamHeaterEnabled(enabled) {
-    return updateWorkflow({ steamSettings: await steamHeaterFor(enabled ? 1 : 0) }, 'api.steamHeater');
+    return updateWorkflow({ steamSettings: await steamHeaterFor(!!enabled) }, 'api.steamHeater');
 }
 
 export async function setTargetSteamFlow(flow) {
@@ -1958,6 +2099,9 @@ export async function setTargetSteamFlow(flow) {
 export async function resyncSteamFromStore() {
     const steam = (await getWorkflow())?.steamSettings;
     if (!steam) return;
+    // Steam switched off: the remembered duration and flow would both read as
+    // drift from the off state's zeros and push the heater straight back on.
+    if (isSteamOff(steam.targetTemperature)) return resyncMilkStopIfDrifted(steam.stopAtTemperature);
     await resyncIfDrifted(STEAM_DURATION_LAST_VALUE_KEY, steam.duration, setTargetSteamDuration);
     await resyncIfDrifted(STEAM_FLOW_LAST_VALUE_KEY, steam.flow, setTargetSteamFlow);
     await resyncMilkStopIfDrifted(steam.stopAtTemperature);
@@ -2023,11 +2167,13 @@ export async function getReaSettings() {
 }
 
 export async function getMachineInfo() {
-    const response = await fetch(`${API_BASE_URL}/machine/info`);
-    if (!response.ok) {
-        throw new Error(`Failed to get machine info: ${response.statusText}`);
-    }
-    return response.json();
+    return dedupedGet('machine/info', async () => {
+        const response = await fetch(`${API_BASE_URL}/machine/info`);
+        if (!response.ok) {
+            throw new Error(`Failed to get machine info: ${response.statusText}`);
+        }
+        return response.json();
+    });
 }
 
 // Current machine state as a MachineSnapshot (same shape as the snapshot WS).
@@ -2661,6 +2807,9 @@ export async function getFirmwareCatalog() {
 // verification never confirmed, so it is NOT a success.
 async function consumeFirmwareStream(response, onProgress) {
     if (!response.body?.getReader) throw new Error('Firmware response did not provide a progress stream');
+    // ponytail: loaded on demand -- a firmware flash is a once-a-month
+    // Settings action, not something boot should carry.
+    const { splitNdjson, advanceFirmwareState, initialFirmwareState } = await import('./firmware-progress.js');
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -2738,16 +2887,18 @@ export async function cancelFirmwareUpdate() {
 }
 
 export async function getPlugins() {
-    try {
-        const response = await fetch(`${API_BASE_URL}/plugins`);
-        if (!response.ok) {
-            throw new Error(`Failed to get plugins: ${response.statusText}`);
+    return dedupedGet('plugins', async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/plugins`);
+            if (!response.ok) {
+                throw new Error(`Failed to get plugins: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            logger.error("Error in getPlugins:", error);
+            return null;
         }
-        return await response.json();
-    } catch (error) {
-        logger.error("Error in getPlugins:", error);
-        return null;
-    }
+    });
 }
 
 // `strict` reports failures instead of flattening them into {}. The lenient

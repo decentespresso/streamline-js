@@ -76,12 +76,16 @@ export function initHelpLauncher() {
     button.textContent = '?';
     if (helpHidden()) button.style.display = 'none';
     document.body.appendChild(button);
-    loadStyle('src/css/help-overlay.css').catch(() => {});
+    const styleLoaded = loadStyle('src/css/help-overlay.css');
+    styleLoaded.catch(() => {});
 
     if (isInWebView() && !helpHidden()) {
         document.documentElement.classList.add('help-webview');
         const sync = () => requestAnimationFrame(syncHelpButton);
-        sync();
+        // The anchor slot is only laid out once help-overlay.css applies; measuring
+        // earlier left the button in its round fallback until some unrelated
+        // trigger (e.g. DYE2 touching the main page) re-synced it (#184).
+        styleLoaded.then(sync).catch(() => {});
         window.addEventListener('resize', sync);
         document.addEventListener('streamline:scaleupdate', sync);
         const observer = new MutationObserver(sync);

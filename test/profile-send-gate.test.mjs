@@ -5,6 +5,7 @@ import {
     PROFILE_SEND_BLOCKING_STATES, profileSendBlocked, shouldFlushPendingSend,
     setPendingProfileSend, peekPendingProfileSend, takePendingProfileSend, clearPendingProfileSend,
 } from '../src/modules/profile-send-gate.js';
+import { profileSwitchDial } from '../src/modules/profile-overrides.js';
 
 const record = (over = {}) => ({
     id: 'A', profile: { title: 'Londinium', target_weight: '36' }, metadata: {}, ...over,
@@ -71,17 +72,17 @@ const sendSource = sendMatch[0]
     .replace('export async function', 'async function')
     .replace("await import('./api.js')", 'deps');
 
-function canonicalSend({ state = 'idle', lastGrind = null, lastDose = null, fail = false } = {}) {
+function canonicalSend({ state = 'idle', fail = false } = {}) {
     const sent = [], bound = [], warned = [];
     const deps = { currentMachineState: state };
     const fn = new Function('deps', 'profileSendBlocked', 'setPendingProfileSend', 'clearPendingProfileSend',
-        'withSavedBrewTemp', 'updateWorkflow', 'setActiveProfile', 'lastGrinderSetting',
-        'lastTargetDoseWeight', 'DEFAULT_DOSE_WEIGHT', 'logger', 'recipeIdPatch',
+        'withSavedBrewTemp', 'updateWorkflow', 'setActiveProfile', 'profileSwitchDial',
+        'logger', 'recipeIdPatch',
         `${sendSource}\nreturn sendProfileRecordToMachine;`)(
         deps, profileSendBlocked, setPendingProfileSend, clearPendingProfileSend,
         (p, meta) => (Number.isFinite(meta?.brewTemperature) ? { ...p, _temp: meta.brewTemperature } : p),
         async w => { if (fail) throw new Error('offline'); sent.push(w); },
-        id => bound.push(id), () => lastGrind, () => lastDose, 18,
+        id => bound.push(id), profileSwitchDial,
         { warn: (...a) => warned.push(a) },
         () => ({ extras: { dye: { v: 1, recipeId: null } } }));
     return { fn, sent, bound, warned };
@@ -117,17 +118,19 @@ test('the send folds the saved dose, yield, grind and brew temp', async () => {
     // yield has to reach the profile copy too or the shot runs past it.
     assert.equal(full.sent[0].profile.target_weight, 42);
 
-    const bare = canonicalSend({ lastGrind: 5, lastDose: 19 });
+    // No saved dose or grind: neither is sent at all, so the deep merge leaves
+    // whatever is live in place -- a dial-in another client set included (#189).
+    const bare = canonicalSend();
     await bare.fn(record());
     assert.deepEqual(bare.sent[0].context, {
-        targetDoseWeight: 19, targetYield: 36, grinderSetting: 5,
+        targetYield: 36,
         extras: { dye: { v: 1, recipeId: null } },
     });
 
     const none = canonicalSend();
     await none.fn(record({ profile: { title: 'x', target_weight: 'n/a' } }));
     assert.deepEqual(none.sent[0].context, {
-        targetDoseWeight: 18, targetYield: 0, grinderSetting: null,
+        targetYield: 0,
         extras: { dye: { v: 1, recipeId: null } },
     }, 'an unparsable target weight must send 0, never NaN');
     assert.equal(none.sent[0].profile.target_weight, 'n/a', 'and must not be written back onto the profile');

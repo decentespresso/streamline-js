@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { profileSwitchDial } from '../src/modules/profile-overrides.js';
 
 function loadHarness(dependencies) {
     const source = readFileSync(new URL('../src/modules/profile_selector.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -13,7 +14,7 @@ function loadHarness(dependencies) {
             availableProfiles, logger, alert, showToast, sessionStorage,
             assignProfile, getTranslation, updateWorkflow, setActiveProfile,
             applyWorkflowToMainPageUI, loadPage, withSavedBrewTemp,
-            lastGrinderSetting, lastTargetDoseWeight, applySavedSteamSettings,
+            profileSwitchDial, applySavedSteamSettings,
             // Defaulted so the existing cases stay as they were: an idle machine
             // that never blocks. The brewing case overrides them.
             profileSendBlocked = () => false, setPendingProfileSend = () => {},
@@ -23,7 +24,6 @@ function loadHarness(dependencies) {
         } = dependencies;
         let selectedProfileKey = null;
         const FAV_COUNT = 5;
-        const DEFAULT_DOSE_WEIGHT = 18; // profileManager's, not an injected dependency
         ${source.slice(start, end)}
         return {
             handleConfirm,
@@ -56,8 +56,7 @@ test('profile confirmation pins its selection and rejects overlap', async () => 
         // brew-temp-override.test.mjs; here it just has to be callable.
         withSavedBrewTemp: (profile) => profile,
         applySavedSteamSettings: async () => {},
-        lastGrinderSetting: () => null,
-        lastTargetDoseWeight: () => null,
+        profileSwitchDial,
         assignProfile: async () => 'unchanged',
         getTranslation: value => value,
         updateWorkflow(workflow) {
@@ -108,8 +107,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
         sessionStorage: { getItem: () => null, removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
         applySavedSteamSettings: async () => {},
-        lastGrinderSetting: () => null,
-        lastTargetDoseWeight: () => null,
+        profileSwitchDial,
         assignProfile: async () => 'unchanged',
         getTranslation: value => value,
         updateWorkflow: async (w) => w,
@@ -131,8 +129,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
         sessionStorage: { getItem: () => '2', removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
         applySavedSteamSettings: async () => {},
-        lastGrinderSetting: () => null,
-        lastTargetDoseWeight: () => null,
+        profileSwitchDial,
         assignProfile: async () => 'unchanged',
         getTranslation: value => value,
         updateWorkflow: async (w) => w,
@@ -151,8 +148,7 @@ test('confirm button label reflects a pending favorite assignment', () => {
         sessionStorage: { getItem: () => '9', removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
         applySavedSteamSettings: async () => {},
-        lastGrinderSetting: () => null,
-        lastTargetDoseWeight: () => null,
+        profileSwitchDial,
         assignProfile: async () => 'unchanged',
         getTranslation: value => value,
         updateWorkflow: async (w) => w,
@@ -165,10 +161,10 @@ test('confirm button label reflects a pending favorite assignment', () => {
 });
 
 // Decaid's profile schema has no dose (profile.dart toJson), so dose and grind
-// both come down to the user's saved override for this profile, then the last
-// number they set anywhere, then the stock basket. Yield IS a profile field, so
-// it comes from the recipe and is never carried across a switch.
-test('dose and grind fall back to the last ones set, yield to the recipe', async () => {
+// come down to the user's saved override for this profile -- and to nothing at
+// all where there is none, which leaves the live dial-in standing (#189). Yield
+// IS a profile field, so it comes from the recipe and is never carried across.
+test('dose and grind come from the override or are left alone, yield from the recipe', async () => {
     const sent = [];
     const steamApplied = [];
     const base = (meta, profile = { title: 'A', target_weight: '36' }) => ({
@@ -180,8 +176,7 @@ test('dose and grind fall back to the last ones set, yield to the recipe', async
         sessionStorage: { getItem: () => null, removeItem() {} },
         withSavedBrewTemp: (profile) => profile,
         applySavedSteamSettings: async (meta) => { steamApplied.push(meta); },
-        lastGrinderSetting: () => '3.5',
-        lastTargetDoseWeight: () => 20,
+        profileSwitchDial,
         assignProfile: async () => 'unchanged',
         getTranslation: value => value,
         updateWorkflow: async (w) => { sent.push(w.context); return w; },
@@ -191,8 +186,8 @@ test('dose and grind fall back to the last ones set, yield to the recipe', async
     const blank = loadHarness(base({}));
     blank.select('a');
     await blank.handleConfirm();
-    assert.equal(sent[0].grinderSetting, '3.5', 'grind carries over rather than clearing');
-    assert.equal(sent[0].targetDoseWeight, 20, 'with no override, the last dose set is used');
+    assert.ok(!('grinderSetting' in sent[0]), 'with no override the grind is not written at all');
+    assert.ok(!('targetDoseWeight' in sent[0]), 'nor the dose, so the live one survives the switch');
     assert.equal(sent[0].targetYield, 36, 'yield still comes from the profile');
 
     const saved = loadHarness(base({ grinderSetting: '1.2', targetDoseWeight: 15 }));

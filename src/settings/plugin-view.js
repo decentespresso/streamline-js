@@ -173,6 +173,29 @@ export function pluginStatusLabel(status) {
     }
 }
 
+export const AUTO_FLOW_CAL_PLUGIN_ID = 'auto-flow-cal.reaplugin';
+
+// A stored boolean wins, then the manifest's own default, then the fallback.
+// GET /plugins/:id/settings answers {} (HTTP 200) for a plugin that is not
+// loaded, so "nothing stored" has to resolve through the manifest defaults.
+function resolvePluginBoolean(plugin, settings, key, fallback) {
+    if (typeof settings?.[key] === 'boolean') return settings[key];
+    const manifestDefault = plugin?.settings?.[key]?.default;
+    return typeof manifestDefault === 'boolean' ? manifestDefault : fallback;
+}
+
+// True when the Auto Flow Calibration plugin is actively adjusting the flow
+// multiplier: loaded, Enabled, and not in DryRun. `loaded` is what keeps an
+// installed-but-off plugin (whose empty settings default to Enabled) from
+// counting as managing.
+export function isFlowCalPluginManaging(plugins, settings) {
+    const plugin = findPlugin(plugins, AUTO_FLOW_CAL_PLUGIN_ID);
+    if (!plugin || plugin.loaded !== true) return false;
+    const enabled = resolvePluginBoolean(plugin, settings, 'Enabled', true);
+    const dryRun = resolvePluginBoolean(plugin, settings, 'DryRun', false);
+    return enabled && !dryRun;
+}
+
 // Category id for a single plugin's own settings page. The Extensions nav grows
 // one subcategory per installed plugin instead of stacking every plugin onto one
 // endless page, so each needs a routable category of its own -- derived from the

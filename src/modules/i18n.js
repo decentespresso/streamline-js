@@ -2,6 +2,7 @@ import { logger } from './logger.js';
 import { openDB, getSetting, setSetting } from './idb.js';
 import { SUPPORTED_LANGUAGES, parseTranslationColumn } from './i18n-parser.js';
 import { APP_VERSION } from '../version.js';
+import { largestFittingSize } from './text-fit.js';
 
 let translations = {};
 let keyIndex = {};
@@ -175,11 +176,19 @@ export function fitTextToBox(el, min = 14) {
     // Not laid out yet (hidden / zero-height): leave the CSS size; the observer
     // above re-fits as soon as it has a real box.
     if (!el.clientHeight) return;
-    let size = parseFloat(getComputedStyle(el).fontSize);
-    while (size > min && el.scrollHeight > el.clientHeight) {
-        size -= 1;
-        el.style.fontSize = size + 'px';
-    }
+    const start = parseFloat(getComputedStyle(el).fontSize);
+    // Binary search instead of a 1px walk: each probe costs a forced synchronous
+    // reflow (write font-size, read scrollHeight), so this is ~4 per element
+    // rather than up to ~14 -- and profileManager fits five cells at once.
+    // Floors at `min` exactly; the old walk could step below it from a
+    // fractional start size.
+    const size = largestFittingSize(min, start, candidate => {
+        el.style.fontSize = candidate + 'px';
+        return el.scrollHeight <= el.clientHeight;
+    });
+    // null = it fits at the CSS size; leave the inline size cleared.
+    if (size === null) el.style.fontSize = '';
+    else el.style.fontSize = size + 'px';
 }
 
 export function fitTextToWidth(el) {

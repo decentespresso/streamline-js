@@ -82,6 +82,43 @@ export function prefetchSettingsPage() {
     ]);
 }
 
+// The three subpage entry modules, none of which prefetchSettingsPage reaches:
+// settings.js is behind categories/legacy-category.js, and the profile pages are
+// imported by the router only once a tap has already happened. Unminified they
+// are 653K / 194K / 93K, so a cold tap pays the whole fetch+parse+compile.
+//
+// ponytail: modulepreload rather than import() -- the link downloads, parses and
+// compiles the module graph WITHOUT evaluating any of it, so warming these
+// cannot run a line of their top-level code early. A real import() here would.
+const WARM_MODULES = [
+    'src/settings/settings.js',
+    'src/modules/profile_editor.js',
+    'src/modules/profile_selector.js',
+];
+
+let warmed = false;
+export function prefetchSubpages() {
+    if (warmed) return;
+    warmed = true;
+    // requestIdleCallback is absent on iOS/older Safari WebViews (dual target),
+    // so fall back to a plain timer well clear of boot.
+    const idle = window.requestIdleCallback
+        ? (fn) => window.requestIdleCallback(fn, { timeout: 5000 })
+        : (fn) => setTimeout(fn, 3000);
+    idle(() => {
+        for (const href of WARM_MODULES) {
+            const link = document.createElement('link');
+            link.rel = 'modulepreload';
+            link.href = href;
+            document.head.append(link);
+        }
+        // Page HTML is a plain fetch into the router's own cache -- no execution.
+        fetchPage('src/settings/settings.html').catch(() => {});
+        fetchPage('src/profiles/profile_selector.html').catch(() => {});
+        fetchPage('src/profiles/profile_editor.html').catch(() => {});
+    });
+}
+
 function isIndexUrl(pageUrl) {
     if (!pageUrl) return true;
     const lc = pageUrl.toLowerCase();
