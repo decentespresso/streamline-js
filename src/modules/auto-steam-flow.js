@@ -36,6 +36,10 @@ export function autoSteamSelectionSettings(status) {
     return null;
 }
 
+export function autoSteamPitcherDisabled(machineState, session = {}) {
+    return machineState !== 'idle' || session.busy === true || session.configurationReady !== true;
+}
+
 export function steamAdjustmentControls(mode, session = {}, machineState) {
     if (mode !== 'auto') return { visible: true, minusDisabled: session.busy === true, plusDisabled: session.busy === true };
     const visible = session.adjustableSelection === true;

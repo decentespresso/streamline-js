@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { autoSteamDurationLabel, autoSteamPitcherLabel, autoSteamSelectionSettings, compactAutoSteamTargetLabel,
+import { autoSteamDurationLabel, autoSteamPitcherDisabled, autoSteamPitcherLabel, autoSteamSelectionSettings, compactAutoSteamTargetLabel,
     shouldKeepAutoSteamMode, steamAdjustmentControls } from '../src/modules/auto-steam-flow.js';
 
 const saved = () => ({
@@ -29,6 +29,31 @@ test('saved calibration choices are validated as opaque selectable capabilities'
         { choices: [{ ...saved().choices[0], targetLabel: '' }] },
     ]) {
         assert.equal(autoSteamSelectionSettings({ flowCalibration: { ...saved(), ...patch } }), null);
+    }
+});
+
+test('pitcher selection is disabled during espresso and enabled again at idle', () => {
+    const session = Object.freeze({ busy: false, configurationReady: true, pitcher: 'medium' });
+    assert.equal(autoSteamPitcherDisabled('idle', session), false);
+    assert.equal(autoSteamPitcherDisabled('espresso', session), true);
+    assert.equal(autoSteamPitcherDisabled('idle', session), false);
+    assert.equal(session.pitcher, 'medium');
+});
+
+test('pitcher selection is disabled in every non-idle machine state', () => {
+    const session = { busy: false, configurationReady: true };
+    for (const state of ['steam', 'steamRinse', 'flush', 'hotWater', 'sleeping', 'unknown', null, undefined]) {
+        assert.equal(autoSteamPitcherDisabled(state, session), true, String(state));
+    }
+});
+
+test('pitcher selection at idle requires a ready configuration and no busy operation', () => {
+    assert.equal(autoSteamPitcherDisabled('idle'), true);
+    for (const busy of [false, true]) {
+        for (const configurationReady of [undefined, false, true]) {
+            assert.equal(autoSteamPitcherDisabled('idle', { busy, configurationReady }),
+                busy || configurationReady !== true, `busy=${busy}, configurationReady=${configurationReady}`);
+        }
     }
 });
 
