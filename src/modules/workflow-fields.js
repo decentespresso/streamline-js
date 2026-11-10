@@ -132,7 +132,7 @@ export const WORKFLOW_WRITERS = {
     'dye.applyFavourite': [
         'profile',
         'context.targetDoseWeight', 'context.targetYield', 'context.grinderSetting',
-        'context.extras.rpm', 'context.extras.dye',
+        'context.extras.rpm', 'context.extras.feedRate', 'context.extras.dye',
         'context.coffeeName', 'context.coffeeRoaster', 'context.beanBatchId',
         'context.baristaName', 'context.drinkerName', 'context.basket',
         'context.grinderId', 'context.grinderModel',
@@ -142,7 +142,10 @@ export const WORKFLOW_WRITERS = {
     'dye.applyRecipe': [
         'profile',
         'context.targetDoseWeight', 'context.targetYield', 'context.grinderSetting',
-        'context.extras.rpm', 'context.extras.dye',
+        // feedRate is written by DYE2's recipe bodies (dev-api buildRecipeWorkflow) and by its
+        // own grinder tiles. Undeclared, assertDeclaredFields threw before the PUT, so any
+        // recipe carrying a feed rate applied nothing at all.
+        'context.extras.rpm', 'context.extras.feedRate', 'context.extras.dye',
         'context.coffeeName', 'context.coffeeRoaster', 'context.beanBatchId',
         'context.baristaName', 'context.drinkerName', 'context.basket',
         'context.grinderId', 'context.grinderModel',
@@ -159,6 +162,46 @@ export const WORKFLOW_WRITERS = {
         'context.extras.rpm', 'context.extras.dye',
     ],
 };
+
+// --- what a recipe apply must not inherit (#189) ---------------------------
+//
+// PUT /workflow deep-merges and the apply paths send only the fields the stored
+// item defines, so an absent key means "leave unchanged", not "this item has
+// none". Tap a recipe that records a grinder, then one that does not, and the
+// second shot is filed under the first one's grinder, basket and barista.
+//
+// A recipe apply clears these with an explicit null, which is the rule this
+// file's own contract states: clearing is a null, never an omission.
+//
+// The numbers are deliberately absent from the list. Grind, dose, yield, rpm
+// and feed rate carry over, because "ground on the Niche" is a claim about this
+// shot and inheriting it is false, while a grind of 7.5 is just where the dial
+// sits and stays true until someone moves it. An older recipe that holds a
+// grind but no grinder therefore sets the number and drops the attribution.
+//
+// Recipes only, and not beans:
+//   - a favourite carries a copyMask, so the user has already said which fields
+//     it owns and an unticked one is a deliberate "do not touch". A favourite
+//     stays a pure overlay.
+//   - DYE2 has nulled the bean trio on every recipe body since dye2#27.
+export const RECIPE_CLEARED_IDENTITY = ['grinderId', 'grinderModel', 'baristaName', 'drinkerName'];
+export const RECIPE_CLEARED_IDENTITY_EXTRAS = ['basketId', 'basketName'];
+
+/**
+ * `context` with every identity field the recipe did not set present and null.
+ *
+ * Pure, and returns a new object. DYE2 writes these nulls itself for recipes
+ * saved since #189; this covers the rows it saved before that and the skin's own
+ * legacy apply path, which never had the fields at all.
+ */
+export function clearInheritedIdentity(context) {
+    const ctx = { ...(context || {}) };
+    for (const field of RECIPE_CLEARED_IDENTITY) ctx[field] = ctx[field] || null;
+    const extras = { ...(ctx.extras || {}) };
+    for (const field of RECIPE_CLEARED_IDENTITY_EXTRAS) extras[field] = extras[field] || null;
+    ctx.extras = extras;
+    return ctx;
+}
 
 /**
  * Throw if `writer` sent a field it never declared.

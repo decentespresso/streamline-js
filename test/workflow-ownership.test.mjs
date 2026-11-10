@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import {
     WORKFLOW_WRITERS, workflowPatchKeys, fieldIsDeclared,
-    undeclaredFields, assertDeclaredFields,
+    undeclaredFields, assertDeclaredFields, clearInheritedIdentity,
+    RECIPE_CLEARED_IDENTITY, RECIPE_CLEARED_IDENTITY_EXTRAS,
 } from '../src/modules/workflow-fields.js';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
@@ -88,8 +89,8 @@ const SNAPSHOT = {
     'api.steamStopAt': 'steamSettings.stopAtTemperature',
     'api.steamTemp': 'steamSettings.targetTemperature',
     'beans.select': 'context.beanBatchId context.coffeeName context.coffeeRoaster',
-    'dye.applyFavourite': 'context.baristaName context.basket context.beanBatchId context.coffeeName context.coffeeRoaster context.drinkerName context.extras.basketId context.extras.basketName context.extras.dye context.extras.note context.extras.rpm context.grinderId context.grinderModel context.grinderSetting context.roastDate context.targetDoseWeight context.targetYield profile',
-    'dye.applyRecipe': 'context.baristaName context.basket context.beanBatchId context.coffeeName context.coffeeRoaster context.drinkerName context.extras.basketId context.extras.basketName context.extras.dye context.extras.rpm context.grinderId context.grinderModel context.grinderSetting context.targetDoseWeight context.targetYield hotWaterData.duration hotWaterData.flow hotWaterData.targetTemperature hotWaterData.volume profile rinseData steamSettings.duration steamSettings.flow steamSettings.stopAtTemperature steamSettings.targetTemperature',
+    'dye.applyFavourite': 'context.baristaName context.basket context.beanBatchId context.coffeeName context.coffeeRoaster context.drinkerName context.extras.basketId context.extras.basketName context.extras.dye context.extras.feedRate context.extras.note context.extras.rpm context.grinderId context.grinderModel context.grinderSetting context.roastDate context.targetDoseWeight context.targetYield profile',
+    'dye.applyRecipe': 'context.baristaName context.basket context.beanBatchId context.coffeeName context.coffeeRoaster context.drinkerName context.extras.basketId context.extras.basketName context.extras.dye context.extras.feedRate context.extras.rpm context.grinderId context.grinderModel context.grinderSetting context.targetDoseWeight context.targetYield hotWaterData.duration hotWaterData.flow hotWaterData.targetTemperature hotWaterData.volume profile rinseData steamSettings.duration steamSettings.flow steamSettings.stopAtTemperature steamSettings.targetTemperature',
     'dye.clearOnDisable': 'context.baristaName context.basket context.beanBatchId context.coffeeName context.coffeeRoaster context.drinkerName context.extras.dye context.extras.rpm',
     'profile.resetDefaults': 'context.extras.dye context.grinderSetting context.targetDoseWeight context.targetYield profile',
     'profile.send': 'context.extras.dye context.grinderSetting context.targetDoseWeight context.targetYield profile',
@@ -273,4 +274,68 @@ test('every apply path and every profile switch settles the recipe claim', () =>
                 `a profile write in ${file} does not release the recipe: ${payload.slice(0, 60)}`);
         }
     }
+});
+
+// --- a recipe apply does not inherit the last item's identities (#189) -----
+//
+// The complaint: tap a recipe that records a grinder, then one that does not,
+// and the second shot is filed under the first one's grinder, basket and
+// barista. The deep merge reads an omitted key as "leave unchanged".
+
+test('a recipe apply clears the identities it does not name, as explicit nulls', () => {
+    const ctx = clearInheritedIdentity({ targetDoseWeight: 18, grinderSetting: '7.5' });
+    for (const field of RECIPE_CLEARED_IDENTITY) {
+        assert.ok(field in ctx, `${field} must be sent -- an absent key deep-merges away`);
+        assert.equal(ctx[field], null);
+    }
+    for (const field of RECIPE_CLEARED_IDENTITY_EXTRAS) {
+        assert.ok(field in ctx.extras, `extras.${field} must be sent as an explicit null`);
+        assert.equal(ctx.extras[field], null);
+    }
+    // The numbers are not identities: the dial stays where it is.
+    assert.equal(ctx.targetDoseWeight, 18);
+    assert.equal(ctx.grinderSetting, '7.5');
+});
+
+test('a recipe apply keeps the identities it does name', () => {
+    const ctx = clearInheritedIdentity({
+        grinderId: 'g-1', grinderModel: 'Niche', baristaName: 'Vid',
+        extras: { basketId: 'bk-1', basketName: 'VST 18', rpm: 1400 },
+    });
+    assert.equal(ctx.grinderId, 'g-1');
+    assert.equal(ctx.grinderModel, 'Niche');
+    assert.equal(ctx.baristaName, 'Vid');
+    assert.equal(ctx.extras.basketId, 'bk-1');
+    assert.equal(ctx.extras.basketName, 'VST 18');
+    assert.equal(ctx.extras.rpm, 1400, 'an unrelated extra is untouched');
+    assert.equal(ctx.drinkerName, null, 'and the one it does not name is still cleared');
+});
+
+test('clearInheritedIdentity is pure and survives an empty patch', () => {
+    const source = { grinderId: 'g-1' };
+    const out = clearInheritedIdentity(source);
+    assert.notEqual(out, source);
+    assert.deepEqual(source, { grinderId: 'g-1' }, 'the input context is not mutated');
+    // applyRecipe hands it patch.context, which is undefined when the item wrote
+    // nothing: the clears are then the whole patch, which is the point.
+    assert.equal(clearInheritedIdentity(undefined).grinderModel, null);
+    assert.equal(clearInheritedIdentity(undefined).extras.basketName, null);
+    // '' is an absence, as it is for DYE2's own builder (dev-api buildRecipeWorkflow).
+    assert.equal(clearInheritedIdentity({ baristaName: '' }).baristaName, null);
+});
+
+test('every field the recipe clear writes is declared by dye.applyRecipe', () => {
+    // Otherwise assertDeclaredFields throws before the PUT and the apply does nothing.
+    assertDeclaredFields('dye.applyRecipe', { context: clearInheritedIdentity({}) });
+});
+
+test('the recipe clear is wired into applyRecipe and not into applyFavourite', () => {
+    // A favourite carries a copyMask: the user ticked which fields it owns, so an
+    // unticked one is a deliberate "do not touch" and it stays a pure overlay.
+    const source = readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8');
+    const body = fn => source.slice(source.indexOf(`export async function ${fn}(`));
+    const recipe = body('applyRecipe').slice(0, body('applyRecipe').indexOf('\n}\n'));
+    const favourite = body('applyFavourite').slice(0, body('applyFavourite').indexOf('\n}\n'));
+    assert.match(recipe, /clearInheritedIdentity\(patch\.context\)/);
+    assert.ok(!/clearInheritedIdentity/.test(favourite), 'a favourite is an overlay, not a reset');
 });
