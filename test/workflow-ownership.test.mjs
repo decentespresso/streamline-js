@@ -12,8 +12,9 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import {
     WORKFLOW_WRITERS, workflowPatchKeys, fieldIsDeclared,
-    undeclaredFields, assertDeclaredFields, clearInheritedIdentity,
+    undeclaredFields, assertDeclaredFields, clearInheritedFields,
     RECIPE_CLEARED_IDENTITY, RECIPE_CLEARED_IDENTITY_EXTRAS,
+    RECIPE_CLEARED_NUMBERS, RECIPE_CLEARED_NUMBER_EXTRAS, RECIPE_CLEARED_TO_ZERO,
 } from '../src/modules/workflow-fields.js';
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));
@@ -283,7 +284,7 @@ test('every apply path and every profile switch settles the recipe claim', () =>
 // barista. The deep merge reads an omitted key as "leave unchanged".
 
 test('a recipe apply clears the identities it does not name, as explicit nulls', () => {
-    const ctx = clearInheritedIdentity({ targetDoseWeight: 18, grinderSetting: '7.5' });
+    const ctx = clearInheritedFields({ targetDoseWeight: 18, grinderSetting: '7.5' });
     for (const field of RECIPE_CLEARED_IDENTITY) {
         assert.ok(field in ctx, `${field} must be sent -- an absent key deep-merges away`);
         assert.equal(ctx[field], null);
@@ -292,13 +293,43 @@ test('a recipe apply clears the identities it does not name, as explicit nulls',
         assert.ok(field in ctx.extras, `extras.${field} must be sent as an explicit null`);
         assert.equal(ctx.extras[field], null);
     }
-    // The numbers are not identities: the dial stays where it is.
+    // The numbers it does name are its own and stay.
     assert.equal(ctx.targetDoseWeight, 18);
     assert.equal(ctx.grinderSetting, '7.5');
 });
 
+test('a recipe apply clears the numbers it does not name too', () => {
+    // A recipe is the whole shot, not an overlay on the last one: an unnamed number
+    // is "this recipe has none", and the previous recipe's value must not stand in.
+    const ctx = clearInheritedFields({ grinderSetting: '7.5' });
+    for (const field of RECIPE_CLEARED_NUMBERS.filter(f => f !== 'grinderSetting')) {
+        assert.ok(field in ctx, `${field} must be sent -- an absent key deep-merges away`);
+        assert.equal(ctx[field], null);
+    }
+    for (const field of RECIPE_CLEARED_NUMBER_EXTRAS) {
+        assert.ok(field in ctx.extras, `extras.${field} must be sent as an explicit null`);
+        assert.equal(ctx.extras[field], null);
+    }
+    assert.equal(ctx.grinderSetting, '7.5', 'the one it does name is kept');
+    // 0 is an absence, exactly as '' is: a recipe recording a dose of 0 records none.
+    assert.equal(clearInheritedFields({ targetDoseWeight: 0 }).targetDoseWeight, null);
+    assert.equal(clearInheritedFields({ extras: { rpm: 0 } }).extras.rpm, null);
+});
+
+test('targetYield is cleared to 0, never to null -- Decaid rejects the null', () => {
+    // workflow_handler.dart passes targetYield to rejectExplicitNulls, which throws a
+    // FormatException -> 400 for the WHOLE PUT. 0 is Decaid's own documented clear
+    // for the field (stop-at-weight off), so a recipe naming no yield writes that.
+    assert.deepEqual(RECIPE_CLEARED_TO_ZERO, ['targetYield']);
+    assert.equal(clearInheritedFields({}).targetYield, 0);
+    assert.equal(clearInheritedFields({ targetYield: 0 }).targetYield, 0);
+    assert.equal(clearInheritedFields({ targetYield: 40 }).targetYield, 40, 'a named yield stays');
+    assert.ok(!RECIPE_CLEARED_NUMBERS.includes('targetYield'),
+        'targetYield must not also be in the null list');
+});
+
 test('a recipe apply keeps the identities it does name', () => {
-    const ctx = clearInheritedIdentity({
+    const ctx = clearInheritedFields({
         grinderId: 'g-1', grinderModel: 'Niche', baristaName: 'Vid',
         extras: { basketId: 'bk-1', basketName: 'VST 18', rpm: 1400 },
     });
@@ -307,26 +338,27 @@ test('a recipe apply keeps the identities it does name', () => {
     assert.equal(ctx.baristaName, 'Vid');
     assert.equal(ctx.extras.basketId, 'bk-1');
     assert.equal(ctx.extras.basketName, 'VST 18');
-    assert.equal(ctx.extras.rpm, 1400, 'an unrelated extra is untouched');
+    assert.equal(ctx.extras.rpm, 1400);
     assert.equal(ctx.drinkerName, null, 'and the one it does not name is still cleared');
 });
 
-test('clearInheritedIdentity is pure and survives an empty patch', () => {
+test('clearInheritedFields is pure and survives an empty patch', () => {
     const source = { grinderId: 'g-1' };
-    const out = clearInheritedIdentity(source);
+    const out = clearInheritedFields(source);
     assert.notEqual(out, source);
     assert.deepEqual(source, { grinderId: 'g-1' }, 'the input context is not mutated');
     // applyRecipe hands it patch.context, which is undefined when the item wrote
     // nothing: the clears are then the whole patch, which is the point.
-    assert.equal(clearInheritedIdentity(undefined).grinderModel, null);
-    assert.equal(clearInheritedIdentity(undefined).extras.basketName, null);
+    assert.equal(clearInheritedFields(undefined).grinderModel, null);
+    assert.equal(clearInheritedFields(undefined).extras.basketName, null);
+    assert.equal(clearInheritedFields(undefined).targetDoseWeight, null);
     // '' is an absence, as it is for DYE2's own builder (dev-api buildRecipeWorkflow).
-    assert.equal(clearInheritedIdentity({ baristaName: '' }).baristaName, null);
+    assert.equal(clearInheritedFields({ baristaName: '' }).baristaName, null);
 });
 
 test('every field the recipe clear writes is declared by dye.applyRecipe', () => {
     // Otherwise assertDeclaredFields throws before the PUT and the apply does nothing.
-    assertDeclaredFields('dye.applyRecipe', { context: clearInheritedIdentity({}) });
+    assertDeclaredFields('dye.applyRecipe', { context: clearInheritedFields({}) });
 });
 
 test('the recipe clear is wired into applyRecipe and not into applyFavourite', () => {
@@ -336,6 +368,6 @@ test('the recipe clear is wired into applyRecipe and not into applyFavourite', (
     const body = fn => source.slice(source.indexOf(`export async function ${fn}(`));
     const recipe = body('applyRecipe').slice(0, body('applyRecipe').indexOf('\n}\n'));
     const favourite = body('applyFavourite').slice(0, body('applyFavourite').indexOf('\n}\n'));
-    assert.match(recipe, /clearInheritedIdentity\(patch\.context\)/);
-    assert.ok(!/clearInheritedIdentity/.test(favourite), 'a favourite is an overlay, not a reset');
+    assert.match(recipe, /clearInheritedFields\(patch\.context\)/);
+    assert.ok(!/clearInheritedFields/.test(favourite), 'a favourite is an overlay, not a reset');
 });

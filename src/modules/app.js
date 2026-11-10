@@ -15,7 +15,7 @@ import { loadPage, initRouter, isSubPage, prefetchSettingsPage, prefetchSubpages
 import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
-import { workflowGrindStep } from './grinder-sync.js';
+import { workflowGrindStep, workflowGrindRange } from './grinder-sync.js';
 import { isDye2Enabled } from './dye2-enabled.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
 import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
@@ -1709,15 +1709,23 @@ async function loadInitialData() {
         } else if (grinderData?.setting) {
             ui.updateGrindDisplay(grinderData);
         } else {
+            // A dash, not a 0: a recipe naming no grind clears the field (#189), and 0
+            // reads as a real dial position. Nothing is set, so say nothing is set.
             const grindEl = document.getElementById('grind-value');
-            if (grindEl) grindEl.textContent = '0';
+            if (grindEl) grindEl.textContent = '—';
         }
         logger.debug("Dose data received:", context || doseData);
         
         const doseInValue = context?.targetDoseWeight ?? doseData?.doseIn;
         const doseOutValue = context?.targetYield ?? doseData?.doseOut;
         
-        if (doseInValue !== undefined) ui.updateDoseInDisplay(doseInValue);
+        if (doseInValue != null) ui.updateDoseInDisplay(doseInValue);
+        else {
+            // Same as the grind tile above: the recipe named no dose and the machine has
+            // none either, so the tile shows nothing rather than the last recipe's number.
+            const doseInEl = document.getElementById('dose-in-value');
+            if (doseInEl) doseInEl.textContent = '—';
+        }
         if (doseOutValue !== undefined) ui.updateDrinkOut(doseOutValue);
         ui.updateDrinkRatio();
 
@@ -1864,9 +1872,11 @@ async function syncWorkflowGrindStep(workflow) {
     const id = workflow?.context?.grinderId || null;
     if (id === lastWorkflowGrinderId) return;
     lastWorkflowGrinderId = id;
-    if (!id) { ui.setWorkflowGrindStep(null); return; }
+    if (!id) { ui.setWorkflowGrindStep(null); ui.setWorkflowGrindRange(null); return; }
     try {
-        ui.setWorkflowGrindStep(workflowGrindStep(await getGrinder(id)));
+        const grinder = await getGrinder(id);
+        ui.setWorkflowGrindStep(workflowGrindStep(grinder));
+        ui.setWorkflowGrindRange(workflowGrindRange(grinder));
     } catch (e) {
         // Drop the memo so the next poll retries: Decaid can 503 while it is still
         // warming up, which is exactly when loadInitialData asks. Holding the id here

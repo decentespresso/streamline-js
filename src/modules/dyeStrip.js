@@ -19,7 +19,7 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles } from './api.js';
+import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles, getGrinders } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox, getTranslation } from './i18n.js';
@@ -28,8 +28,8 @@ import { openContextMenu } from './context-menu.js';
 import { setupPressAndHold, setSteamTileModeIfSafe, setHotWaterTileMode, showToast } from './ui.js';
 import { settingsReady, SETTINGS_RESTORED_EVENT } from './settingsSync.js';
 import { DYE2_ENABLED_KEY, isDye2Enabled } from './dye2-enabled.js';
-import { clearInheritedIdentity } from './workflow-fields.js';
-import { recipeIdPatch, SELECTION_KEY, RETURN_PARAM, profileFingerprint, profileDrifted, profilePatchWithSteps, serializeSelection, resolveReturn, parseDyeReturn, changedFields, pluginRecordsDialIn, pluginHasEndpoint, keepPreviousOnFailure, resolveRecordsDialIn, armedSelectionId, selectionModified, recipeCellState, recipeStripCells, favStripCells } from './dye-selection.js';
+import { clearInheritedFields } from './workflow-fields.js';
+import { recipeIdPatch, dropDeletedGrinder, SELECTION_KEY, RETURN_PARAM, stableSkinReturnUrl, profileFingerprint, profileDrifted, profilePatchWithSteps, serializeSelection, resolveReturn, parseDyeReturn, changedFields, pluginRecordsDialIn, pluginHasEndpoint, keepPreviousOnFailure, resolveRecordsDialIn, armedSelectionId, selectionModified, recipeCellState, recipeStripCells, favStripCells } from './dye-selection.js';
 
 const AF_KEY = 'autoFavourites';
 const RECIPES_KEY = 'recipes';
@@ -474,18 +474,38 @@ export async function applyFavourite(fav) {
     await refreshAfterApply();
 }
 
+// The grinder catalogue for the apply path. Archived rows included -- an archived grinder
+// still exists and a recipe naming one still means it. Returns null rather than throwing when
+// the catalogue is unreachable: dropDeletedGrinder reads null as "could not check" and keeps
+// what the recipe says, so a failed GET never looks like a deletion.
+async function grinderCatalogue() {
+    try {
+        return await getGrinders(true);
+    } catch (e) {
+        logger.warn('dyeStrip: grinder catalogue unreachable, keeping the recipe grinder', e);
+        return null;
+    }
+}
+
 export async function applyRecipe(recipe) {
     if (!recipe) return;
     const live = (await getWorkflow()) || {};
     const patch = recipe.workflow
         ? await applyStoredWorkflow(recipe.workflow)
         : await applyRecipeLegacy(recipe); // dashboardVariables + top-level fields
-    // The grinder, basket, barista and drinker a recipe does not name are cleared, not
-    // inherited from whatever was applied before it (#189). DYE2 writes these nulls into
-    // the bodies it saves now; this is what makes a body saved by an older DYE2 — and the
-    // legacy path above, which never had the fields at all — behave the same way.
-    // applyFavourite deliberately does not do this: see clearInheritedIdentity.
-    patch.context = clearInheritedIdentity(patch.context);
+    // Everything a recipe does not name is cleared, not inherited from whatever was
+    // applied before it (#189): the grinder, basket, barista and drinker, and the numbers
+    // — grind, dose, yield, rpm, feed rate — on the same rule. DYE2 writes these clears
+    // into the bodies it saves now; this is what makes a body saved by an older DYE2 — and
+    // the legacy path above, which never had the fields at all — behave the same way.
+    // applyFavourite deliberately does not do this: see clearInheritedFields.
+    patch.context = clearInheritedFields(patch.context);
+    // And a grinder that has since been deleted is no better than an inherited one: the
+    // stored body is written once and never rewritten, so it still names it. Only when the
+    // recipe actually names one, so an apply costs no extra GET otherwise.
+    if (patch.context?.grinderId) {
+        patch.context = dropDeletedGrinder(patch.context, await grinderCatalogue());
+    }
     // Steam / hot-water / flush are NOT in the stored workflow — add them here.
     const dv = recipe.dashboardVariables || {};
     Object.assign(patch, await mergeRecipeLiveSettings(dv));
@@ -743,17 +763,21 @@ async function refreshAfterApply(modeHints) {
     }
 }
 
-// ─── DYE2 page navigation (iframe overlay, same-origin) ────────────────────────
+// ─── DYE2 page navigation ─────────────────────────────────────────────────────
 //
-// In production reaprime serves the skin and the plugin from the same origin, so
-// the DYE2 page can load in a same-origin <iframe> overlay and the parent can read
-// iframe.contentWindow.location on `load` to detect the plugin returning. The DYE2
-// pages honour a `?return=` param; we point it at a sentinel skin URL and close +
-// refresh when the iframe navigates there.
+// Where the skin and the plugin share an origin, a DYE2 page loads in an <iframe>
+// overlay and the parent reads iframe.contentWindow.location on `load` to notice the
+// plugin returning. The DYE2 pages honour a `?return=` param; we point it at a sentinel
+// skin URL and close + refresh when the iframe navigates there.
 //
-// In dev the skin (:8000) and bridge (:8080) are cross-origin: X-Frame-Options
-// SAMEORIGIN blocks the iframe and reading contentWindow.location throws, so we
-// fall back to a full-page navigation with ?return set to this page.
+// They do not share one on any Decaid build measured so far: the skin is served by
+// webui_service on its own port (:3000 redirects to an ephemeral one) while the plugin is
+// on the API port, and the API stamps X-Frame-Options: SAMEORIGIN on plugin pages, so the
+// iframe is refused and reading contentWindow.location throws. Every DYE open therefore
+// takes the fallback below -- a real top-level navigation, which means the return reloads
+// the skin from nothing. Removing that reload needs Decaid to serve the plugin through
+// the skin's origin, or to stop sending that header; the overlay path above is ready for
+// the day it does.
 
 // The sentinel is a near-empty stub page, not index.html: DYE2 leaves by assigning
 // window.location, so the iframe navigates to whatever we hand it. Pointing it at the
@@ -763,6 +787,16 @@ async function refreshAfterApply(modeHints) {
 function sentinelReturnUrl() {
     const dir = window.location.pathname.replace(/[^/]*$/, '');
     return `${window.location.origin}${dir}dye-return.html?dyeReturn=1`;
+}
+
+// Did this page come from Decaid's skin server? That server injects its own script into
+// every HTML response it serves (webui_service.dart: skinApiScriptPath
+// '/__decent/skin-api.js', buildSkinApiJavaScript), and the script defines window.decentApp.
+// Nothing else on the page does, so it is the marker -- feature detection rather than a
+// port or user-agent guess, and a dev server or static host correctly reads as false.
+function isDecaidServedSkin() {
+    if (window.decentApp && typeof window.decentApp === 'object') return true;
+    return !!document.querySelector('script[src*="/__decent/skin-api.js"]');
 }
 
 function isSameOrigin(url) {
@@ -789,7 +823,7 @@ export function openPluginOverlay(page, params, onClose) {
     };
     const ret = sentinelReturnUrl();
 
-    // Cross-origin (dev): iframe would be blocked → full-page navigation instead.
+    // Cross-origin: the iframe would be refused → full-page navigation instead.
     if (!isSameOrigin(pluginUrl)) {
         // The reload on return would drop the selection and auto-save target. A DYE2
         // that records for itself already holds the selection in its own storage,
@@ -799,7 +833,9 @@ export function openPluginOverlay(page, params, onClose) {
             if (parked) sessionStorage.setItem(SELECTION_KEY, parked);
             else sessionStorage.removeItem(SELECTION_KEY);
         } catch (e) { /* private mode: selection simply does not survive */ }
-        window.location.href = `${pluginUrl}?${query(window.location.href)}`;
+        // Not location.href: on Decaid that pins the way home to an ephemeral port which
+        // may be gone by the time DYE2 sends the user back. See stableSkinReturnUrl.
+        window.location.href = `${pluginUrl}?${query(stableSkinReturnUrl(window.location.href, { decaidServed: isDecaidServedSkin() }))}`;
         return;
     }
 

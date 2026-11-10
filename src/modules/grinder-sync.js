@@ -73,3 +73,25 @@ export function workflowGrindStep(grinder) {
 export function grindDecimals(step) {
     return Math.min(2, Math.max(1, decimals(step)));
 }
+
+/**
+ * The Grind tile's -/+ bounds the workflow's grinder declares, as `{ min, max }`.
+ *
+ * DYE2 stores them in the grinder's `extras` (its grinders page writes them there) because
+ * the Decaid record has no top-level slot -- `extras` is the documented place for custom
+ * data, and the same blob already carries `feedRate` and `bcUuid`. Either bound may be null,
+ * meaning this grinder declares none, which is what every grinder did before the range
+ * existed. Preset grinders have named positions, so a numeric range over them means nothing.
+ */
+export function workflowGrindRange(grinder) {
+    const type = grinder?.settingType ?? 'numeric';
+    const extras = grinder?.extras;
+    const bound = v => (Number.isFinite(v) ? v : null);
+    if (type !== 'numeric' || !extras) return { min: null, max: null };
+    const min = bound(extras.settingMin);
+    const max = bound(extras.settingMax);
+    // A reversed range would make the tile unusable; DYE2 refuses to save one, and a row that
+    // slipped through another client is ignored here rather than trusted.
+    if (min != null && max != null && min > max) return { min: null, max: null };
+    return { min, max };
+}

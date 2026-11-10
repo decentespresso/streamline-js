@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deviceSetting, parseDeviceNumber, followDecision, canSendGrind, grinderSettingString, sendDecision, workflowGrindStep, grindDecimals } from '../src/modules/grinder-sync.js';
+import { deviceSetting, parseDeviceNumber, followDecision, canSendGrind, grinderSettingString, sendDecision, workflowGrindStep, workflowGrindRange, grindDecimals } from '../src/modules/grinder-sync.js';
 
 const numeric = { kind: 'numeric', min: 0, max: 40, step: 0.5 };
 const info = { capabilities: ['grindSetting'], controls: { grindSetting: numeric } };
@@ -85,4 +85,36 @@ test('grindDecimals: the step\'s own places, one to two', () => {
     assert.equal(grindDecimals(0.1), 1);
     assert.equal(grindDecimals(0.25), 2);
     assert.equal(grindDecimals(0.125), 2);
+});
+
+// --- the -/+ bounds the workflow's grinder declares (DYE2 writes them to extras) ---------
+
+test('a numeric grinder declaring a range hands the tile both bounds', () => {
+    assert.deepEqual(workflowGrindRange({ settingType: 'numeric', extras: { settingMin: 0, settingMax: 50 } }),
+        { min: 0, max: 50 });
+    assert.deepEqual(workflowGrindRange({ extras: { settingMin: 0, settingMax: 50 } }),
+        { min: 0, max: 50 }, 'settingType defaults to numeric, as it does for the step');
+    assert.deepEqual(workflowGrindRange({ extras: { settingMax: 50 } }),
+        { min: null, max: 50 }, 'one bound alone is a bound: the other stays the tile default');
+});
+
+test('no declared range leaves the tile on its own bounds', () => {
+    for (const g of [null, undefined, {}, { extras: {} }, { extras: { settingMin: null } }]) {
+        assert.deepEqual(workflowGrindRange(g), { min: null, max: null });
+    }
+    assert.deepEqual(workflowGrindRange({ extras: { settingMin: '0', settingMax: '50' } }),
+        { min: null, max: null }, 'a string is not a declared bound');
+});
+
+test('a preset grinder declares no numeric range', () => {
+    // Its positions are named (settingValues), so a min and max over them mean nothing.
+    assert.deepEqual(workflowGrindRange({ settingType: 'preset', extras: { settingMin: 1, settingMax: 9 } }),
+        { min: null, max: null });
+});
+
+test('a reversed range is ignored rather than trusted', () => {
+    // DYE2's grinders page refuses to save one; a row written by another client must not be
+    // able to make the tile unusable by pinning its floor above its ceiling.
+    assert.deepEqual(workflowGrindRange({ extras: { settingMin: 50, settingMax: 0 } }),
+        { min: null, max: null });
 });

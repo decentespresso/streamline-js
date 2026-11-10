@@ -173,11 +173,17 @@ export const WORKFLOW_WRITERS = {
 // A recipe apply clears these with an explicit null, which is the rule this
 // file's own contract states: clearing is a null, never an omission.
 //
-// The numbers are deliberately absent from the list. Grind, dose, yield, rpm
-// and feed rate carry over, because "ground on the Niche" is a claim about this
-// shot and inheriting it is false, while a grind of 7.5 is just where the dial
-// sits and stays true until someone moves it. An older recipe that holds a
-// grind but no grinder therefore sets the number and drops the attribution.
+// The numbers are cleared too, on the same rule: a recipe that names no grind,
+// dose, yield, rpm or feed rate -- or names it as 0 -- clears the live one rather
+// than inheriting the previously applied recipe's. A recipe is the whole shot,
+// not an overlay on the last one, so an unnamed number is "this recipe has none",
+// and leaving the earlier value standing read as if it belonged to this recipe.
+//
+// targetYield is the one exception to the null, and Decaid forces it: its
+// workflow handler passes targetYield to rejectExplicitNulls (workflow_handler
+// .dart), so {"context":{"targetYield":null}} answers 400 and takes the whole
+// apply down with it. Decaid's own documented clear for that field is 0 --
+// stop-at-weight off -- so that is what a recipe naming no yield writes.
 //
 // Recipes only, and not beans:
 //   - a favourite carries a copyMask, so the user has already said which fields
@@ -186,19 +192,29 @@ export const WORKFLOW_WRITERS = {
 //   - DYE2 has nulled the bean trio on every recipe body since dye2#27.
 export const RECIPE_CLEARED_IDENTITY = ['grinderId', 'grinderModel', 'baristaName', 'drinkerName'];
 export const RECIPE_CLEARED_IDENTITY_EXTRAS = ['basketId', 'basketName'];
+export const RECIPE_CLEARED_NUMBERS = ['grinderSetting', 'targetDoseWeight'];
+export const RECIPE_CLEARED_NUMBER_EXTRAS = ['rpm', 'feedRate'];
+// Cleared to 0, not null: see the targetYield note above.
+export const RECIPE_CLEARED_TO_ZERO = ['targetYield'];
 
 /**
- * `context` with every identity field the recipe did not set present and null.
+ * `context` with every field the recipe did not set present and cleared --
+ * null, or 0 for the fields Decaid refuses a null on.
  *
- * Pure, and returns a new object. DYE2 writes these nulls itself for recipes
+ * Pure, and returns a new object. DYE2 writes these clears itself for recipes
  * saved since #189; this covers the rows it saved before that and the skin's own
  * legacy apply path, which never had the fields at all.
  */
-export function clearInheritedIdentity(context) {
+export function clearInheritedFields(context) {
     const ctx = { ...(context || {}) };
-    for (const field of RECIPE_CLEARED_IDENTITY) ctx[field] = ctx[field] || null;
+    for (const field of [...RECIPE_CLEARED_IDENTITY, ...RECIPE_CLEARED_NUMBERS]) {
+        ctx[field] = ctx[field] || null;
+    }
+    for (const field of RECIPE_CLEARED_TO_ZERO) ctx[field] = ctx[field] || 0;
     const extras = { ...(ctx.extras || {}) };
-    for (const field of RECIPE_CLEARED_IDENTITY_EXTRAS) extras[field] = extras[field] || null;
+    for (const field of [...RECIPE_CLEARED_IDENTITY_EXTRAS, ...RECIPE_CLEARED_NUMBER_EXTRAS]) {
+        extras[field] = extras[field] || null;
+    }
     ctx.extras = extras;
     return ctx;
 }

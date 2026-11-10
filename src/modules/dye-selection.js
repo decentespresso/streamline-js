@@ -101,6 +101,35 @@ export function restoreSelection(raw, { recipes, favs, workflow }) {
 // write anything back to the parked item.
 export const RETURN_PARAM = 'dyeApplied';
 
+// Decaid serves the skin on an ephemeral port, and re-picks it every time it serves the
+// folder again (webui_service.serveFolderAtPath). :3000 is the stable entry server; it
+// redirects to wherever the skin currently lives, query string intact.
+export const DECAID_SKIN_ENTRY_PORT = '3000';
+
+/**
+ * The address to hand DYE2 as its `?return=`, given the page we are on.
+ *
+ * The DYE button navigates the whole page away, so this URL is captured before the trip
+ * and used minutes later. Handing DYE2 our own `location.href` pins the way home to the
+ * port we happen to be on right now: if Decaid re-serves the skin while the user is in
+ * DYE2 -- a skin switch, a reload of the folder -- that port is dead by the time they come
+ * back and they land on a browser error page instead of Streamline. Observed live: a
+ * return to :25261 after the skin had moved to :26950.
+ *
+ * `decaidServed` says the page came from Decaid's skin server, which is the only place an
+ * entry port exists to send anyone to; a plain dev server or a static host must keep its
+ * own address. The caller feature-detects it from the script that server injects.
+ */
+export function stableSkinReturnUrl(href, { decaidServed } = {}) {
+    if (!decaidServed) return href;
+    let url;
+    try { url = new URL(href); } catch { return href; }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return href;
+    if (url.port === DECAID_SKIN_ENTRY_PORT) return href;
+    url.port = DECAID_SKIN_ENTRY_PORT;
+    return url.href;
+}
+
 export function parseDyeReturn(search) {
     let params;
     try { params = new URLSearchParams(search); } catch { return { supported: false }; }
@@ -387,4 +416,29 @@ export function recipeIdPatch(id) {
 export function profilePatchWithSteps(profile) {
     const steps = profile && profile.steps;
     return Array.isArray(steps) && steps.length ? profile : null;
+}
+
+/**
+ * `context` with a grinder the catalogue no longer holds nulled out.
+ *
+ * A recipe's stored `workflow` body is written once, at save time, and nothing
+ * rewrites it when that grinder is later deleted: the body keeps the dead id and
+ * the stale model string, and the shot is filed under a grinder that no longer
+ * exists. DYE2's own apply never had the problem because it resolves the id
+ * against the live list at apply time (`dashboard.ts` applyRecipe); the strip
+ * applies the stored body directly, so it has to resolve it too.
+ *
+ * Pure. `grinders` is the catalogue as GET /grinders returns it -- an array, or
+ * the `{ items }` envelope -- and must INCLUDE archived rows: an archived
+ * grinder still exists and the recipe still means it.
+ *
+ * An unknown catalogue (null) means "could not check", which keeps the recipe's
+ * own value: a fetch that failed must not look like a deletion.
+ */
+export function dropDeletedGrinder(context, grinders) {
+    if (!context || !context.grinderId || grinders == null) return context;
+    const list = Array.isArray(grinders) ? grinders : (grinders.items || null);
+    if (!Array.isArray(list)) return context;
+    if (list.some(g => g && g.id === context.grinderId)) return context;
+    return { ...context, grinderId: null, grinderModel: null };
 }

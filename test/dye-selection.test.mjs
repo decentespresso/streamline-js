@@ -7,6 +7,7 @@ import {
     profileFingerprint, profileDrifted, serializeSelection, restoreSelection,
     parseDyeReturn, resolveReturn, changedFields, pluginRecordsDialIn, armedSelectionId, selectedRecipeSteam, recipeStripCells, favStripCells,
     recipeIdPatch, selectionModified, recipeCellState, profilePatchWithSteps, pluginHasEndpoint,
+    stableSkinReturnUrl, DECAID_SKIN_ENTRY_PORT, dropDeletedGrinder,
 } from '../src/modules/dye-selection.js';
 
 const profile = { title: 'Londinium', target_weight: 36, steps: [{ name: 'fill', temperature: 90 }, { name: 'pour', temperature: 92 }] };
@@ -382,4 +383,95 @@ test('the recipe-library menu items are offered only when DYE2 serves that page'
         assert.match(line, /dye2HasSelectRecipe/,
             `ungated: an older DYE2 answers 404 in the overlay instead: ${line.trim()}`);
     }
+});
+
+// --- the way home from DYE2 outlives a re-serve ----------------------------
+//
+// Decaid serves the skin on an ephemeral port and re-picks it whenever it serves the
+// folder again, so the `?return=` captured when DYE opens can name a dead port by the
+// time DYE2 sends the user back -- a browser error page instead of Streamline. Seen
+// live: a return to :25261 after the skin had moved to :26950.
+
+test('a Decaid-served skin returns through the stable entry port', () => {
+    assert.equal(
+        stableSkinReturnUrl('http://localhost:25261/?page=index', { decaidServed: true }),
+        `http://localhost:${DECAID_SKIN_ENTRY_PORT}/?page=index`);
+    // The path and the whole query ride along: the entry server redirects with them.
+    assert.equal(
+        stableSkinReturnUrl('http://10.0.0.5:26950/sub/?page=index&foo=1', { decaidServed: true }),
+        `http://10.0.0.5:${DECAID_SKIN_ENTRY_PORT}/sub/?page=index&foo=1`);
+});
+
+test('anything not served by Decaid keeps its own address', () => {
+    // A dev server or a static host has no entry port to send anyone to, and rewriting
+    // would send the user to a different copy of the skin entirely.
+    const dev = 'http://localhost:8044/?page=index';
+    assert.equal(stableSkinReturnUrl(dev, { decaidServed: false }), dev);
+    assert.equal(stableSkinReturnUrl(dev), dev, 'absent options means not Decaid-served');
+});
+
+test('the entry port itself, odd schemes and junk are left alone', () => {
+    const entry = `http://localhost:${DECAID_SKIN_ENTRY_PORT}/?page=index`;
+    assert.equal(stableSkinReturnUrl(entry, { decaidServed: true }), entry, 'already stable');
+    const file = 'file:///Users/x/index.html';
+    assert.equal(stableSkinReturnUrl(file, { decaidServed: true }), file, 'no port to swap');
+    assert.equal(stableSkinReturnUrl('not a url', { decaidServed: true }), 'not a url');
+    assert.equal(stableSkinReturnUrl('', { decaidServed: true }), '');
+});
+
+test('the DYE navigation sends the stable URL, and detects Decaid by its injected script', () => {
+    const source = readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8');
+    const nav = source.match(/window\.location\.href = `\$\{pluginUrl\}\?\$\{query\((.*?)\)\}`/);
+    assert.ok(nav, 'the cross-origin fallback should still navigate to the plugin');
+    assert.match(nav[1], /stableSkinReturnUrl\(window\.location\.href/,
+        'it must not hand DYE2 a raw location.href');
+    // webui_service.dart injects this script into every HTML response it serves.
+    assert.match(source, /__decent\/skin-api\.js/);
+});
+
+// --- a deleted grinder does not survive in a recipe's stored body ----------
+//
+// The body is written once, at save time, and nothing rewrites it when the
+// grinder is deleted afterwards. DYE2's own apply resolves the id against the
+// live list (dashboard.ts applyRecipe); the strip applies the body directly.
+
+test('a recipe naming a grinder the catalogue no longer holds applies none', () => {
+    const ctx = { grinderId: 'gone', grinderModel: 'Niche Zero', targetDoseWeight: 18 };
+    const out = dropDeletedGrinder(ctx, [{ id: 'g-1' }, { id: 'g-2' }]);
+    assert.equal(out.grinderId, null);
+    assert.equal(out.grinderModel, null, 'the stale model goes with the dead id');
+    assert.equal(out.targetDoseWeight, 18, 'nothing else is touched');
+    assert.deepEqual(ctx, { grinderId: 'gone', grinderModel: 'Niche Zero', targetDoseWeight: 18 },
+        'pure: the input context is not mutated');
+});
+
+test('a grinder that still exists is kept, envelope or bare array', () => {
+    const ctx = { grinderId: 'g-2', grinderModel: 'Comandante C40' };
+    assert.equal(dropDeletedGrinder(ctx, [{ id: 'g-1' }, { id: 'g-2' }]), ctx);
+    assert.equal(dropDeletedGrinder(ctx, { items: [{ id: 'g-2' }] }), ctx, 'GET /grinders envelope');
+});
+
+test('an unreadable catalogue keeps what the recipe names', () => {
+    // A fetch that failed must not read as a deletion: grinderCatalogue returns null
+    // for that case, and null means "could not check".
+    const ctx = { grinderId: 'g-2', grinderModel: 'Comandante C40' };
+    assert.equal(dropDeletedGrinder(ctx, null), ctx);
+    assert.equal(dropDeletedGrinder(ctx, undefined), ctx);
+    assert.equal(dropDeletedGrinder(ctx, {}), ctx, 'a body with no items is not an empty catalogue');
+    // An empty ARRAY is a real answer: every grinder really is gone.
+    assert.equal(dropDeletedGrinder(ctx, []).grinderId, null);
+});
+
+test('a recipe naming no grinder is returned untouched', () => {
+    const cleared = { grinderId: null, grinderModel: null };
+    assert.equal(dropDeletedGrinder(cleared, []), cleared, 'no fetch result can change it');
+    assert.equal(dropDeletedGrinder(undefined, []), undefined);
+});
+
+test('the apply path asks the catalogue for archived grinders too', () => {
+    // An archived grinder still exists and a recipe naming one still means it;
+    // getGrinders() without the flag would hide it and the apply would null it.
+    const source = readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8');
+    assert.match(source, /getGrinders\(true\)/);
+    assert.match(source, /dropDeletedGrinder\(patch\.context, await grinderCatalogue\(\)\)/);
 });
