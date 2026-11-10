@@ -28,6 +28,7 @@ import { openContextMenu } from './context-menu.js';
 import { setupPressAndHold, setSteamTileModeIfSafe, setHotWaterTileMode, showToast } from './ui.js';
 import { settingsReady, SETTINGS_RESTORED_EVENT } from './settingsSync.js';
 import { DYE2_ENABLED_KEY, isDye2Enabled } from './dye2-enabled.js';
+import { clearInheritedIdentity } from './workflow-fields.js';
 import { recipeIdPatch, SELECTION_KEY, RETURN_PARAM, profileFingerprint, profileDrifted, profilePatchWithSteps, serializeSelection, resolveReturn, parseDyeReturn, changedFields, pluginRecordsDialIn, pluginHasEndpoint, keepPreviousOnFailure, resolveRecordsDialIn, armedSelectionId, selectionModified, recipeCellState, recipeStripCells, favStripCells } from './dye-selection.js';
 
 const AF_KEY = 'autoFavourites';
@@ -479,6 +480,12 @@ export async function applyRecipe(recipe) {
     const patch = recipe.workflow
         ? await applyStoredWorkflow(recipe.workflow)
         : await applyRecipeLegacy(recipe); // dashboardVariables + top-level fields
+    // The grinder, basket, barista and drinker a recipe does not name are cleared, not
+    // inherited from whatever was applied before it (#189). DYE2 writes these nulls into
+    // the bodies it saves now; this is what makes a body saved by an older DYE2 — and the
+    // legacy path above, which never had the fields at all — behave the same way.
+    // applyFavourite deliberately does not do this: see clearInheritedIdentity.
+    patch.context = clearInheritedIdentity(patch.context);
     // Steam / hot-water / flush are NOT in the stored workflow — add them here.
     const dv = recipe.dashboardVariables || {};
     Object.assign(patch, await mergeRecipeLiveSettings(dv));
@@ -748,8 +755,14 @@ async function refreshAfterApply(modeHints) {
 // SAMEORIGIN blocks the iframe and reading contentWindow.location throws, so we
 // fall back to a full-page navigation with ?return set to this page.
 
+// The sentinel is a near-empty stub page, not index.html: DYE2 leaves by assigning
+// window.location, so the iframe navigates to whatever we hand it. Pointing it at the
+// skin booted the whole app a second time inside the overlay (settingsSync, router,
+// charts, sockets) and that boot was visible as a full page reload before the overlay
+// was torn down. A 404 on the stub is harmless: `load` still fires with the param.
 function sentinelReturnUrl() {
-    return `${window.location.origin}${window.location.pathname}?dyeReturn=1`;
+    const dir = window.location.pathname.replace(/[^/]*$/, '');
+    return `${window.location.origin}${dir}dye-return.html?dyeReturn=1`;
 }
 
 function isSameOrigin(url) {
