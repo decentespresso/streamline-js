@@ -1,0 +1,129 @@
+{
+  "baseUrl": "http://localhost:8044",
+  "decaid": "http://localhost:8080",
+  "personas": [
+    {
+      "id": "quinn",
+      "name": "Quick Shot Quinn",
+      "story": "Walks up, wakes the machine, taps a favourite, pulls one espresso, glances at the chart, walks away. Never opens settings. The path that must never break.",
+      "viewport": {
+        "width": 1920,
+        "height": 1200
+      },
+      "storage": {},
+      "steps": [
+        "boot",
+        "wake",
+        "favTap",
+        "pullShot",
+        "openHistory",
+        "sleep"
+      ]
+    },
+    {
+      "id": "dana",
+      "name": "Dial-in Dana",
+      "story": "DYE2 opt-in. Pulls a shot, then edits dose / yield / grind, flips the header strip between profiles, favourites and recipes, and opens the DYE overlay.",
+      "viewport": {
+        "width": 1920,
+        "height": 1200
+      },
+      "storage": {
+        "streamline.dye2Enabled": "true"
+      },
+      "steps": [
+        "boot",
+        "wake",
+        "pullShot",
+        "grindBump",
+        "dyeStripModes",
+        "openDye",
+        "openHistory",
+        "sleep"
+      ]
+    },
+    {
+      "id": "theo",
+      "name": "Profile Tinkerer Theo",
+      "story": "Lives in the profile selector and editor. Browses profiles, opens the editor, comes back, zooms the chart, pages through history.",
+      "viewport": {
+        "width": 1920,
+        "height": 1200
+      },
+      "storage": {},
+      "steps": [
+        "boot",
+        "wake",
+        "openProfiles",
+        "pickProfile",
+        "openProfileEditor",
+        "backToMain",
+        "chartZoom",
+        "historyBrowse"
+      ]
+    },
+    {
+      "id": "sam",
+      "name": "Settings Spelunker Sam",
+      "story": "Opens settings and clicks every top-level category in turn, searches, then cancels out. Read-only: never saves, so it cannot wreck your machine config.",
+      "viewport": {
+        "width": 1920,
+        "height": 1200
+      },
+      "storage": {},
+      "steps": [
+        "boot",
+        "wake",
+        "openSettings",
+        "walkSettings",
+        "searchSettings",
+        "cancelSettings",
+        "reload"
+      ]
+    },
+    {
+      "id": "fiona",
+      "name": "Flaky Network Fiona",
+      "story": "Tablet on bad wifi. Boots, drops the network mid-shot, comes back, reloads straight into a subpage URL. Hunts reconnect and double-mount bugs.",
+      "viewport": {
+        "width": 1920,
+        "height": 1200
+      },
+      "storage": {},
+      "steps": [
+        "boot",
+        "wake",
+        "startShot",
+        "offlineBlip",
+        "stopShot",
+        "offlineBlip",
+        "openSettings",
+        "offlineBlip",
+        "cancelSettings",
+        "deepLinkSettings",
+        "backToMain"
+      ]
+    },
+    {
+      "id": "tam",
+      "name": "Tiny Tablet Tam",
+      "story": "Cheap 1024x600 Android tablet in the host WebView: small viewport, 4x CPU throttle. Looks for overflow, unreadable scaling and frame drops.",
+      "viewport": {
+        "width": 1024,
+        "height": 600
+      },
+      "cpuThrottle": 4,
+      "storage": {},
+      "steps": [
+        "boot",
+        "wake",
+        "favTap",
+        "startShot",
+        "stopShot",
+        "openHistory",
+        "openSettings",
+        "cancelSettings"
+      ]
+    }
+  ]
+}
