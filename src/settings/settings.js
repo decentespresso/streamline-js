@@ -2128,6 +2128,14 @@ export function renderScreenSaverSettings() {
     const customBrightness = isCustomSaverBrightness();
     const saverBrightness = customBrightness ? getSaverBrightness() : SAVER_BRIGHTNESS_DEFAULT;
     const showClock = localStorage.getItem('screensaverShowClock') !== 'false';
+    // Sleep-button gesture. Only Decaid builds with exitApp() can honour it, so
+    // the card is absent rather than dead everywhere else (a browser tab, an
+    // older Decaid) -- see ui.canExitApp().
+    // Read off globalThis and localStorage directly, like every other preference
+    // in this function: the render is extracted and eval'd DOM-free by
+    // test/screensaver-clock.test.mjs, where the `ui` namespace does not exist.
+    const sleepExitSupported = typeof globalThis.decentApp?.exitApp === 'function';
+    const sleepExitEnabled = localStorage.getItem('sleepExitEnabled') !== 'false';
     const clockFormat = resolveScreensaverClockFormat(localStorage.getItem('screensaverClockFormat'));
     const clockPosition = resolveScreensaverClockPosition(localStorage.getItem('screensaverClockPosition'));
     const dateFormat = resolveScreensaverDateFormat(localStorage.getItem('screensaverDateFormat'));
@@ -2239,6 +2247,18 @@ export function renderScreenSaverSettings() {
         ...brightnessRows,
     ]);
 
+    // Its own card, not a fourth row under "Screen saver": closing the app is a
+    // sleep-button behaviour, not a property of the saver. The sub-line is the
+    // half users cannot guess -- that reopening Decaid wakes the machine.
+    const sleepExitCard = !sleepExitSupported ? '' : card('Sleep button', [`
+        <div class="flex items-center justify-between gap-[20px]">
+            <div class="flex flex-col gap-[4px]">
+                <p class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="Hold Sleep to sleep and close the app">Hold Sleep to sleep and close the app</p>
+                <p class="text-[var(--text-primary)] opacity-60 text-[20px] leading-[1.2]" data-i18n-key="Reopening Decaid wakes the machine.">Reopening Decaid wakes the machine.</p>
+            </div>
+            ${switchControl(sleepExitEnabled, 'window.setSleepExitEnabled', 'sleep-exit-toggle')}
+        </div>`]);
+
     const clockCard = card('Clock', [
         toggle('Show date and time', 'Show date and time', showClock, 'window.setScreensaverShowClock', 'screensaver-show-clock'),
         showClock ? select('screensaver-clock-format', 'Clock format', SCREENSAVER_CLOCK_FORMATS, clockFormat, 'window.setScreensaverClockFormat') : '',
@@ -2281,6 +2301,7 @@ export function renderScreenSaverSettings() {
                 </div>
                 <div class="flex flex-col gap-[24px] w-full">
                     ${clockCard}
+                    ${sleepExitCard}
                 </div>
             </div>
 
@@ -8102,6 +8123,13 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if (enabled) apiSetBlackScreenSaver(false);
         ui.showToast(`${getTranslation('Screen saver')} ${enabled ? getTranslation('Enabled') : getTranslation('Disabled')}`, 2000, 'success');
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
+    };
+
+    window.setSleepExitEnabled = function(enabled) {
+        localStorage.setItem('sleepExitEnabled', enabled ? 'true' : 'false');
+        // Nothing to undo on the way off: the gesture is only read at press time,
+        // and a marker already pending is still drained on the next return.
+        ui.showToast(`${getTranslation('Sleep button')} ${enabled ? getTranslation('Enabled') : getTranslation('Disabled')}`, 2000, 'success');
     };
 
     window.setScreensaverShowClock = function(enabled) {

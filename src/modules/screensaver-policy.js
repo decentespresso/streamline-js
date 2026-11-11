@@ -39,18 +39,31 @@ export function isMachineAsleep(machineState) {
 // "confirmed state only" rule can't fix this; what's wrong is that a sleep WE
 // caused for a foreground operation isn't an idle machine.
 //
-// ponytail: one module-global boolean — the firmware endpoint 409s a second
-// concurrent update, so there is never more than one thing suppressing.
-let suppressed = false;
+// Two things suppress now -- a firmware flash, and the window between a
+// long-press sleep-and-exit and the return -- and they can overlap (a hold on
+// Sleep during a flash). So suppression carries its OWNER: a release only
+// counts if it comes from whoever took it, and the one that is still running
+// keeps the overlay down.
+//
+// ponytail: a set of owners, not a refcount. Neither caller takes it twice, so
+// membership is all the bookkeeping there is; a counter would add nothing.
+const suppressedBy = new Set();
 
-/** Suppress the screensaver + panel dim for the duration of a foreground op. */
-export function setScreensaverSuppressed(value) {
-    suppressed = !!value;
+/**
+ * Suppress the screensaver + panel dim for the duration of a foreground op.
+ *
+ * @param {boolean} value
+ * @param {string} owner - who is asking; a release by anyone else is ignored.
+ *   Defaults to the firmware flash, the original and still the longest holder.
+ */
+export function setScreensaverSuppressed(value, owner = 'firmware') {
+    if (value) suppressedBy.add(owner);
+    else suppressedBy.delete(owner);
 }
 
-/** Is the screensaver currently suppressed? */
+/** Is the screensaver currently suppressed (by anyone)? */
 export function isScreensaverSuppressed() {
-    return suppressed;
+    return suppressedBy.size > 0;
 }
 
 /**
@@ -173,4 +186,20 @@ export function deriveDisplayAction(previousState, currentState) {
  */
 export function mayTapWakeMachine({ screensaverActive = false, onPluginControl = false } = {}) {
     return !!screensaverActive && !onPluginControl;
+}
+
+/**
+ * Should coming back to the app wake the machine we put to sleep on the way out?
+ *
+ * Asleep, idle, or unknown all wake: the sleep confirmation can land after the app
+ * has already left, so the last state we saw may still read 'idle', and waking an
+ * idle machine is a no-op. Anything else means the machine is busy (espresso,
+ * steam, heating, flush, error...) — leave it alone.
+ *
+ * @returns {'wake'|'skip'}
+ */
+export function deriveReturnWake(machineState) {
+    if (isMachineAsleep(machineState)) return 'wake';
+    const state = String(machineState || '').toLowerCase();
+    return (state === '' || state === 'idle') ? 'wake' : 'skip';
 }
