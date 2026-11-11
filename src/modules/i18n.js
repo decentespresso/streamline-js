@@ -2,7 +2,7 @@ import { logger } from './logger.js';
 import { openDB, getSetting, setSetting } from './idb.js';
 import { SUPPORTED_LANGUAGES, parseTranslationColumn } from './i18n-parser.js';
 import { APP_VERSION } from '../version.js';
-import { largestFittingSize } from './text-fit.js';
+import { largestFittingSize, predictFittingSize } from './text-fit.js';
 
 let translations = {};
 let keyIndex = {};
@@ -194,6 +194,34 @@ _fitMeter.style.cssText =
 if (document.body) document.body.appendChild(_fitMeter);
 else document.addEventListener('DOMContentLoaded', () => document.body.appendChild(_fitMeter));
 
+// Measuring through the DOM means writing a style and reading offsetWidth, and a
+// read forces the browser to flush layout for the WHOLE document -- which, on a
+// live shot, has just been dirtied by the chart and the shot table. Measured on
+// a tablet (2026-11-11): ~3.4 ms a probe, 6.7 ms a fit, against 0.2 ms in Chrome
+// on a desktop where nothing else is pending.
+//
+// A canvas measures the same text with no layout at all. It is only trusted when
+// the face is actually loaded -- an unloaded one silently measures as a fallback
+// and over-shrinks, which is why the span below exists in the first place -- and
+// when letter-spacing can be honoured. Otherwise the span still does the work.
+// Verified against the span on NotoSansMono: within 0.5px at every size tried,
+// and the fitter's 8px inset absorbs that.
+let _fitCanvas = null;
+
+function canvasWidth(text, px, font) {
+    if (!_fitCanvas) _fitCanvas = document.createElement('canvas').getContext('2d');
+    const ctx = _fitCanvas;
+    if (!ctx) return null;
+    const spaced = font.letterSpacing && font.letterSpacing !== 'normal';
+    if (spaced && !('letterSpacing' in ctx)) return null;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = spaced ? font.letterSpacing : '0px';
+    ctx.font = `${font.style} ${font.weight} ${px}px ${font.family}`;
+    if (document.fonts && !document.fonts.check(ctx.font)) return null;
+    // Round up: the span reports whole pixels, and under-measuring is what
+    // overflows a cell.
+    return Math.ceil(ctx.measureText(text).width);
+}
+
 /**
  * Shrinks an element's font-size until its text fits its width (no overflow).
  * Resets to the CSS-defined size first so switching to a shorter language grows
@@ -277,21 +305,23 @@ export function fitTextToWidth(el) {
         return;
     }
 
-    _fitMeter.style.fontFamily = state.font.family;
-    _fitMeter.style.fontWeight = state.font.weight;
-    _fitMeter.style.fontStyle = state.font.style;
-    _fitMeter.style.letterSpacing = state.font.letterSpacing;
-    _fitMeter.textContent = text;
-    const widthAt = size => { _fitMeter.style.fontSize = size + 'px'; return _fitMeter.offsetWidth; };
+    let meterPrepared = false;
+    const widthAt = size => {
+        const measured = canvasWidth(text, size, state.font);
+        if (measured !== null) return measured;
+        if (!meterPrepared) {
+            _fitMeter.style.fontFamily = state.font.family;
+            _fitMeter.style.fontWeight = state.font.weight;
+            _fitMeter.style.fontStyle = state.font.style;
+            _fitMeter.style.letterSpacing = state.font.letterSpacing;
+            _fitMeter.textContent = text;
+            meterPrepared = true;
+        }
+        _fitMeter.style.fontSize = size + 'px';
+        return _fitMeter.offsetWidth;
+    };
 
-    let size = state.start;
-    const width = widthAt(state.start);
-    if (width > state.avail) {
-        size = Math.max(FIT_MIN_PX, Math.floor(state.start * state.avail / width));
-        // One correction step: the prediction is exact for a face whose advance
-        // scales cleanly and a pixel over for one that does not.
-        if (size > FIT_MIN_PX && widthAt(size) > state.avail) size -= 1;
-    }
+    const size = predictFittingSize(state.start, state.avail, FIT_MIN_PX, widthAt);
     state.sizes.set(text, size);
     el.style.fontSize = size + 'px';
 }

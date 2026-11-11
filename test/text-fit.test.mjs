@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { largestFittingSize, fitShapeKey } from '../src/modules/text-fit.js';
+import { largestFittingSize, fitShapeKey, predictFittingSize } from '../src/modules/text-fit.js';
 
 // fitTextToBox's size search. Each probe is a forced synchronous reflow in the
 // browser (write font-size, read scrollHeight), so the probe count is the whole
@@ -76,4 +76,43 @@ test('fitShapeKey: non-digits are the shape, and survive', () => {
     assert.equal(fitShapeKey('-'), '-', 'the cleared cell');
     assert.equal(fitShapeKey('8.8→8.8'), fitShapeKey('1.2→3.4'));
     assert.equal(fitShapeKey('36.2g'), '88.8g', 'units and separators are kept as-is');
+});
+
+// fitTextToWidth's size search. A measurement there forces a layout of the whole
+// document, so what is pinned here is the probe COUNT as much as the answer: the
+// prediction has to land on the same size a walk would, in two measurements.
+test('the predicted size matches an exhaustive walk, in two measurements', () => {
+    // A monospace-ish face: width scales exactly with size.
+    const linear = (text, perPx) => size => text.length * perPx * size;
+
+    for (const [chars, avail] of [[3, 200], [9, 200], [20, 200], [40, 200], [3, 20]]) {
+        const widthAt = linear('x'.repeat(chars), 0.6);
+        let probes = 0;
+        const counted = size => { probes += 1; return widthAt(size); };
+
+        const size = predictFittingSize(26, avail, 8, counted);
+
+        let walked = 26;
+        while (walked > 8 && widthAt(walked) > avail) walked -= 1;
+        const expected = widthAt(26) <= avail ? 26 : walked;
+
+        assert.equal(size, expected, `${chars} chars in ${avail}px`);
+        assert.ok(widthAt(size) <= avail || size === 8, 'the chosen size must fit, unless it is the floor');
+        assert.ok(probes <= 2, `${probes} probes for ${chars} chars`);
+    }
+});
+
+test('a face whose advance does not scale cleanly still fits', () => {
+    // Rounds every advance up to a whole pixel, so a prediction can land a pixel
+    // over -- the case the correction step exists for.
+    const widthAt = size => 12 * Math.ceil(0.62 * size);
+
+    for (let avail = 60; avail <= 200; avail += 7) {
+        const size = predictFittingSize(26, avail, 8, widthAt);
+        assert.ok(widthAt(size) <= avail || size === 8, `overflowed at avail=${avail}`);
+    }
+});
+
+test('text that measures as nothing keeps the size its CSS gives it', () => {
+    assert.equal(predictFittingSize(26, 100, 8, () => 0), 26);
 });
