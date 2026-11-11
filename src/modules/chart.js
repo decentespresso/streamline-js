@@ -514,7 +514,25 @@ function flushChart() {
     liveRenderDirty = false;
 }
 
+// scheduleChartFlush() asks this on EVERY frame, and the answer costs an
+// offsetParent read -- a forced layout, on a document whose chart data was just
+// mutated. Measured 2026-11-11: 0.74 ms of updateChart's 0.82 ms in Chrome, and
+// updateChart is 62% of the frame on a BLE tablet. The answer only changes when
+// the page changes, the tab is hidden, the expanded chart opens or the element
+// resizes -- every one of which already has a listener here -- so it is read once
+// and those invalidate it. null = must be asked again.
+let visibleChartCache = null;
+
+export function invalidateVisibleChart() {
+    visibleChartCache = null;
+}
+
 function hasVisibleChart() {
+    if (visibleChartCache === null) visibleChartCache = computeHasVisibleChart();
+    return visibleChartCache;
+}
+
+function computeHasVisibleChart() {
     if (document.visibilityState === 'hidden') return false;
     if (expandedOpen) return true;
     // Same trap as refreshLabelMargin: a subpage (profile selector, etc.) has
@@ -714,6 +732,7 @@ export function openExpandedChart() {
     const page = mainPageEl();
     if (!page || expandedOpen) return;
     expandedOpen = true;
+    invalidateVisibleChart();
     page.classList.add('chart-zoomed');
     // The zoomed layout hides the dial-in sidebar to win the chart's width; mirror
     // its values into the strip above the chart, as the TCL zoomed page does.
@@ -731,6 +750,7 @@ export function openExpandedChart() {
 
 function leaveExpandedLayout() {
     expandedOpen = false;
+    invalidateVisibleChart();
     mainPageEl()?.classList.remove('chart-zoomed');
     stopZoomDialIn();
     const element = document.getElementById('expanded-chart');
@@ -749,6 +769,10 @@ export function closeExpandedChart() {
 // layout without repainting the main chart into a foreign page. The repaint
 // happens on streamline:mainpagevisible via the dirty flag.
 function handleMainPageHidden() {
+    // Before the early return: the cached answer has to drop whether or not the
+    // expanded chart was open, or a live flush would paint over the subpage that
+    // just replaced the main page.
+    invalidateVisibleChart();
     if (!expandedOpen) return;
     leaveExpandedLayout();
     mainRenderDirty = true;
@@ -888,7 +912,11 @@ export function updateChart(shotStartTime, data, weight, weightFlow = null, filt
     isLiveShot = true;
     // Mirror this frame into the expanded (full-screen) charts, in real units.
     pushExpandedFrame(time, data);
-    scheduleChartFlush();
+    // Its own label: scheduling reads offsetParent, which forces a layout on a
+    // document whose chart was just mutated -- the cost fork#6 is about, and it
+    // lands here rather than in the flush. Measured apart from the pushes above
+    // so a tablet says which of the two the frame is spent in.
+    measure('chSchedule', () => scheduleChartFlush());
 }
 
 // Reset all chart data/tracking/layout state without touching the renderer. Callers
@@ -1481,11 +1509,13 @@ function resizeChartElement(element) {
 }
 
 function handleChartWindowResize() {
+    invalidateVisibleChart();
     clearTimeout(chartWindowResizeTimeout);
     chartWindowResizeTimeout = setTimeout(() => resizeChartElement(getChartElement()), 100);
 }
 
 function handleChartElementResize(entries) {
+    invalidateVisibleChart();
     const size = entries[0]?.contentRect;
     if (size) observedChartSize = { width: size.width, height: size.height };
     clearTimeout(chartElementResizeTimeout);
@@ -1511,10 +1541,12 @@ function handleChartLineWidthChange() {
 }
 
 function handleChartVisibilityChange() {
+    invalidateVisibleChart();
     if (document.visibilityState === 'visible') flushDeferredChart();
 }
 
 function handleMainPageVisible() {
+    invalidateVisibleChart();
     const element = getChartElement();
     if (element) observeChartElement(element);
     flushDeferredChart();

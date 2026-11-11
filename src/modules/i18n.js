@@ -142,7 +142,14 @@ else document.addEventListener('DOMContentLoaded', () => document.body.appendChi
 /**
  * Shrinks an element's font-size until its text fits its width (no overflow).
  * Resets to the CSS-defined size first so switching to a shorter language grows
- * it back. ponytail: 1px steps, min 8px — plenty precise for button labels.
+ * it back. Floors at 8px.
+ *
+ * Every probe writes a font size and then reads offsetWidth, which forces a
+ * synchronous layout of the document -- so the search walks in halves, like
+ * fitTextToBox below: ~4 probes from a 26px start instead of up to 18. Measured
+ * on a tablet (2026-11-11), a shot-data range cell is the frame that costs 40 ms
+ * against a 2.9 ms typical one, and the cell is re-fitted whenever a value
+ * crosses ten.
  *
  * Exported for callers that swap a data-fit-text label at RUNTIME: the
  * ResizeObserver above only fires on size changes, and a fixed box never
@@ -204,12 +211,15 @@ export function fitTextToWidth(el) {
     _fitMeter.style.fontStyle = cs.fontStyle;
     _fitMeter.style.letterSpacing = cs.letterSpacing;
     _fitMeter.textContent = el.textContent;
-    let size = parseFloat(cs.fontSize);
-    const measure = s => { _fitMeter.style.fontSize = s + 'px'; return _fitMeter.offsetWidth; };
-    while (measure(size) > avail && size > 8) {
-        size -= 1;
-    }
-    el.style.fontSize = size + 'px';
+    const start = parseFloat(cs.fontSize);
+    const fits = s => {
+        _fitMeter.style.fontSize = s + 'px';
+        return _fitMeter.offsetWidth <= avail;
+    };
+    // null = the CSS size already fits, and leaving it unpinned is what lets a
+    // later language change grow the label back.
+    const size = largestFittingSize(8, start, fits);
+    el.style.fontSize = (size === null ? start : size) + 'px';
 }
 
 /**
