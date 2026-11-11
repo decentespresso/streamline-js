@@ -133,6 +133,12 @@ function fitAllText() {
 // Off-screen span that measures text using the page's REAL rendered fonts.
 // A <canvas> 2D context silently falls back to a wider default when the custom
 // font (Inter) isn't honored, which over-shrinks; a DOM span never does.
+const FIT_MIN_PX = 8;
+// Bounded rather than tended: the keys are a handful of label shapes per screen,
+// and dropping the lot is cheaper than tracking which one to evict.
+const FIT_CACHE_MAX = 500;
+const _fitSizeCache = new Map();
+
 const _fitMeter = document.createElement('span');
 _fitMeter.style.cssText =
     'position:absolute;left:-9999px;top:-9999px;white-space:nowrap;visibility:hidden;pointer-events:none';
@@ -145,11 +151,18 @@ else document.addEventListener('DOMContentLoaded', () => document.body.appendChi
  * it back. Floors at 8px.
  *
  * Every probe writes a font size and then reads offsetWidth, which forces a
- * synchronous layout of the document -- so the search walks in halves, like
- * fitTextToBox below: ~4 probes from a 26px start instead of up to 18. Measured
- * on a tablet (2026-11-11), a shot-data range cell is the frame that costs 40 ms
- * against a 2.9 ms typical one, and the cell is re-fitted whenever a value
- * crosses ten.
+ * synchronous layout of the document -- about 2.3 ms each on a tablet, measured
+ * 2026-11-11, where fitting a shot-data range cell cost 11.4 ms and was the
+ * frame that spiked to 32 ms while the typical one cost 2.5 ms.
+ *
+ * So: a cache first, then arithmetic. Text width scales with font size, so the
+ * width at the CSS size predicts the size that fits in one step; the prediction
+ * is probed once in case hinting rounds it over the edge. Two probes, against
+ * the ~5 a halving search needs and the up-to-18 of the 1px walk it replaced.
+ *
+ * The cache is keyed on the text, the space and the font, which is what the
+ * answer depends on -- a shot-data cell re-fits whenever a value crosses ten,
+ * and crosses back to a shape it has already paid for.
  *
  * Exported for callers that swap a data-fit-text label at RUNTIME: the
  * ResizeObserver above only fires on size changes, and a fixed box never
@@ -212,14 +225,25 @@ export function fitTextToWidth(el) {
     _fitMeter.style.letterSpacing = cs.letterSpacing;
     _fitMeter.textContent = el.textContent;
     const start = parseFloat(cs.fontSize);
-    const fits = s => {
-        _fitMeter.style.fontSize = s + 'px';
-        return _fitMeter.offsetWidth <= avail;
-    };
-    // null = the CSS size already fits, and leaving it unpinned is what lets a
-    // later language change grow the label back.
-    const size = largestFittingSize(8, start, fits);
-    el.style.fontSize = (size === null ? start : size) + 'px';
+    const key = `${start}|${avail}|${cs.fontFamily}|${cs.fontWeight}|${cs.fontStyle}|${cs.letterSpacing}|${el.textContent}`;
+    const cached = _fitSizeCache.get(key);
+    if (cached !== undefined) {
+        el.style.fontSize = cached + 'px';
+        return;
+    }
+    const widthAt = s => { _fitMeter.style.fontSize = s + 'px'; return _fitMeter.offsetWidth; };
+
+    let size = start;
+    const width = widthAt(start);
+    if (width > avail) {
+        size = Math.max(FIT_MIN_PX, Math.floor(start * avail / width));
+        // One correction step: the prediction is exact for a face whose advance
+        // scales cleanly and a pixel over for one that does not.
+        if (size > FIT_MIN_PX && widthAt(size) > avail) size -= 1;
+    }
+    if (_fitSizeCache.size >= FIT_CACHE_MAX) _fitSizeCache.clear();
+    _fitSizeCache.set(key, size);
+    el.style.fontSize = size + 'px';
 }
 
 /**

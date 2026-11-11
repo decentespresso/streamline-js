@@ -137,8 +137,11 @@ export function shotSummary(entries, seconds) {
         .sort((a, b) => b.mean - a.mean);
 
     const frames = rows.reduce((most, row) => Math.max(most, row.count), 0);
-    const parts = rows.map(row => `${row.label}=${row.mean.toFixed(2)}/${row.max.toFixed(1)}`);
-    return `perf: shot ${seconds.toFixed(1)}s n=${frames} ${parts.join(' ')} (mean/max ms)`;
+    // Each segment carries its own count: some run once a frame, some once a
+    // flush and some a handful of times a shot, and a mean says nothing about
+    // the total until you know which.
+    const parts = rows.map(row => `${row.label}=${row.mean.toFixed(2)}/${row.max.toFixed(1)}x${row.count}`);
+    return `perf: shot ${seconds.toFixed(1)}s n=${frames} ${parts.join(' ')} (mean/max ms x count)`;
 }
 
 /** A shot began: the window is the shot, not the minutes of idling before it. */

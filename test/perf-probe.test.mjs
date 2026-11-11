@@ -110,7 +110,7 @@ test('a shot leaves one line, ordered by mean, with the worst frame kept', () =>
 
     const line = shotSummary(entries, 24.06);
 
-    assert.equal(line, 'perf: shot 24.1s n=240 chart=0.70/9.9 status=0.10/0.4 (mean/max ms)');
+    assert.equal(line, 'perf: shot 24.1s n=240 chart=0.70/9.9x238 status=0.10/0.4x240 (mean/max ms x count)');
     assert.ok(!line.includes('idle'), 'a segment that never ran is not worth a column');
 });
 
