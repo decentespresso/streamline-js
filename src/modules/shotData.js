@@ -337,6 +337,11 @@ export function getCurrentShot() {
 export function setFinalWeight(weight) {
     if (!currentShot.timestamps) return;
     if (weight === null || weight === undefined) return;
+    // Scale frames arrive on their own stream, so this runs between machine
+    // frames as well as on them: measured on a tablet, the table rendered 370
+    // times during a 247-frame shot. A weight that has not moved renders the
+    // same numbers, so it is not worth a pass over the table.
+    if (weight === currentShot.finalWeight) return;
     currentShot.finalWeight = weight;
     // Only re-render once the shot has at least one sample, otherwise calculateAndRender bails.
     if (currentShot.timestamps.length > 0) calculateAndRender(currentShot);

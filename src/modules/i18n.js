@@ -69,13 +69,16 @@ export function translatePage() {
         const key = element.getAttribute('data-i18n-key');
         element.textContent = getTranslation(key);
     });
+    // A language change swaps the strings and can swap the face behind them, so
+    // sizes worked out for the old ones say nothing about these.
+    invalidateTextFits();
     fitAllText();
     fitTelemetry();
     // The header buttons are laid out with the custom Inter font; if it hasn't
     // finished loading yet the first fit measures against a fallback (or a
     // not-yet-sized box) and mis-shrinks. Re-fit once fonts are ready.
     if (document.fonts && document.fonts.status !== 'loaded') {
-        document.fonts.ready.then(() => { fitAllText(); fitTelemetry(); });
+        document.fonts.ready.then(() => { invalidateTextFits(); fitAllText(); fitTelemetry(); });
     }
 }
 
@@ -134,10 +137,56 @@ function fitAllText() {
 // A <canvas> 2D context silently falls back to a wider default when the custom
 // font (Inter) isn't honored, which over-shrinks; a DOM span never does.
 const FIT_MIN_PX = 8;
-// Bounded rather than tended: the keys are a handful of label shapes per screen,
-// and dropping the lot is cheaper than tracking which one to evict.
-const FIT_CACHE_MAX = 500;
-const _fitSizeCache = new Map();
+
+// What a fit depends on, per element: the space it has and the size its CSS
+// gives it. Measured on a tablet (2026-11-11), fitting a shot-data cell cost
+// 10 ms even after the probe count was cut from five to two -- because the
+// probes were never the cost. Clearing the inline size, reading clientWidth and
+// calling getComputedStyle force a style recalc and a document-wide layout
+// before any measuring begins, and that is the 10 ms.
+//
+// So the element is measured once and a ResizeObserver says when that stops
+// being true: a width change is exactly what invalidates both the space and the
+// sizes already worked out for it. A font-scale change (Display Size) resizes
+// these boxes too, so it arrives through the same observer.
+let _fitState = new WeakMap(); // el -> { avail, start, font, sizes: Map<text, px> }
+let _fitSizeObserver = null;
+
+function fitStateFor(el) {
+    const known = _fitState.get(el);
+    if (known) return known;
+
+    el.style.fontSize = '';
+    const cs = getComputedStyle(el);
+    // clientWidth excludes border; -8px inset so text clears the rounded corners.
+    const state = {
+        avail: el.clientWidth - 8,
+        start: parseFloat(cs.fontSize),
+        // Copied out, not held: reading a live CSSStyleDeclaration later would
+        // recalc style, which is half of what this cache exists to avoid.
+        font: {
+            family: cs.fontFamily,
+            weight: cs.fontWeight,
+            style: cs.fontStyle,
+            letterSpacing: cs.letterSpacing,
+        },
+        sizes: new Map(),
+    };
+    _fitState.set(el, state);
+
+    if (!_fitSizeObserver && typeof ResizeObserver !== 'undefined') {
+        _fitSizeObserver = new ResizeObserver(entries => {
+            for (const entry of entries) _fitState.delete(entry.target);
+        });
+    }
+    _fitSizeObserver?.observe(el);
+    return state;
+}
+
+/** Drop every cached fit: a font swap changes widths without resizing a box. */
+export function invalidateTextFits() {
+    _fitState = new WeakMap();
+}
 
 const _fitMeter = document.createElement('span');
 _fitMeter.style.cssText =
@@ -212,37 +261,38 @@ export function fitTextToBox(el, min = 14) {
 }
 
 export function fitTextToWidth(el) {
-    el.style.fontSize = '';
-    // clientWidth excludes border; -8px inset so text clears the rounded corners.
-    const avail = el.clientWidth - 8;
+    const state = fitStateFor(el);
     // Not laid out yet (hidden/zero-width): leave the CSS size, a later fit
-    // (fonts.ready / next translatePage) handles it. Never shrink to the floor here.
-    if (avail <= 0) return;
-    const cs = getComputedStyle(el);
-    _fitMeter.style.fontFamily = cs.fontFamily;
-    _fitMeter.style.fontWeight = cs.fontWeight;
-    _fitMeter.style.fontStyle = cs.fontStyle;
-    _fitMeter.style.letterSpacing = cs.letterSpacing;
-    _fitMeter.textContent = el.textContent;
-    const start = parseFloat(cs.fontSize);
-    const key = `${start}|${avail}|${cs.fontFamily}|${cs.fontWeight}|${cs.fontStyle}|${cs.letterSpacing}|${el.textContent}`;
-    const cached = _fitSizeCache.get(key);
+    // (fonts.ready / next translatePage) handles it. Never shrink to the floor
+    // here, and do not cache a measurement taken against no width.
+    if (state.avail <= 0) {
+        _fitState.delete(el);
+        return;
+    }
+
+    const text = el.textContent;
+    const cached = state.sizes.get(text);
     if (cached !== undefined) {
         el.style.fontSize = cached + 'px';
         return;
     }
-    const widthAt = s => { _fitMeter.style.fontSize = s + 'px'; return _fitMeter.offsetWidth; };
 
-    let size = start;
-    const width = widthAt(start);
-    if (width > avail) {
-        size = Math.max(FIT_MIN_PX, Math.floor(start * avail / width));
+    _fitMeter.style.fontFamily = state.font.family;
+    _fitMeter.style.fontWeight = state.font.weight;
+    _fitMeter.style.fontStyle = state.font.style;
+    _fitMeter.style.letterSpacing = state.font.letterSpacing;
+    _fitMeter.textContent = text;
+    const widthAt = size => { _fitMeter.style.fontSize = size + 'px'; return _fitMeter.offsetWidth; };
+
+    let size = state.start;
+    const width = widthAt(state.start);
+    if (width > state.avail) {
+        size = Math.max(FIT_MIN_PX, Math.floor(state.start * state.avail / width));
         // One correction step: the prediction is exact for a face whose advance
         // scales cleanly and a pixel over for one that does not.
-        if (size > FIT_MIN_PX && widthAt(size) > avail) size -= 1;
+        if (size > FIT_MIN_PX && widthAt(size) > state.avail) size -= 1;
     }
-    if (_fitSizeCache.size >= FIT_CACHE_MAX) _fitSizeCache.clear();
-    _fitSizeCache.set(key, size);
+    state.sizes.set(text, size);
     el.style.fontSize = size + 'px';
 }
 
