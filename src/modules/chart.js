@@ -514,13 +514,14 @@ function flushChart() {
     liveRenderDirty = false;
 }
 
-// scheduleChartFlush() asks this on EVERY frame, and the answer costs an
-// offsetParent read -- a forced layout, on a document whose chart data was just
-// mutated. Measured 2026-11-11: 0.74 ms of updateChart's 0.82 ms in Chrome, and
-// updateChart is 62% of the frame on a BLE tablet. The answer only changes when
-// the page changes, the tab is hidden, the expanded chart opens or the element
-// resizes -- every one of which already has a listener here -- so it is read once
-// and those invalidate it. null = must be asked again.
+// scheduleChartFlush() asks this on EVERY frame, and one part of the answer --
+// the offsetParent read -- forces a layout, on a document whose chart data was
+// just mutated. Measured 2026-11-11: 0.74 ms of updateChart's 0.82 ms in Chrome,
+// and updateChart is 62% of the frame on a BLE tablet.
+//
+// So only that part is cached. visibilityState and the main-page display are
+// plain property reads that force nothing, and leaving them live is what keeps
+// the subpage trap below honest even if an invalidation is ever missed.
 let visibleChartCache = null;
 
 export function invalidateVisibleChart() {
@@ -528,11 +529,6 @@ export function invalidateVisibleChart() {
 }
 
 function hasVisibleChart() {
-    if (visibleChartCache === null) visibleChartCache = computeHasVisibleChart();
-    return visibleChartCache;
-}
-
-function computeHasVisibleChart() {
     if (document.visibilityState === 'hidden') return false;
     if (expandedOpen) return true;
     // Same trap as refreshLabelMargin: a subpage (profile selector, etc.) has
@@ -540,8 +536,11 @@ function computeHasVisibleChart() {
     // not the main page's live chart -- without this, a live shot update
     // would paint over whatever that subpage is currently showing.
     if (!isMainChartActive()) return false;
-    const element = getChartElement();
-    return Boolean(element && element.offsetParent !== null);
+    if (visibleChartCache === null) {
+        const element = getChartElement();
+        visibleChartCache = Boolean(element && element.offsetParent !== null);
+    }
+    return visibleChartCache;
 }
 
 function cancelChartFlush() {
