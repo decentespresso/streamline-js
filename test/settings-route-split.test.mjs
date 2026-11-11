@@ -27,11 +27,13 @@ test('settings shell keeps quick adjustments out of the legacy module', () => {
     assert.match(shell, /getElementById\('settings-body'\)\?\.parentElement/);
     assert.doesNotMatch(quick, /settings\.js/);
     assert.doesNotMatch(maintenance, /settings\.js/);
-    // Cleaning and descaling share one templated view and one state machine, so
-    // the two cannot drift; air purge keeps its own bespoke flow.
-    assert.match(maintenance, /action === 'clean' \|\| action === 'descale'/);
+    // Cleaning, descaling and transport mode share one templated view and one
+    // state machine, so the three cannot drift. Transport mode used to run its
+    // own bespoke flow with its own toasts: the literal state name is what that
+    // looked like, and its absence is what keeps it folded in.
+    assert.match(maintenance, /action === 'clean' \|\| action === 'descale' \|\| action === 'air-purge'/);
     assert.match(maintenance, /setMachineState\(procedure\.state\)/);
-    assert.match(maintenance, /setMachineState\('airPurge'\)/);
+    assert.doesNotMatch(maintenance, /setMachineState\('airPurge'\)/);
     assert.match(app, /addEventListener\('pointerdown',[\s\S]*prefetchSettingsPage/);
 });
 

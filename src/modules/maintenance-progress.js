@@ -83,6 +83,18 @@ export const DESCALING_PROCEDURE = Object.freeze({
     },
 });
 
+/**
+ * Transport mode (air purge): one firmware state, `airPurge`, with no substates
+ * to read, so two milestones is all the wire supports -- the request is out, and
+ * the machine is pumping water out. What to do afterwards is said up front, in
+ * the confirmation, so the end of the run needs no words of its own.
+ */
+export const AIR_PURGE_PROCEDURE = Object.freeze({
+    state: 'airPurge',
+    milestones: Object.freeze(['Starting', 'Now removing water from your espresso machine.']),
+    milestoneFor() { return 1; },
+});
+
 /** Nothing has been started, and nothing observed. */
 export function initialProcedureState() {
     return { phase: 'idle', milestone: -1, entered: false, stale: false, waitedMs: 0 };
@@ -118,9 +130,12 @@ export function advanceProcedureState(previous, frame, procedure) {
 
     if (state === procedure.state) {
         // Never move backwards: a repeated or out-of-order frame must not rewind
-        // the strip the user is watching.
-        const from = Math.max(prev.milestone, 0);
-        const milestone = Math.max(from, procedure.milestoneFor(substate, from));
+        // the strip the user is watching. A run that starts after one finished is
+        // the exception -- carrying the completed milestone forward would index
+        // past the last label and caption the strip `undefined`.
+        const from = prev.phase === 'done' ? 0 : Math.max(prev.milestone, 0);
+        const last = procedure.milestones.length - 1;
+        const milestone = Math.min(last, Math.max(from, procedure.milestoneFor(substate, from)));
         if (prev.phase === 'running' && milestone === prev.milestone && !prev.stale) return prev;
         return { phase: 'running', milestone, entered: true, stale: false, waitedMs: 0 };
     }

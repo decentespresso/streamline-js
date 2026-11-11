@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+    AIR_PURGE_PROCEDURE,
     CLEANING_PROCEDURE,
     DESCALING_PROCEDURE,
     MAINTENANCE_START_TIMEOUT_MS,
@@ -233,6 +234,7 @@ test('milestone labels and captions are translation-sheet keys, or declared new'
     const strings = new Set([
         ...CLEANING_PROCEDURE.milestones,
         ...DESCALING_PROCEDURE.milestones,
+        ...AIR_PURGE_PROCEDURE.milestones,
         ...['waiting', 'running', 'done', 'timeout'].map(phase =>
             procedureIndicatorView({ phase, milestone: 0, stale: false }, CLEANING_PROCEDURE).caption),
     ]);
@@ -267,4 +269,44 @@ test('the steam cooldown gate blocks only a reading that is actually hot', () =>
     assert.equal(steamCoolEnoughToDescale(null), true);
     assert.equal(steamCoolEnoughToDescale(undefined), true);
     assert.equal(steamCoolEnoughToDescale(NaN), true);
+});
+
+// Transport mode reports through the same strip as cleaning and descaling, so
+// the captions a user actually sees are pinned here: no toast is left to carry
+// them. What to do once the water is out is said in the confirmation before the
+// run, which is why the end of the strip is the shared completion word.
+test('transport mode runs started -> ongoing -> done on screen', () => {
+    let state = startedProcedureState();
+    assert.equal(caption(state, AIR_PURGE_PROCEDURE), 'Starting');
+
+    state = run(state, { state: 'airPurge' }, AIR_PURGE_PROCEDURE, 3);
+    assert.equal(caption(state, AIR_PURGE_PROCEDURE), 'Now removing water from your espresso machine.');
+    assert.ok(isProcedureActive(state), 'the button reads Stop while the purge runs');
+
+    state = run(state, { state: 'idle' }, AIR_PURGE_PROCEDURE);
+    assert.equal(state.phase, 'done');
+    assert.equal(caption(state, AIR_PURGE_PROCEDURE), 'Ready');
+    assert.equal(procedureIndicatorView(state, AIR_PURGE_PROCEDURE).tone, 'success');
+    assert.ok(!isProcedureActive(state), 'the button reads Start again once it is done');
+
+
+});
+
+// A cycle started again after one finished -- on the machine itself, or by
+// pressing Start twice -- used to carry the completed milestone forward, which
+// is one past the last label: the strip captioned itself `undefined`.
+test('a run that follows a finished one starts the strip over', () => {
+    let state = run(run(startedProcedureState(), { state: 'airPurge' }, AIR_PURGE_PROCEDURE),
+        { state: 'idle' }, AIR_PURGE_PROCEDURE);
+    assert.equal(state.phase, 'done');
+
+    state = run(state, { state: 'airPurge' }, AIR_PURGE_PROCEDURE, 2);
+    assert.equal(state.phase, 'running');
+    assert.equal(caption(state, AIR_PURGE_PROCEDURE), 'Now removing water from your espresso machine.');
+
+    let clean = run(run(startedProcedureState(), { state: 'cleaning', substate: 'cleanSoaking' }, CLEANING_PROCEDURE),
+        { state: 'idle' }, CLEANING_PROCEDURE);
+    assert.equal(clean.phase, 'done');
+    clean = run(clean, { state: 'cleaning', substate: 'cleaningStart' }, CLEANING_PROCEDURE);
+    assert.equal(caption(clean, CLEANING_PROCEDURE), 'Starting');
 });
