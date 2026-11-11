@@ -15,6 +15,7 @@ import { loadPage, initRouter, isSubPage, prefetchSettingsPage, prefetchSubpages
 import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
+import { endPerfShot, initPerfProbe, measure, startPerfShot } from './perf-probe.js';
 import { workflowGrindStep, workflowGrindRange } from './grinder-sync.js';
 import { isDye2Enabled } from './dye2-enabled.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
@@ -1004,7 +1005,7 @@ function handleData(data) {
 
     // Update UI elements
     // Pass detailed status information to match the enhanced updateMachineStatus function
-    ui.updateMachineStatus({
+    measure('status', () => ui.updateMachineStatus({
         status: statusString,
         state: state,
         substate: substate,
@@ -1016,10 +1017,10 @@ function handleData(data) {
         isHeating: isHeating, // Pass heating state to UI
         isHeatingFromTimeToReady: heatingSeconds > 0, // countdown available -> render the two-colour form
         steamTemperature: data.steamTemperature // Steam boiler temp — gates the steam "Heating" message
-    });
-    if (mainPageShown) paintMainPageStrip(lastMainPageFrame);
-    ui.updateSleepButton(state);
-    if (mainPageShown) ui.updateTemperatures({ mix: data.mixTemperature, group: data.groupTemperature, steam: data.steamTemperature });
+    }));
+    if (mainPageShown) measure('strip', () => paintMainPageStrip(lastMainPageFrame));
+    measure('sleepButton', () => ui.updateSleepButton(state));
+    if (mainPageShown) measure('temps', () => ui.updateTemperatures({ mix: data.mixTemperature, group: data.groupTemperature, steam: data.steamTemperature }));
     updateMilkProbeFromSnapshot(currentMilkProbeReading());
 
     // Update Chart and Shot Data Table
@@ -1039,6 +1040,7 @@ function handleData(data) {
                 seqStopToastShown = false;
                 chart.clearChart();
                 shotData.clearShotData();
+                startPerfShot();
                 const historyLabelEl = document.getElementById('shot-history-label');
                 if (historyLabelEl) {
                     historyLabelEl.textContent = getTranslation('NEWEST');
@@ -1050,8 +1052,8 @@ function handleData(data) {
             // `?? null` (not || 0): 0 is a real GFlow value; only an ABSENT field
             // may fall through to the chart's local EMA.
             const chartWeightFlow = isBengleMachine() ? (data.weightFlow ?? null) : latestScaleWeightFlow;
-            chart.updateChart(shotStartTime, data, latestScaleWeight, chartWeightFlow);
-            shotData.updateShotData(data, latestScaleWeight);
+            measure('chart', () => chart.updateChart(shotStartTime, data, latestScaleWeight, chartWeightFlow));
+            measure('shotData', () => shotData.updateShotData(data, latestScaleWeight));
         }
     } else {
         if (shotStartTime) {
@@ -1067,6 +1069,9 @@ function handleData(data) {
             // the WebView console as "Error parsing WebSocket message", which
             // points at the JSON parser rather than the chart.
             shotStartTime = null;
+            // Before finalize: the line describes the frames of the shot, and a
+            // throw in finalize must not take the measurement down with it.
+            endPerfShot(shotData.getTotalTime());
             try {
                 chart.finalizeLiveChart();
             } catch (error) {
@@ -2449,6 +2454,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initMobileValueInputs(numpad);
             }).catch(error => logger.warn('Deferred input controls failed to load:', error));
         }));
+        // Before the first frame can arrive, so a profiling session covers the
+        // whole shot rather than starting mid-pour.
+        initPerfProbe();
         const i18nReady = initI18n();
         const unitsReady = initUnits();
         chart.initChart();

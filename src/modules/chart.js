@@ -6,6 +6,7 @@ import { createLatestTaskRunner } from './latest-task-runner.js';
 import { loadECharts } from './echarts-loader.js';
 import { createChartCadence, DEFAULT_CHART_INTERVAL_MS } from './chart-live-policy.js';
 import { destroyChart, hasChart, renderChart, resizeChart } from './echarts-renderer.js';
+import { measure } from './perf-probe.js';
 import { startZoomDialIn, stopZoomDialIn } from './zoom-dialin.js';
 
 // Maps internal trace key → i18n key used for the chart label.
@@ -508,8 +509,8 @@ function flushChart() {
         autorange: false,
         dtick: dtickValue
     };
-    renderMain(chartTraces, layout, 'live');
-    if (expandedOpen) renderExpandedCharts('live');
+    measure('chartFlush', () => renderMain(chartTraces, layout, 'live'));
+    if (expandedOpen) measure('chartFlushExpanded', () => renderExpandedCharts('live'));
     liveRenderDirty = false;
 }
 
