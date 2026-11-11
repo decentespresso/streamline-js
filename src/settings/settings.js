@@ -525,9 +525,9 @@ function updateSettingsContentArea(category) {
     maintenanceSequence += 1;
     maintenanceCleanup?.();
     maintenanceCleanup = null;
-    // Leaving the Lighting page → flush any deferred cross-state palette PUT,
-    // THEN stop previewing (flush-before-clear: one strip transition, and the
-    // edit persists exactly as the old always-PUT behaviour did). Also release
+    // Leaving the Lighting page → stop previewing, so the strip shows the
+    // stored palette again. An unsaved edit is NOT written here: only the
+    // page's Save and the header Save persist (ledSaveOnExit). Also release
     // this page's 'manual' sequence-run ownership -- a state-triggered run
     // (led-strip-runner.js, driven from app.js) is untouched by this and keeps
     // running on whatever page the user goes to next.
@@ -3883,18 +3883,18 @@ export function renderLedSettings() {
     const isOn = ledCurrentColor16() !== '000000000000';
     const seg = (value, label, current, handler) => {
         const active = current === value;
-        return `<button class="flex-1 h-[80px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[26px] flex items-center justify-center cursor-pointer transition-colors duration-200 ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}"
+        return `<button class="flex-1 h-[64px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[24px] flex items-center justify-center cursor-pointer transition-colors duration-200 ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}"
                     aria-pressed="${active}" onclick="window.${handler}('${value}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
     };
     const cell = (zoneKey, zoneLabel, stateKey) => {
         const isActive = ledZoneKeys(ledSelectedZone).includes(zoneKey) && ledSelectedState === stateKey;
         return `<button aria-label="${zoneLabel} ${stateKey}" data-led-cell="${zoneKey}:${stateKey}" onclick="window.ledSelectCell('${zoneKey}','${stateKey}')"
-                    class="h-[64px] rounded-[10px] border-2 ${isActive ? 'border-[var(--mimoja-blue-v2)]' : 'border-[var(--profile-button-outline-color)]'}"
+                    class="h-[52px] rounded-[10px] border-2 ${isActive ? 'border-[var(--mimoja-blue-v2)]' : 'border-[var(--profile-button-outline-color)]'}"
                     style="background-color: ${ledColor16ToHex8(ledCellColor16(zoneKey, stateKey))}"></button>`;
     };
     const presetSwatches = LED_PRESETS.map(([name, hex]) =>
         `<button title="${name}" aria-label="${name}" onclick="window.ledApplyPreset('${hex}')"
-            class="w-[64px] h-[64px] rounded-full border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${hex}"></button>`
+            class="w-[56px] h-[56px] rounded-full border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${hex}"></button>`
     ).join('');
 
     const seqSteps = ledSeqLoad();
@@ -3908,7 +3908,7 @@ export function renderLedSettings() {
     // Save button under both made it look like it covered the sequence too.
     const coloursPanel = `
         <div class="flex flex-row gap-[48px] w-full items-start flex-wrap">
-            <div class="flex flex-col gap-[28px] flex-1 min-w-[420px]">
+            <div class="flex flex-col gap-[14px] flex-1 min-w-[420px]">
                 <div class="flex flex-col gap-[12px] w-full">
                     <p class="led-label text-[26px]" data-i18n-key="Zone">Zone</p>
                     <div class="flex gap-[12px] w-full">
@@ -4035,7 +4035,7 @@ export function renderLedSettings() {
         </div>`;
 
     return `
-        <div class="led-page content-stretch flex flex-col gap-[36px] items-start relative w-full">
+        <div class="led-page content-stretch flex flex-col gap-[12px] items-start relative w-full">
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Lighting">Lighting</p>
             </div>
@@ -4045,7 +4045,7 @@ export function renderLedSettings() {
                 ${tab('sequence', 'Sequence')}
             </div>
 
-            <div class="flex flex-col gap-[28px] items-start w-full" role="tabpanel">
+            <div class="flex flex-col gap-[14px] items-start w-full" role="tabpanel">
                 ${ledActiveTab === 'sequence' ? sequencePanel : coloursPanel}
             </div>
         </div>
@@ -4417,6 +4417,21 @@ window.ledSelectTab = function(tabId) {
     ledActiveTab = tabId;
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
+// Exiting Settings through the HEADER Save must persist an unsaved palette
+// too: that button is the page-level "save everything" affordance, and with
+// the picker's own Save as the only writer a colour edit was dropped in
+// silence. No-op when nothing changed, and never blocks the exit. Cancel and
+// a category switch still discard -- leaving a control is not a save.
+async function ledSaveOnExit() {
+    if (ledState && ledCommitted !== JSON.stringify(ledState)) {
+        try {
+            await ledPutPalette();
+            await commitLedStrip();
+            ledCommitted = JSON.stringify(ledState);
+        } catch (e) { /* non-fatal -- the preview is still cleared below */ }
+    }
+    ledRestoreStrip();
+}
 window.ledSave = async function() {
     // The one write that persists: PUT the working palette, then the contract's
     // persist verb. Clearing the preview afterwards is what makes the strip show
@@ -7954,11 +7969,10 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
             resetPendingChanges();
-            // Exiting settings straight from the Lighting page must not leave a
-            // preview colour latched on the strip — one PUT of the real palette
-            // settles both that and any deferred cross-state edit. Also
-            // release this page's manual sequence run (a state-triggered run
-            // is untouched -- it belongs to app.js, not this page).
+            // Cancel discards: drop the preview so the strip shows the
+            // palette the machine actually stores, and leave the unsaved edit
+            // unwritten. Also release this page's manual sequence run (a
+            // state-triggered run is untouched -- it belongs to app.js).
             ledRestoreStrip();
             ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
@@ -7981,12 +7995,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
                 return;
             }
             ui.showToast('Settings updated', 3000, 'success');
-            // Exiting settings straight from the Lighting page must not leave a
-            // preview colour latched on the strip — one PUT of the real palette
-            // settles both that and any deferred cross-state edit. Also
-            // release this page's manual sequence run (a state-triggered run
-            // is untouched -- it belongs to app.js, not this page).
-            ledRestoreStrip();
+            // Exiting settings straight from the Lighting page: persist an
+            // unsaved palette (this IS the save button) and drop the preview,
+            // so the strip shows what was stored. Also release this page's
+            // manual sequence run (a state-triggered run is untouched -- it
+            // belongs to app.js, not this page).
+            await ledSaveOnExit();
             ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
