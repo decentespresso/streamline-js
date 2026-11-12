@@ -1,3 +1,5 @@
+import { timeNav } from './perf-probe.js';
+
 const pageCache = new Map();
 let cleanupCurrentPage = null;
 // Where the user currently is and where they came from, so a subpage can send
@@ -140,6 +142,7 @@ function updateHistory(mode, state, title, url) {
 }
 
 async function showMainPage({ history = 'push' } = {}) {
+    const nav = timeNav('main');
     const mainPage = document.getElementById('main-page');
     const subpageHost = document.getElementById('subpage-host');
 
@@ -148,6 +151,7 @@ async function showMainPage({ history = 'push' } = {}) {
         subpageHost.style.display = 'none';
         subpageHost.innerHTML = '';
     }
+    nav.mark('cleanup');
     if (mainPage) mainPage.style.display = '';
 
     const scaledContent = document.getElementById('scaled-content');
@@ -168,6 +172,9 @@ async function showMainPage({ history = 'push' } = {}) {
         window.app?.clearChart?.();
     }
     document.dispatchEvent(new Event('streamline:mainpagevisible'));
+    // The work below is deliberately not awaited, so this is the point the user
+    // sees the main page again -- which is what the line is measuring.
+    nav.done();
 
     // Ensure main-page data init has run — booting on a sub-page URL skips it,
     // so without this the main page would render static HTML with no data.
@@ -202,12 +209,15 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
         return;
     }
 
+    const pageName = pageUrl.split('/').pop().replace('.html', '');
+    const nav = timeNav(pageName);
     const mainPage = document.getElementById('main-page');
     const subpageHost = document.getElementById('subpage-host');
     let hidMainPage = false;
 
     try {
         const pageHtml = await fetchPage(pageUrl);
+        nav.mark('fetch');
         const parser = new DOMParser();
         const doc = parser.parseFromString(pageHtml, 'text/html');
         const newContent = doc.querySelector('#scaled-content');
@@ -220,11 +230,13 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
 
         await cleanupSubpage();
         subpageHost.innerHTML = newContent.innerHTML;
+        nav.mark('inject');
 
         if (pageUrl.includes('settings.html')) {
             const { cleanupSettingsShell, initializeSettingsShell } = await import('../settings/settings-shell.js');
             await initializeSettingsShell();
             cleanupCurrentPage = cleanupSettingsShell;
+            nav.mark('shell');
         }
 
         const mainPageWasVisible = mainPage && mainPage.style.display !== 'none';
@@ -236,7 +248,13 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
         subpageHost.style.display = '';
 
         // Apply current language to freshly injected HTML before page init runs
-        import('./i18n.js').then(m => m.translatePage()).catch(() => {});
+        // Its own line, not a mark on the one above: the call is deliberately
+        // fire-and-forget, and its microtask lands after the frame wait below.
+        import('./i18n.js').then(m => {
+            const translate = timeNav(`${pageName}:translate`);
+            m.translatePage();
+            translate.done();
+        }).catch(() => {});
 
         const cleanUrl = getCleanUrl(pageUrl);
         // Before the page's own init runs below -- the profile editor reads
@@ -245,6 +263,7 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
         updateHistory(history, { pageUrl }, cleanUrl.split('/').pop() || 'Streamline', cleanUrl);
 
         await new Promise(resolve => requestAnimationFrame(resolve));
+        nav.mark('paint');
 
         const scaledContent = document.getElementById('scaled-content');
         if (scaledContent) scaledContent.classList.add('scaled');
@@ -253,7 +272,13 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
             try {
                 const { initializeProfileSelector } = await import('./profile_selector.js');
                 if (initializeProfileSelector) {
-                    initializeProfileSelector().catch(e => console.error('Router: Profile selector init error:', e));
+                    // Its own line: the selector's init is deliberately not
+                    // awaited here, so the page is already on screen while it
+                    // fills -- two separate waits, not one.
+                    const init = timeNav('profile_selector:init');
+                    initializeProfileSelector()
+                        .then(() => init.done())
+                        .catch(e => console.error('Router: Profile selector init error:', e));
                 }
             } catch (e) {
                 console.error('Router: Error initializing profile selector:', e);
@@ -270,6 +295,7 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
                 console.error('Router: Error initializing profile editor:', e);
             }
         }
+        nav.done();
     } catch (error) {
         console.error('Error loading page:', error);
         if (mainPage) mainPage.style.display = '';

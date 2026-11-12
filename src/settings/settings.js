@@ -41,6 +41,7 @@ import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
 import { parseSkinAnswer } from '../modules/plugin-surfaces.js';
 import { FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA, buildFeedbackDescription } from './feedback-report.js';
 import { TOUCH_SOUND_KEY, isTouchSoundEnabled, playTouchSound } from '../modules/touch-sound.js';
+import { timeNav } from '../modules/perf-probe.js';
 
 // The DE1 caps the fan-threshold MMR item at 50 °C (min 0, max 50 in Decaid's
 // MMRItem table) and clamps a higher write without reporting it, so the machine
@@ -8016,6 +8017,15 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     let activeMainCategoryKey = restoredMainCategory;
 
     const activateSubcategory = button => {
+        // Once a legacy category has mounted, the shell hands navigation over to
+        // this listener, so this is where settings page-to-page time is spent --
+        // not in settings-shell's renderCategory, which only sees the first
+        // category entered. Timed here rather than inside
+        // updateSettingsContentArea because that also runs on re-renders nobody
+        // tapped for (a settings write, a language change), and those are not
+        // navigations. Per-category init runs on setTimeout(..., 0) and so lands
+        // after this line.
+        const nav = timeNav(`settings/${button.dataset.category}`);
         subCategoriesPanel?.querySelectorAll('.settings-subnav-btn').forEach(item => {
             const active = item === button;
             item.classList.toggle('text-white', active);
@@ -8025,6 +8035,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         activeSettingsCategory = button.dataset.category;
         writeSettingsLocation(activeMainCategoryKey, activeSettingsCategory);
         updateSettingsContentArea(activeSettingsCategory);
+        nav.done();
     };
 
     const activateMainCategory = (button, requestedCategory = null) => {

@@ -144,6 +144,45 @@ export function shotSummary(entries, seconds) {
     return `perf: shot ${seconds.toFixed(1)}s n=${frames} ${parts.join(' ')} (mean/max ms x count)`;
 }
 
+/**
+ * One line for one page tap. Pure, so the shape is testable without a browser.
+ *
+ * Marks are cumulative from the tap, not per-phase durations: a timeline reads
+ * straight off the line, and the phase costs are the differences between them.
+ *
+ * @param {string} label where the tap went
+ * @param {Array<[string, number]>} marks [name, ms since the tap]
+ * @param {number} totalMs
+ * @returns {string}
+ */
+export function navSummary(label, marks, totalMs) {
+    const parts = marks.map(([name, ms]) => `${name}=${Math.round(ms)}`);
+    parts.push(`total=${Math.round(totalMs)}ms`);
+    return `perf: nav ${label} ${parts.join(' ')}`;
+}
+
+/**
+ * Time one navigation. `mark()` at each phase boundary, `done()` to leave the
+ * line in the log -- always on, same as the shot line: page-to-page latency is
+ * another "it depends on the tablet" question and the answer has to arrive in a
+ * user's attached log.
+ *
+ * Not routed through record()/stats: a tap is one event the user waited through,
+ * so the timeline matters and a mean across taps does not.
+ */
+export function timeNav(label) {
+    const startedAt = performance.now();
+    const marks = [];
+    return {
+        mark(name) {
+            marks.push([name, performance.now() - startedAt]);
+        },
+        done() {
+            logger.audit(navSummary(label, marks, performance.now() - startedAt));
+        },
+    };
+}
+
 /** A shot began: the window is the shot, not the minutes of idling before it. */
 export function startPerfShot() {
     stats.clear();

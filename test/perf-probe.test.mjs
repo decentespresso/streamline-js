@@ -9,6 +9,7 @@ import {
     initPerfProbe,
     isPerfProbeEnabled,
     measure,
+    navSummary,
     readStats,
     setPerfProbeEnabled,
     shotSummary,
@@ -126,4 +127,14 @@ test('a flush-length run is dropped rather than logged, and clears the window', 
     measure('chart', () => 1);
     assert.equal(endPerfShot(MIN_REPORTED_SHOT_S), true);
     assert.equal(readStats().size, 0);
+});
+
+test('a navigation leaves one line, marks cumulative from the tap', () => {
+    const line = navSummary('settings/maintenance', [['module', 412.4], ['mount', 530.6]], 531.2);
+
+    assert.equal(line, 'perf: nav settings/maintenance module=412 mount=531 total=531ms');
+});
+
+test('a navigation with no marks still reports its total', () => {
+    assert.equal(navSummary('main', [], 18.7), 'perf: nav main total=19ms');
 });
