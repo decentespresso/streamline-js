@@ -196,6 +196,14 @@ export async function loadAvailableProfiles() {
         await migrateKvProfilesToRest();
 
         logger.info('Attempting to load profiles from API...');
+        // Neither of these two KV reads needs the profiles array to fetch -- only
+        // to merge -- so they go out now and overlap the slow one instead of
+        // queueing behind it. Measured on the tablet, the four reads here ran end
+        // to end: /profiles took 102 ms of Decaid's own time and the three KV
+        // reads about 1.5 ms each, yet each hop still cost 25-85 ms of WebView
+        // fetch overhead, which is what the serial chain was really paying for.
+        const draftsFetch = fetchProfileDrafts();
+        const overridesLoaded = loadProfileOverrides();
         const profilesFromApi = await getProfiles(); // This is an array of ProfileRecords
 
         // Process and populate in-memory cache
@@ -220,17 +228,21 @@ export async function loadAvailableProfiles() {
         // Local-only duplicates, merged in before overrides are folded on — a
         // draft's saved tile edits are keyed to its draft id, so the record
         // has to already be in availableProfiles or applyOverridesToRecords
-        // below has nothing to attach them to.
-        await loadProfileDrafts();
+        // below has nothing to attach them to. The read was started above; only
+        // the merge is ordered here.
+        mergeProfileDrafts(await draftsFetch);
 
         // The user's tile edits live in KV, not on the record — fold them on so
         // every `record.metadata.targetDoseWeight` read below sees them.
-        await loadProfileOverrides();
+        await overridesLoaded;
         applyOverridesToRecords(availableProfiles);
 
-        // Sync to IndexedDB as a fallback
-        await setSetting(PROFILES_CACHE_KEY, availableProfiles);
-        logger.info('Successfully synced profiles to IndexedDB cache.');
+        // The IndexedDB copy is read only by a cold start that cannot reach
+        // Decaid, so nothing on screen waits for it -- and on the tablet this
+        // write sat in front of the profile list.
+        setSetting(PROFILES_CACHE_KEY, availableProfiles)
+            .then(() => logger.info('Successfully synced profiles to IndexedDB cache.'))
+            .catch(e => logger.warn('Could not sync profiles to the IndexedDB cache:', e));
 
         return { profilesFrom: 'API' };
 
@@ -276,17 +288,31 @@ async function persistDrafts() {
     await setValueInStore(SETTINGS_NAMESPACE, DRAFTS_KEY, profileDrafts);
 }
 
-export async function loadProfileDrafts() {
+/**
+ * The KV read alone. Split out from the merge so the request can be in flight
+ * while getProfiles() is still running: the fetch needs nothing from
+ * availableProfiles, but the merge below overwrites entries in it and so has to
+ * land after loadAvailableProfiles() has rebuilt it.
+ */
+async function fetchProfileDrafts() {
     try {
         const stored = await getValueFromStore(SETTINGS_NAMESPACE, DRAFTS_KEY);
-        profileDrafts = (stored && typeof stored === 'object') ? stored : {};
+        return (stored && typeof stored === 'object') ? stored : {};
     } catch (e) {
         logger.warn('Could not load profile drafts from KV:', e);
-        profileDrafts = {};
+        return {};
     }
+}
+
+function mergeProfileDrafts(stored) {
+    profileDrafts = stored;
     for (const [id, record] of Object.entries(profileDrafts)) {
         availableProfiles[id] = record;
     }
+}
+
+export async function loadProfileDrafts() {
+    mergeProfileDrafts(await fetchProfileDrafts());
 }
 
 // Suffix `baseTitle` with " (n)" until it no longer collides with any known

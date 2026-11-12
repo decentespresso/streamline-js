@@ -14,6 +14,7 @@ import { loadPage } from './router.js';
 import { openContextMenu, closeContextMenu } from './context-menu.js';
 import { pluginMenuEntries } from './plugin-menu-items.js';
 import { showProfileQrModal, initQrShareModal } from './qrShare.js';
+import { timeNav } from './perf-probe.js';
 
 const initializedProfileRoots = new WeakSet();
 // True when the pre-selected profile is just "the first row" rather than the
@@ -1535,6 +1536,10 @@ function filterProfiles(searchTerm) {
 
 // Main initialization function that can be called externally
 export async function initializeProfileSelector() {
+    // Timed here rather than in the router: on the tablet this is 0.5-0.75s,
+    // the longest wait in the skin, and the total alone does not say which of
+    // the fetch, the chart or the list owns it.
+    const nav = timeNav('profile_selector:init');
     // Module state outlives the page: clear any search left over from a
     // previous mount so its document listener can't fire against the new DOM.
     if (searchOutsideHandler) {
@@ -1555,6 +1560,7 @@ export async function initializeProfileSelector() {
     selectionIsFallback = false;
 
     translatePage();
+    nav.mark('translate');
     logger.debug('initializeProfileSelector: i18n translated');
     initQrShareModal();
 
@@ -1573,11 +1579,13 @@ export async function initializeProfileSelector() {
     // The router injects the page HTML and awaits a requestAnimationFrame before
     // calling us (router.js), so the element is already in the DOM -- the old
     // retry ladder was guarding a race that no longer exists.
+    nav.mark('fetchSent');
     if (document.getElementById('plotly-chart')) {
         initChart();
     } else {
         logger.warn('Chart element not found; skipping chart init');
     }
+    nav.mark('chart');
 
     // availableProfiles is module state in profileManager.js and isn't cleared
     // until the fetch above actually resolves (see loadAvailableProfiles), so
@@ -1587,9 +1595,11 @@ export async function initializeProfileSelector() {
     // appear on every nav in/out. Reconciled below once the real fetch lands.
     if (Object.keys(availableProfiles).length > 0) {
         renderProfiles();
+        nav.mark('stalePaint');
     }
 
     const profileLoadStatus = await profilePromise;
+    nav.mark('fetched');
     logger.debug('initializeProfileSelector: Profile manager initialized, status:', profileLoadStatus);
 
     if (profileLoadStatus?.profilesFrom === 'API') {
@@ -1602,6 +1612,7 @@ export async function initializeProfileSelector() {
 
     logger.debug('initializeProfileSelector: Rendering profiles...');
     renderProfiles();
+    nav.mark('render');
 
     // findActiveProfileKey only answers once the main page has bound the active
     // profile, and that runs off loadInitialData, which waits on the DE1
@@ -1862,6 +1873,7 @@ export async function initializeProfileSelector() {
     }
 
     logger.debug('initializeProfileSelector: Initialization complete');
+    nav.done();
 }
 
 // Call initialization when DOM is ready for traditional page loads

@@ -520,7 +520,10 @@ async function mountMaintenanceCategory(category, container) {
     }
 }
 
-function updateSettingsContentArea(category) {
+// `nav` is passed only by the one call the user actually tapped for
+// (activateSubcategory); the other ~50 callers are re-renders after a write or a
+// language change, and timing those would bury the navigations in the log.
+function updateSettingsContentArea(category, nav = null) {
     // Always tear the previous maintenance mount down, including when moving
     // between two maintenance pages — its poller and listeners are per-mount.
     maintenanceSequence += 1;
@@ -572,7 +575,9 @@ function updateSettingsContentArea(category) {
     const contentArea = document.getElementById('settings-content-area');
     if (contentArea) {
         contentArea.innerHTML = renderSettingsContent(category);
+        nav?.mark('render');
         translatePage();
+        nav?.mark('translate');
         // The CSS default is a fixed 75% stop, so without this the bar sits at 75%
         // on first paint no matter what the value is.
         const slider = contentArea.querySelector('#brightness-slider');
@@ -8034,7 +8039,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         });
         activeSettingsCategory = button.dataset.category;
         writeSettingsLocation(activeMainCategoryKey, activeSettingsCategory);
-        updateSettingsContentArea(activeSettingsCategory);
+        updateSettingsContentArea(activeSettingsCategory, nav);
         nav.done();
     };
 

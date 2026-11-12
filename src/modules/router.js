@@ -272,13 +272,10 @@ export async function loadPage(pageUrl, { history = 'push' } = {}) {
             try {
                 const { initializeProfileSelector } = await import('./profile_selector.js');
                 if (initializeProfileSelector) {
-                    // Its own line: the selector's init is deliberately not
-                    // awaited here, so the page is already on screen while it
-                    // fills -- two separate waits, not one.
-                    const init = timeNav('profile_selector:init');
-                    initializeProfileSelector()
-                        .then(() => init.done())
-                        .catch(e => console.error('Router: Profile selector init error:', e));
+                    // Not awaited: the page is already on screen while it fills,
+                    // so it is a second wait, not part of this one. It times
+                    // itself (profile_selector:init), with its own phase marks.
+                    initializeProfileSelector().catch(e => console.error('Router: Profile selector init error:', e));
                 }
             } catch (e) {
                 console.error('Router: Error initializing profile selector:', e);
