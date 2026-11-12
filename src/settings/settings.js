@@ -576,6 +576,16 @@ function updateSettingsContentArea(category, nav = null) {
     if (contentArea) {
         contentArea.innerHTML = renderSettingsContent(category);
         nav?.mark('render');
+        // Deliberate forced layout, for the measurement only. The innerHTML
+        // above dirties style and layout without flushing, so the first read
+        // anywhere downstream pays for the whole injected page -- and the first
+        // read used to be inside translatePage(), which made translation look
+        // like the cost. Reading here bills that flush to 'layout' instead, so
+        // 'translate' is what translation genuinely adds. The browser has to do
+        // this work before it can paint either way, so nothing is added to the
+        // wait; if it turns out to be the whole number, the lever is the page,
+        // not the i18n pass.
+        if (nav) { void contentArea.offsetHeight; nav.mark('layout'); }
         translatePage();
         nav?.mark('translate');
         // The CSS default is a fixed 75% stop, so without this the bar sits at 75%
