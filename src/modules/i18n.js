@@ -72,9 +72,14 @@ export function translatePage() {
         element.textContent = getTranslation(key);
     });
     const keysAt = performance.now();
-    // A language change swaps the strings and can swap the face behind them, so
-    // sizes worked out for the old ones say nothing about these.
-    invalidateTextFits();
+    // NOT invalidateTextFits() here. New strings need no invalidation: a fit is
+    // cached per element AND per text (state.sizes), so a changed string is a
+    // cache miss already, while the element's box and font -- the expensive half
+    // -- have not changed. Clearing the lot cost 21-49 ms of every settings page
+    // switch on the tablet, measured with probes=0, i.e. re-measuring five
+    // elements from scratch. What does invalidate a cached size is the face
+    // behind the text changing, and that arrives through document.fonts.ready
+    // below.
     _meterProbes = 0;
     fitAllText();
     const fitsAt = performance.now();
@@ -255,6 +260,10 @@ else document.addEventListener('DOMContentLoaded', () => document.body.appendChi
 // Verified against the span on NotoSansMono: within 0.5px at every size tried,
 // and the fitter's 8px inset absorbs that.
 let _fitCanvas = null;
+// Only `true` is remembered: a face can finish loading between two calls, so a
+// cached `false` would pin the element to the DOM span for the rest of the
+// session. Once loaded it stays loaded, so a cached `true` cannot go stale.
+const _faceLoaded = new Set();
 
 function canvasWidth(text, px, font) {
     if (!_fitCanvas) _fitCanvas = document.createElement('canvas').getContext('2d');
@@ -264,7 +273,10 @@ function canvasWidth(text, px, font) {
     if (spaced && !('letterSpacing' in ctx)) return null;
     if ('letterSpacing' in ctx) ctx.letterSpacing = spaced ? font.letterSpacing : '0px';
     ctx.font = `${font.style} ${font.weight} ${px}px ${font.family}`;
-    if (document.fonts && !document.fonts.check(ctx.font)) return null;
+    if (document.fonts && !_faceLoaded.has(ctx.font)) {
+        if (!document.fonts.check(ctx.font)) return null;
+        _faceLoaded.add(ctx.font);
+    }
     // Round up: the span reports whole pixels, and under-measuring is what
     // overflows a cell.
     return Math.ceil(ctx.measureText(text).width);
@@ -338,13 +350,16 @@ export function fitTextToBox(el, min = 14) {
 
 export function fitTextToWidth(el) {
     const state = fitStateFor(el);
-    // Not laid out yet (hidden/zero-width): leave the CSS size, a later fit
-    // (fonts.ready / next translatePage) handles it. Never shrink to the floor
-    // here, and do not cache a measurement taken against no width.
-    if (state.avail <= 0) {
-        _fitState.delete(el);
-        return;
-    }
+    // Not laid out yet (hidden/zero-width): leave the CSS size alone, and never
+    // shrink to the floor against no width.
+    //
+    // The zero stays cached rather than being dropped. Three of the main page's
+    // fit elements are hidden the whole time a subpage is open, and dropping
+    // their state made every translatePage re-run getComputedStyle and
+    // clientWidth on all three only to throw the answer away again. Both
+    // ResizeObservers above fire on the 0 -> full-width change when the main
+    // page comes back, and deleting the state is exactly what they do.
+    if (state.avail <= 0) return;
 
     const text = el.textContent;
     const cached = state.sizes.get(text);
