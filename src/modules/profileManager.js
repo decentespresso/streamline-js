@@ -130,19 +130,20 @@ const KV_MIGRATED_FLAG = 'kv-profiles-migrated';
 // them. Idempotent — guarded by a persisted flag; only flips the flag once all
 // records moved, so a partial failure retries on next load. KV records are
 // deleted only after a successful POST, so nothing is lost on error.
+/** @returns {Promise<boolean>} whether anything actually moved into /profiles. */
 async function migrateKvProfilesToRest() {
-    if (await getSetting(KV_MIGRATED_FLAG)) return;
+    if (await getSetting(KV_MIGRATED_FLAG)) return false;
 
     let kvKeys = [];
     try {
         kvKeys = await getKVKeys('streamline');
     } catch (e) {
         // No KV namespace or server unreachable — nothing to migrate now.
-        return;
+        return false;
     }
     if (!kvKeys || kvKeys.length === 0) {
         await setSetting(KV_MIGRATED_FLAG, true);
-        return;
+        return false;
     }
 
     let migrated = 0;
@@ -164,6 +165,7 @@ async function migrateKvProfilesToRest() {
     }
     logger.info(`Migrated ${migrated}/${kvKeys.length} legacy KV profile(s) to /profiles.`);
     if (migrated === kvKeys.length) await setSetting(KV_MIGRATED_FLAG, true);
+    return migrated > 0;
 }
 
 // Repoint any favorite slot holding oldId to newId. Called after an edit whose
@@ -192,19 +194,26 @@ function forgetWakeProfile(profileId) {
 
 export async function loadAvailableProfiles() {
     try {
-        // Move legacy KV profiles into /profiles first so getProfiles() returns them.
-        await migrateKvProfilesToRest();
-
         logger.info('Attempting to load profiles from API...');
-        // Neither of these two KV reads needs the profiles array to fetch -- only
-        // to merge -- so they go out now and overlap the slow one instead of
-        // queueing behind it. Measured on the tablet, the four reads here ran end
-        // to end: /profiles took 102 ms of Decaid's own time and the three KV
-        // reads about 1.5 ms each, yet each hop still cost 25-85 ms of WebView
-        // fetch overhead, which is what the serial chain was really paying for.
+        // All three reads go out before anything here touches IndexedDB, and
+        // before the migration check below, which does. An IndexedDB request
+        // cannot complete while the main thread is busy, and the profile
+        // selector runs its chart init and first paint -- about 130 ms on the
+        // tablet -- immediately after calling us: measured there, that delayed
+        // these requests by 240 ms, longer than the reads themselves take.
+        // Neither KV read needs the profiles array to fetch, only to merge.
+        const profilesFetch = getProfiles(); // This is an array of ProfileRecords
         const draftsFetch = fetchProfileDrafts();
         const overridesLoaded = loadProfileOverrides();
-        const profilesFromApi = await getProfiles(); // This is an array of ProfileRecords
+
+        // Legacy KV profiles move into /profiles once per device, ever. The
+        // fetch above predates that move, so on the one visit that migrates
+        // anything, take a fresh one.
+        const migrated = await migrateKvProfilesToRest();
+        // The first fetch is then orphaned; keep its rejection from surfacing
+        // as an unhandled one, since nothing awaits it any more.
+        if (migrated) profilesFetch.catch(() => {});
+        const profilesFromApi = migrated ? await getProfiles() : await profilesFetch;
 
         // Process and populate in-memory cache
         availableProfiles = {};

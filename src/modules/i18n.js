@@ -90,28 +90,40 @@ let _telemetryObserved = false;
 export function fitTelemetry() {
     const row = document.getElementById('telemetry-row');
     if (!row) return;
-    row.style.transformOrigin = 'left center';
-    row.style.transform = '';                    // reset so scrollWidth is the true 1-line width
     // Grandparent = the header band (full left-column width; shrinks when GHC shows).
     const band = row.parentElement && row.parentElement.parentElement;
     if (!band) return;
+    // Observe before the hidden check below, not after the fit: booting straight
+    // onto a subpage (?page=settings) would otherwise bail out here and never
+    // start observing, leaving the row unfitted for the whole session.
+    observeTelemetry(row, band);
+    // Nothing to fit while the main page is hidden behind a subpage, and the
+    // reads below would force another document-wide layout on every subpage
+    // navigation. The row is never position:fixed, so a null offsetParent means
+    // display:none -- and the observer above re-fits it when the main page comes
+    // back and its box goes 0 -> full width.
+    if (!row.offsetParent) return;
+    row.style.transformOrigin = 'left center';
+    row.style.transform = '';                    // reset so scrollWidth is the true 1-line width
     const LEFT = 40, RESERVE = 24;               // row's left offset + gap before GHC/edge
     const avail = band.clientWidth - LEFT - RESERVE;
     const natural = row.scrollWidth;
     if (avail > 0 && natural > avail) {
         row.style.transform = `scale(${(avail / natural).toFixed(3)})`;
     }
-    // Re-fit on any size change, delivered immediately once observing starts:
-    //  - band: GHC column toggling / window resize (available width changes)
-    //  - row:  content/font changes (Retry text appearing, first layout, Inter
-    //          loading) — catches the initial clip before it's visible.
-    // transform is visual-only, so it never changes either observed box -> no loop.
-    if (!_telemetryObserved && typeof ResizeObserver !== 'undefined') {
-        _telemetryObserved = true;
-        const ro = new ResizeObserver(() => fitTelemetry());
-        ro.observe(band);
-        ro.observe(row);
-    }
+}
+
+// Re-fit on any size change, delivered immediately once observing starts:
+//  - band: GHC column toggling / window resize (available width changes)
+//  - row:  content/font changes (Retry text appearing, first layout, Inter
+//          loading) — catches the initial clip before it's visible.
+// transform is visual-only, so it never changes either observed box -> no loop.
+function observeTelemetry(row, band) {
+    if (_telemetryObserved || typeof ResizeObserver === 'undefined') return;
+    _telemetryObserved = true;
+    const ro = new ResizeObserver(() => fitTelemetry());
+    ro.observe(band);
+    ro.observe(row);
 }
 
 // Shrink text to fit fixed-size elements (e.g. header buttons) so long
@@ -120,6 +132,15 @@ export function fitTelemetry() {
 let _fitObserver;
 function fitAllText() {
     const els = document.querySelectorAll('[data-fit-text]');
+    // Three passes, because fitStateFor clears the inline size before reading
+    // clientWidth: interleaved, each element's read flushed the layout the
+    // previous element's write had dirtied, so N elements cost N document-wide
+    // layouts. Measured on the tablet (2026-11-12), translatePage() was 30-45 ms
+    // of a 37-53 ms settings page switch -- nearly all of it this. Clear every
+    // size, then measure every box against one flush, then write the sizes
+    // (which needs no read at all, text being measured on a canvas).
+    els.forEach(el => { if (el.style.fontSize) el.style.fontSize = ''; });
+    els.forEach(fitStateFor);
     els.forEach(fitTextToWidth);
     // Re-fit when an element's size changes — crucially the 0 -> 165px jump when
     // #main-page returns from display:none (language was changed on the Settings
@@ -156,7 +177,9 @@ function fitStateFor(el) {
     const known = _fitState.get(el);
     if (known) return known;
 
-    el.style.fontSize = '';
+    // Only when there is one to clear: a redundant write would re-dirty layout
+    // between two reads, which is exactly what fitAllText() batches to avoid.
+    if (el.style.fontSize) el.style.fontSize = '';
     const cs = getComputedStyle(el);
     // clientWidth excludes border; -8px inset so text clears the rounded corners.
     const state = {
