@@ -65,13 +65,10 @@ function findSupportedLanguage(language) {
  * Translates all elements on the page with a `data-i18n-key` attribute.
  */
 export function translatePage() {
-    const startedAt = performance.now();
-    const nodes = document.querySelectorAll('[data-i18n-key]');
-    nodes.forEach(element => {
+    document.querySelectorAll('[data-i18n-key]').forEach(element => {
         const key = element.getAttribute('data-i18n-key');
         element.textContent = getTranslation(key);
     });
-    const keysAt = performance.now();
     // NOT invalidateTextFits() here. New strings need no invalidation: a fit is
     // cached per element AND per text (state.sizes), so a changed string is a
     // cache miss already, while the element's box and font -- the expensive half
@@ -80,36 +77,14 @@ export function translatePage() {
     // elements from scratch. What does invalidate a cached size is the face
     // behind the text changing, and that arrives through document.fonts.ready
     // below.
-    _meterProbes = 0;
     fitAllText();
-    const fitsAt = performance.now();
     fitTelemetry();
-    reportSlowTranslate(startedAt, keysAt, fitsAt, nodes.length);
     // The header buttons are laid out with the custom Inter font; if it hasn't
     // finished loading yet the first fit measures against a fallback (or a
     // not-yet-sized box) and mis-shrinks. Re-fit once fonts are ready.
     if (document.fonts && document.fonts.status !== 'loaded') {
         document.fonts.ready.then(() => { invalidateTextFits(); fitAllText(); fitTelemetry(); });
     }
-}
-
-// Batching the fits did NOT move this on the tablet: a settings page switch
-// was 30-45 ms of translatePage before and after, so the layout thrash was not
-// where the time went. Rather than guess a third time, leave the breakdown in
-// the log -- but only for a call that was actually slow, since a settings
-// session re-renders dozens of times and every one of those calls through here.
-const TRANSLATE_SLOW_MS = 15;
-let _meterProbes = 0;
-
-function reportSlowTranslate(startedAt, keysAt, fitsAt, nodes) {
-    const endedAt = performance.now();
-    if (endedAt - startedAt < TRANSLATE_SLOW_MS) return;
-    logger.audit(
-        `perf: translate keys=${(keysAt - startedAt).toFixed(1)}/n=${nodes}`
-        + ` fits=${(fitsAt - keysAt).toFixed(1)}/probes=${_meterProbes}`
-        + ` telemetry=${(endedAt - fitsAt).toFixed(1)}`
-        + ` total=${(endedAt - startedAt).toFixed(1)}ms`
-    );
 }
 
 // Scale the machine-telemetry row down so long-language rows (e.g. German:
@@ -381,10 +356,6 @@ export function fitTextToWidth(el) {
             meterPrepared = true;
         }
         _fitMeter.style.fontSize = size + 'px';
-        // Counted so a slow translatePage says whether the canvas path was
-        // bypassed: each of these forces a document-wide layout, ~3 ms on the
-        // tablet, and the canvas path forces none.
-        _meterProbes += 1;
         return _fitMeter.offsetWidth;
     };
 

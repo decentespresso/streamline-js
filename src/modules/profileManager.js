@@ -195,6 +195,13 @@ function forgetWakeProfile(profileId) {
     } catch (_) { /* storage unavailable */ }
 }
 
+// requestIdleCallback is absent on iOS/older Safari WebViews (dual target), so
+// fall back to a plain timer well clear of the navigation it is getting out of.
+function whenIdle(fn) {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(fn, { timeout: 5000 });
+    else setTimeout(fn, 2000);
+}
+
 export async function loadAvailableProfiles() {
     try {
         logger.info('Attempting to load profiles from API...');
@@ -257,11 +264,17 @@ export async function loadAvailableProfiles() {
         applyOverridesToRecords(availableProfiles);
 
         // The IndexedDB copy is read only by a cold start that cannot reach
-        // Decaid, so nothing on screen waits for it -- and on the tablet this
-        // write sat in front of the profile list.
-        setSetting(PROFILES_CACHE_KEY, availableProfiles)
-            .then(() => logger.info('Successfully synced profiles to IndexedDB cache.'))
-            .catch(e => logger.warn('Could not sync profiles to the IndexedDB cache:', e));
+        // Decaid, so nothing on screen waits for it. Not awaiting it was not
+        // enough: handing ~100 full profile records to IndexedDB
+        // structured-clones them synchronously on the main thread, and on the
+        // tablet that showed up as a 167 ms gap with no network traffic in it,
+        // between the overrides read and the favorites reads. So it waits for
+        // idle, by which time the list has been on screen for a while.
+        whenIdle(() => {
+            setSetting(PROFILES_CACHE_KEY, availableProfiles)
+                .then(() => logger.info('Successfully synced profiles to IndexedDB cache.'))
+                .catch(e => logger.warn('Could not sync profiles to the IndexedDB cache:', e));
+        });
 
         return { profilesFrom: 'API' };
 
@@ -424,6 +437,11 @@ async function getFavoritesInitializedFlag() {
         logger.warn('Could not read favorites-initialized flag from REA store:', e);
     }
     try {
+        // This now runs concurrently with loadAvailableProfiles() rather than
+        // after it, so the handle it used to be able to assume may still be
+        // opening. Reading "not initialized" because the DB was not ready yet
+        // is what triggers auto-populate over the user's own empty slots.
+        await openDB();
         const idbFlag = await getSetting(FAVORITES_INITIALIZED_KEY);
         if (idbFlag === true) return true;
     } catch (e) {
@@ -1561,13 +1579,21 @@ export async function init() {
         // below by 132 ms after they were moved to the top of
         // loadAvailableProfiles(). It awaits openDB() itself, once the requests
         // are out; openDB is memoized, so this is the same single open.
-        profileLoadStatus = await loadAvailableProfiles();
-        // Independent REA reads — no data dependency between them, so run
-        // concurrently instead of paying two sequential round trips.
-        const [, userInitialized] = await Promise.all([
+        // Invoked, not awaited: this issues the profile reads (and starts
+        // openDB) synchronously, so the two favorites reads below can go out in
+        // the same tick instead of waiting for the profile list to be built.
+        // Neither of them looks at availableProfiles -- validateButtonIndices
+        // only range-checks slot numbers -- so there is no ordering to keep.
+        // Measured on the tablet, they were the last 30-50 ms of a chain that
+        // had nothing left to wait for.
+        const profilesLoading = loadAvailableProfiles();
+        const favoritesLoading = Promise.all([
             loadAssignments(),
             getFavoritesInitializedFlag(),
         ]);
+
+        profileLoadStatus = await profilesLoading;
+        const [, userInitialized] = await favoritesLoading;
 
         const allEmpty = Object.values(favoriteAssignments).every(v => v === null || v === undefined);
         // If user has previously saved assignments (even all-empty via clearing slots),
