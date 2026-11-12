@@ -50,6 +50,7 @@ export const SYNCED_KEYS = [
     'screensaverDateFormat',
     'blackScreenSaver',
     'screensaverShowClock',
+    'sleepExitEnabled',
     'wakeLockEnabled',
     'wakeProfileEnabled',
     'wakeProfileId',

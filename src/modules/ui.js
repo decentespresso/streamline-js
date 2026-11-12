@@ -6,7 +6,7 @@ import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from '.
 import { createSteamTimer, foldSteamFrame, steamElapsedSeconds, steamAuditFrame } from './steam-timer.js';
 import { openDB, getSetting } from './idb.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, formatScreensaverClockDate, formatScreensaverClockTime, screensaverClockPositionStyle } from './screensaver-clock.js';
-import { deriveSleepButtonAction, isWakePending, mayTapWakeMachine } from './screensaver-policy.js';
+import { deriveReturnWake, deriveSleepButtonAction, isWakePending, mayTapWakeMachine, setScreensaverSuppressed } from './screensaver-policy.js';
 import { isBengleMachine, isBengleModel, isRefillKitPresent } from './machine.js';
 import { MAX_STEAM_DURATION_S, MIN_STEAM_DURATION_S, STEAM_FLOW_PRESETS_BY_MODEL, MILK_STOP_PRESETS, resolveSteamFlowPresetsForModel, resolveSteamTileMode, steamSlotField as resolveSteamSlotField, milkTelemetryValue, steamFlowHighlightIndex, STEAM_SYNC_SYNCED, steamSyncField, foldSteamSyncState, shouldRetrySteamSync, steamSyncRetryDelay } from './steam-mode.js';
 import { API_DEBOUNCE_MS } from './workflow-watch.js';
@@ -827,6 +827,8 @@ function setupValueAdjuster(minusBtnId, plusBtnId, valueElId, step, min, formatt
 }
 
 export const LONG_PRESS_MS = 500;
+// Longer than LONG_PRESS_MS on purpose: an accidental app exit is more disruptive than an accidental preset edit.
+export const SLEEP_EXIT_HOLD_MS = 800;
 
 function makeNumpadMockInput(initialValue) {
     return {
@@ -2130,6 +2132,59 @@ export function wakeFromScreensaver() {
     });
 }
 
+// Marker left by a long-press Sleep that exits Decaid; consumed on return.
+const SLEEP_EXIT_KEY = 'sleepExitPending';
+// Settings > Screen Saver > Sleep button. Default ON: absent key means enabled.
+export const SLEEP_EXIT_ENABLED_KEY = 'sleepExitEnabled';
+// Who owns the screensaver suppression this path takes -- a firmware flash can
+// hold it at the same time, and must not have it released underneath it.
+const SLEEP_EXIT_SUPPRESS_OWNER = 'sleepExit';
+let sleepExitReturnWired = false;
+
+/** Is the long-press sleep-and-exit gesture switched on? */
+export function isSleepExitEnabled() {
+    try { return localStorage.getItem(SLEEP_EXIT_ENABLED_KEY) !== 'false'; } catch (e) { return true; }
+}
+
+/** Does this host offer the exit the gesture needs? Decides whether the setting is shown. */
+export function canExitApp() {
+    return typeof window.decentApp?.exitApp === 'function';
+}
+
+/**
+ * We came back after a sleep-and-exit: stop suppressing the screensaver and wake
+ * the machine unless it is busy. No marker means nothing to do. The marker is
+ * cleared first so this can never fire twice.
+ */
+function handleSleepExitReturn() {
+    let pending = null;
+    try { pending = localStorage.getItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
+    if (pending === null) return;
+    try { localStorage.removeItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
+    // Drained whatever the setting now says: the gesture may have been switched
+    // off (here or on another synced tablet) while this marker was pending, and
+    // leaving it would latch the suppression with nothing left to clear it.
+    setScreensaverSuppressed(false, SLEEP_EXIT_SUPPRESS_OWNER);
+    if (deriveReturnWake(currentMachineState) !== 'wake') return;
+    hideScreensaver();
+    noteWakeRequested();
+    setMachineState('idle').catch((err) => {
+        logger.error('Return from sleep exit: failed to wake the machine:', err);
+        clearWakeRequest();
+    });
+}
+
+// Registered once; a page reloaded by Decaid after its unload IS the return, so also run it now.
+function initSleepExitReturn() {
+    if (sleepExitReturnWired) return;
+    sleepExitReturnWired = true;
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') handleSleepExitReturn();
+    });
+    window.addEventListener('pageshow', handleSleepExitReturn);
+    handleSleepExitReturn();
+}
+
 /** We have asked the machine to wake and are waiting for it to confirm. */
 export function noteWakeRequested() {
     wakeRequestedAt = Date.now();
@@ -2643,7 +2698,7 @@ export function initUI(callbacks) {
         //     first press. The in-flight guard makes the second tap a no-op.
         let sleepRequestInFlight = false;
 
-        sleepButton.addEventListener('click', async () => {
+        const handleSleepPress = async (isHold) => {
             if (sleepRequestInFlight) return;
             sleepRequestInFlight = true;
 
@@ -2669,13 +2724,38 @@ export function initUI(callbacks) {
 
                 await setMachineState(action.command);
                 logger.info(`Sleep button: machine reported "${currentMachineState}" -> requested "${action.command}".`);
+
+                // Long-press while the machine is going to sleep also leaves Decaid.
+                // A hold on "Awake" derives 'idle', so it can never exit on a wake.
+                if (isHold && action.command === 'sleeping' && canExitApp() && isSleepExitEnabled()) {
+                    try { localStorage.setItem(SLEEP_EXIT_KEY, String(Date.now())); } catch (e) { /* private mode */ }
+                    setScreensaverSuppressed(true, SLEEP_EXIT_SUPPRESS_OWNER);
+                    // Decaid pauses background timers, so a timer that fires on time
+                    // while the page is visible means the app never left (iOS no-ops,
+                    // or the exit failed): let the screensaver follow the machine again.
+                    setTimeout(() => {
+                        if (document.visibilityState !== 'visible') return;
+                        let pending = false;
+                        try { pending = localStorage.getItem(SLEEP_EXIT_KEY) !== null; } catch (e) { /* private mode */ }
+                        if (!pending) return;
+                        try { localStorage.removeItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
+                        setScreensaverSuppressed(false, SLEEP_EXIT_SUPPRESS_OWNER);
+                    }, 3000);
+                    // Its own try: a host that throws here must not be reported as a
+                    // failed sleep -- the machine is already asleep, and the 3 s net
+                    // above still clears the marker.
+                    try { window.decentApp.exitApp(); } catch (e) { logger.error('Sleep exit: exitApp() failed:', e); }
+                }
             } catch (err) {
                 logger.error(`Sleep button: failed to set machine state to "${action.command}":`, err);
                 clearWakeRequest(); // the wake never landed — let the overlay come back
             } finally {
                 sleepRequestInFlight = false;
             }
-        });
+        };
+
+        setupPressAndHold(sleepButton, () => handleSleepPress(false), () => handleSleepPress(true), { duration: SLEEP_EXIT_HOLD_MS });
+        initSleepExitReturn();
     }
 
     if (doseInValueEl) {
