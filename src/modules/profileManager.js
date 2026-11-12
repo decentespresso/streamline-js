@@ -1,4 +1,5 @@
 import { logger } from './logger.js';
+import { timeNav } from './perf-probe.js';
 import { updateWorkflow,sendProfile, getWorkflow, getValueFromStore, setValueInStore, getProfiles, deleteProfile, updateProfileVisibility, uploadProfile, uploadProfileWithParent, updateProfile, updateProfileMetadata, getShots, getKVKeys, getKVValue, DYE2_KV_NAMESPACE, deleteKVValue, setTargetSteamDuration, setTargetSteamFlow } from './api.js';
 import { updateProfileName, updateTemperatureDisplay, updateDrinkOut, updateDrinkRatio, updateDoseInDisplay, updateGrindDisplay, updateSteamDisplay, updateHotWaterDisplay, updateFlushDisplay, showToast, setupPressAndHold} from './ui.js';
 import { openContextMenu } from './context-menu.js';
@@ -203,6 +204,9 @@ function whenIdle(fn) {
 }
 
 export async function loadAvailableProfiles() {
+    // Split from profile_manager:init so the tablet says which half of it is
+    // slow: waiting on the reads, or the per-record work after they land.
+    const nav = timeNav('profiles:load');
     try {
         logger.info('Attempting to load profiles from API...');
         // All three reads go out before anything here touches IndexedDB, and
@@ -231,6 +235,7 @@ export async function loadAvailableProfiles() {
         // as an unhandled one, since nothing awaits it any more.
         if (migrated) profilesFetch.catch(() => {});
         const profilesFromApi = migrated ? await getProfiles() : await profilesFetch;
+        nav.mark('fetched');
 
         // Process and populate in-memory cache
         availableProfiles = {};
@@ -256,12 +261,14 @@ export async function loadAvailableProfiles() {
         // has to already be in availableProfiles or applyOverridesToRecords
         // below has nothing to attach them to. The read was started above; only
         // the merge is ordered here.
+        nav.mark('records');
         mergeProfileDrafts(await draftsFetch);
 
         // The user's tile edits live in KV, not on the record — fold them on so
         // every `record.metadata.targetDoseWeight` read below sees them.
         await overridesLoaded;
         applyOverridesToRecords(availableProfiles);
+        nav.mark('merged');
 
         // The IndexedDB copy is read only by a cold start that cannot reach
         // Decaid, so nothing on screen waits for it. Not awaiting it was not
@@ -276,6 +283,7 @@ export async function loadAvailableProfiles() {
                 .catch(e => logger.warn('Could not sync profiles to the IndexedDB cache:', e));
         });
 
+        nav.done();
         return { profilesFrom: 'API' };
 
     } catch (apiError) {
@@ -1557,6 +1565,11 @@ export function applyWorkflowToMainPageUI(workflow, { updateName = true } = {}) 
 
 export async function init() {
     logger.info('Profile Manager init started.');
+    // Decaid answers every read here within ~150 ms of the tap, yet init() took
+    // ~290 ms more to resolve -- all of it main-thread work after the data
+    // landed. Marked rather than guessed at: the last two rounds each cost a
+    // wrong theory about which part of this file was slow.
+    const nav = timeNav('profile_manager:init');
     let profileLoadStatus = {};
 
     try {
@@ -1593,7 +1606,9 @@ export async function init() {
         ]);
 
         profileLoadStatus = await profilesLoading;
+        nav.mark('profiles');
         const [, userInitialized] = await favoritesLoading;
+        nav.mark('favorites');
 
         const allEmpty = Object.values(favoriteAssignments).every(v => v === null || v === undefined);
         // If user has previously saved assignments (even all-empty via clearing slots),
@@ -1606,6 +1621,7 @@ export async function init() {
             updateButtonUI();
         }
 
+        nav.mark('buttonUI');
         document.addEventListener('streamline:languagechange', () => updateButtonUI());
 
         // Only attach event listeners to buttons that were found in the DOM
@@ -1653,5 +1669,6 @@ export async function init() {
     }
 
     logger.info('Profile Manager initialized.');
+    nav.done();
     return profileLoadStatus;
 }

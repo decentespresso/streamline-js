@@ -557,6 +557,13 @@ function renderProfiles() {
         container.innerHTML = ''; // Clear static content
         logger.debug('renderProfiles: Container cleared');
 
+        // Rows are built into a fragment and attached in one go. Appending each
+        // row straight to the live #profile-list meant ~77 rows x several
+        // elements of separate insertions into a laid-out tree; on the tablet
+        // the two render passes of a visit cost 206 ms between them. A fragment
+        // is not in the document, so building it invalidates nothing.
+        const frag = document.createDocumentFragment();
+
         const profileEntries = Object.entries(availableProfiles);
         logger.debug('renderProfiles: Available profiles count:', profileEntries.length);
 
@@ -580,7 +587,7 @@ function renderProfiles() {
             const h = document.createElement('div');
             h.className = 'px-3 pt-4 pb-1 text-[16px] uppercase tracking-wider text-[var(--low-contrast-white)] select-none';
             h.textContent = label;
-            container.appendChild(h);
+            frag.appendChild(h);
         };
 
         // A family with no real profile named just the base ("A-Flow") gets
@@ -592,7 +599,7 @@ function renderProfiles() {
             h.className = 'px-3 py-[15.75px] leading-[1.2] text-[30px] text-[var(--text-primary)] select-none';
             h.setAttribute('role', 'presentation');
             h.textContent = base;
-            container.appendChild(h);
+            frag.appendChild(h);
         };
 
         // Group profiles that share a name family: either a common prefix
@@ -808,7 +815,7 @@ function renderProfiles() {
                 openMenu();
             });
 
-            container.appendChild(div);
+            frag.appendChild(div);
 
             const kids = childrenByFamily.get(key);
             if (kids) kids.forEach(child => renderProfileItem(child, depth + 1));
@@ -887,6 +894,11 @@ function renderProfiles() {
             renderSectionHeader('Built-In Profiles');
             defaultsList.forEach(renderTopLevelEntry);
         }
+
+        // One insertion, and it has to happen before the lookup and the two
+        // layout reads below -- a fragment's children are not query-able or
+        // measurable until they are in the document.
+        container.appendChild(frag);
 
         logger.debug('renderProfiles: Total visible profiles:', visibleProfileCount);
         if (justAutoSelected) {
