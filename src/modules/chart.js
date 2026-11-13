@@ -33,7 +33,12 @@ const renderQueues = new WeakMap();
 const renderGenerations = new WeakMap();
 let latestMainRender = null;
 let mainRenderDirty = false;
-let currentTheme = localStorage.getItem('theme') || 'light';
+// The painted theme, not the stored one: index.html sets data-theme before the
+// first frame, and it may come from Decaid's themeMode rather than a stored
+// choice (see theme-policy.js). setTheme() keeps this in step afterwards.
+// Optional chaining: the node tests stub a bare `document` with no
+// documentElement, and this runs at module load.
+let currentTheme = document.documentElement?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
 
 async function drawECharts({ element, traces, layout, mode, generation }) {
     if (!element.isConnected || renderGenerations.get(element) !== generation) return;
@@ -1586,7 +1591,7 @@ export function initChart() {
         return;
     }
 
-    currentTheme = localStorage.getItem('theme') || 'light';
+    currentTheme = document.documentElement?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     const theme = currentTheme;
     updateChartColors(theme); // Apply theme-specific colors
 

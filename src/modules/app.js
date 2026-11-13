@@ -2496,6 +2496,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // them — WebView storage does not survive an app update.
         await settingsReady;
 
+        // After settingsReady, so a 'theme' restored from KV wins; not awaited,
+        // because a slow or absent Decaid must not hold up boot. Repaints only
+        // when Decaid's themeMode disagrees with what index.html painted.
+        ui.followDecaidTheme().catch(error => logger.warn('Decaid theme follow failed:', error));
+
         initScaling();
         if (!isSubPage()) requestAnimationFrame(() => loadECharts().catch(error => logger.error('ECharts load failed:', error)));
         requestAnimationFrame(() => requestAnimationFrame(() => {

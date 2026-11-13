@@ -1,7 +1,8 @@
 import { autoSteamPitcherDisabled, autoSteamPitcherLabel, compactAutoSteamTargetLabel, shouldKeepAutoSteamMode, steamAdjustmentControls } from './auto-steam-flow.js';
 import { manualSteamMode, steamModeCycle } from './auto-steam-capability.js';
 
-import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setSteamHeaterEnabled, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness } from './api.js';
+import { getProfile, getWorkflow, updateWorkflow, setMachineState, setTargetHotWaterVolume, setTargetHotWaterTemp, setTargetHotWaterDuration, setDe1Settings, setTargetSteamFlow, setTargetSteamDuration, setSteamHeaterEnabled, setStopAtTemperature, resyncSteamFromStore, MachineState, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, isBlackScreenSaver, getSaverBrightness, getReaSettings } from './api.js';
+import { DECAID_THEME_KEY, resolveTheme } from './theme-policy.js';
 import { resolveStatusStateKey, isActionTailSubstate, offerRefillRetry } from './machine-status-policy.js';
 import { createSteamTimer, foldSteamFrame, steamElapsedSeconds, steamAuditFrame } from './steam-timer.js';
 import { openDB, getSetting } from './idb.js';
@@ -1764,27 +1765,64 @@ export function setSteamTileModeIfSafe(mode) {
 }
 
 
+export function paintTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+
+    // Dynamically import the chart module and apply theme if chart element exists
+    if (document.getElementById('plotly-chart')) {
+        import('./chart.js').then((chartModule) => {
+            chartModule.setTheme(theme);
+        }).catch(error => {
+            console.error('Error importing chart module:', error);
+        });
+    }
+}
+
+// What is on screen right now, whoever chose it -- the user's stored theme, the
+// one Decaid asked for, or the boot fallback. index.html sets the attribute
+// before first paint, so it is always answerable.
+export function activeTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+}
+
+// Follow Decaid's own light/dark switch while the user has never touched ours.
+// Runs after settingsReady, so a 'theme' restored from KV is already in place
+// and short-circuits this. One REST read (cached), so index.html paints the
+// remembered answer first and this only repaints when Decaid has changed its
+// mind since the last boot. See theme-policy.js for the precedence rule.
+export async function followDecaidTheme() {
+    if (localStorage.getItem('theme')) return;
+
+    let themeMode = null;
+    try {
+        themeMode = (await getReaSettings())?.themeMode;
+    } catch (error) {
+        logger.warn('Could not read Decaid theme:', error);
+        return;
+    }
+
+    const theme = resolveTheme({
+        decaidMode: themeMode,
+        systemDark: !!window.matchMedia?.('(prefers-color-scheme: dark)').matches,
+    });
+    if (!theme) return;
+
+    // The paint cache only. Writing 'theme' here would record Decaid's answer as
+    // the user's own choice, freezing the skin on it and seeding it into KV.
+    localStorage.setItem(DECAID_THEME_KEY, theme);
+    if (theme !== activeTheme()) paintTheme(theme);
+    const themeToggle = document.getElementById('theme-toggle');
+    if (themeToggle) themeToggle.checked = theme === 'dark';
+}
+
 export function initThemeToggle() {
     const themeToggle = document.getElementById('theme-toggle');
     if (!themeToggle) return;
 
-    const paintTheme = (theme) => {
-        document.documentElement.setAttribute('data-theme', theme);
-
-        // Dynamically import the chart module and apply theme if chart element exists
-        if (document.getElementById('plotly-chart')) {
-            import('./chart.js').then((chartModule) => {
-                chartModule.setTheme(theme);
-            }).catch(error => {
-                console.error('Error importing chart module:', error);
-            });
-        }
-    };
-
-    // Paint only: persisting the fallback would record a stock 'light' as a
-    // deliberate choice, and settingsSync would seed it over the durable copy
-    // in Decaid's KV. Only the change handler below writes.
-    const currentTheme = localStorage.getItem('theme') || 'light';
+    // Paint only: persisting the effective theme would record a stock 'light',
+    // or Decaid's answer, as a deliberate choice, and settingsSync would seed it
+    // over the durable copy in Decaid's KV. Only the change handler below writes.
+    const currentTheme = activeTheme();
     themeToggle.checked = currentTheme === 'dark';
     paintTheme(currentTheme);
 

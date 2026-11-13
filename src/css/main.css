@@ -856,19 +856,16 @@ textarea,
 }
 .led-tab:focus-visible { outline: 3px solid var(--mimoja-blue-v2); outline-offset: 2px; }
 
-/* Transport bar -- the one loud element on the Sequence tab. It carries the
-   play control, the loop switch, and the colours that are on the strip RIGHT
-   NOW, so the page shows what the machine is doing instead of only describing
-   it. The swatches are patched live by ledSeqPaintActiveStep. */
+/* Transport row, directly above the timeline it drives. No box: a card here
+   split the strip from its own play control. It carries the play control, the
+   loop switch, and the colours that are on the strip RIGHT NOW, so the page
+   shows what the machine is doing instead of only describing it. The swatches
+   are patched live by ledSeqPaintActiveStep. */
 .led-transport {
   display: flex;
   align-items: center;
   gap: 24px;
   flex-wrap: wrap;
-  padding: 18px 22px;
-  border-radius: 14px;
-  background-color: var(--box-color);
-  border: 1px solid var(--led-hairline);
 }
 .led-transport-btn {
   min-height: 64px;
@@ -987,24 +984,20 @@ textarea,
   color: var(--led-muted);
   font-variant-numeric: tabular-nums;
 }
+/* Same swatch-as-button as the Static Colours cards, opening the same wheel --
+   shorter here because it sits in a one-line step row, not a card. */
 .led-step-colors {
   display: flex;
   gap: 14px;
 }
-.led-step-color {
-  display: flex;
-  flex-direction: column;
+.led-step-colors .led-pick-wrap {
+  flex: 0 0 auto;
   gap: 4px;
-  cursor: pointer;
 }
-.led-step-colors input[type='color'] {
+.led-step-colors .led-pick {
   width: 84px;
   height: 46px;
-  border: 2px solid var(--led-hairline);
   border-radius: 8px;
-  padding: 0;
-  background: none;
-  cursor: pointer;
 }
 /* Seconds, not milliseconds, and nudged rather than typed -- nobody wants a
    number pad for "a bit longer" on a machine they are standing at. */
