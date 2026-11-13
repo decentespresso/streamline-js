@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSse, buildFollowUpQuery, splitBold } from '../src/modules/derek-stream.js';
+import { parseSse, buildFollowUpQuery, splitBold, buildTranscript } from '../src/modules/derek-stream.js';
 
 test('parseSse yields complete events and keeps the partial tail', () => {
     const { events, rest } = parseSse('event: delta\ndata: {"text":"Hi"}\n\nevent: delta\ndata: {"te');
@@ -23,4 +23,15 @@ test('splitBold marks bold runs and leaves markup as plain text', () => {
     assert.deepEqual(splitBold('a **b** <i>c</i>'), [
         { text: 'a ', bold: false }, { text: 'b', bold: true }, { text: ' <i>c</i>', bold: false },
     ]);
+});
+
+test('buildTranscript joins labelled turns and drops empty ones', () => {
+    const md = buildTranscript([
+        { label: 'You', text: 'Shot summary sent to Derek' },
+        { label: 'Derek', text: 'Grind finer.\n' },
+        { label: 'Derek', text: '   ' },
+        null,
+    ]);
+    assert.equal(md, '**You**\n\nShot summary sent to Derek\n\n---\n\n**Derek**\n\nGrind finer.');
+    assert.equal(buildTranscript([]), '');
 });

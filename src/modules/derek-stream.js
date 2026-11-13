@@ -35,3 +35,13 @@ export function buildFollowUpQuery(summaryMd, question) {
 export function splitBold(line) {
     return line.split(/\*\*(.+?)\*\*/g).map((text, i) => ({ text, bold: i % 2 === 1 })).filter((p) => p.text);
 }
+
+// Flatten the chat into markdown for the clipboard. Entries are
+// { label, text }; empty ones (a status placeholder that never got an answer)
+// are dropped so a copy mid-request is still clean.
+export function buildTranscript(entries) {
+    return entries
+        .filter((e) => e && e.text && e.text.trim())
+        .map((e) => `**${e.label}**\n\n${e.text.trim()}`)
+        .join('\n\n---\n\n');
+}

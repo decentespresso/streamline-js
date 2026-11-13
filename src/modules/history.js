@@ -367,6 +367,14 @@ async function copyMd(md) {
     showToast(getTranslation(ok ? 'Summary copied to clipboard' : 'Could not copy summary'), 2400, ok ? 'success' : 'error');
 }
 
+// The Derek chat's way out of the webview: the whole conversation as markdown,
+// ready to paste into notes, a mail or Derek's own web page.
+async function copyConversation(text) {
+    if (!text) { showToast(getTranslation('Nothing to copy yet'), 2400, 'warning'); return; }
+    const ok = await copyText(text);
+    showToast(getTranslation(ok ? 'Conversation copied to clipboard' : 'Could not copy conversation'), 2400, ok ? 'success' : 'error');
+}
+
 // Long-press the shot history panel -> options menu. Reuses the shared
 // setupPressAndHold helper (same one profile cards use). The nav arrows stop
 // their own press from bubbling so navigation taps still work.
@@ -452,7 +460,7 @@ function setupHistoryLongPress() {
                 label: getTranslation('Discuss with Derek'),
                 onSelect: async () => {
                     const md = await buildCurrentShotSummary();
-                    if (md != null) import('./derek-modal.js').then((m) => m.openDerekModal(md, { onOpenExternal: () => copyMd(md) }));
+                    if (md != null) import('./derek-modal.js').then((m) => m.openDerekModal(md, { onCopyText: copyConversation }));
                 },
             },
             {
