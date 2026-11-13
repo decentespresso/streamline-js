@@ -94,6 +94,23 @@ test('repeated frames of the same state do no work', () => {
     assert.deepEqual(h.shown, [0]);
 });
 
+test('a socket that falls silent mid-shot releases the lock, and a resumed shot re-takes it', () => {
+    // markMachineDisconnected() passes null while frames are absent, because
+    // handleData() has stopped running and the state is frozen at `espresso`.
+    const h = harness({ reviewing: false });
+    h.updateHistoryNavLock('espresso');
+    assert.equal(h.locked(), true);
+    h.updateHistoryNavLock(null);
+    assert.equal(h.locked(), false, 'arrows must not stay dead while the socket is silent');
+    assert.equal(h.buttons['history-prev-btn'].disabled, false);
+
+    // Frames resume on the same `espresso` the socket froze at, so an
+    // edge-only caller would never re-lock. The per-frame call does.
+    h.updateHistoryNavLock('espresso');
+    assert.equal(h.locked(), true);
+    assert.equal(h.buttons['history-prev-btn'].disabled, true);
+});
+
 test('unlocking never drags the user off the shot they are reading', () => {
     const h = harness({ reviewing: true });
     h.updateHistoryNavLock('espresso');
