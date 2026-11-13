@@ -3518,6 +3518,26 @@ export async function submitFeedback(payload) {
     return body || {};
 }
 
+// Turn an answered question into a shareable Derek page. Derek's own server
+// sends no CORS headers (OPTIONS -> 405), so the skin cannot POST to it from
+// the browser; this needs the same server-side relay treatment as the stream.
+// Decaid builds older than that route answer 404, which the caller treats as
+// "no share available" and falls back to the clipboard.
+export async function shareDerekAnswer(answerId, uiLanguage = 'en') {
+    const res = await fetch(`${API_BASE_URL}/derek/shared-conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer_id: answerId, ui_language: uiLanguage }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+        const error = new Error(body?.error || body?.detail || `HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
+    }
+    return body?.share_path || '';
+}
+
 // Stream a Derek answer through Decaid's relay. Calls onEvent({event, data})
 // per SSE frame; resolves when the stream ends. Abort via `signal`.
 export async function streamDerekAnswer(query, onEvent, signal) {

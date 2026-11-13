@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSse, buildFollowUpQuery, splitBold, buildTranscript } from '../src/modules/derek-stream.js';
+import { parseSse, buildFollowUpQuery, splitBold, buildTranscript, buildShareUrl } from '../src/modules/derek-stream.js';
 
 test('parseSse yields complete events and keeps the partial tail', () => {
     const { events, rest } = parseSse('event: delta\ndata: {"text":"Hi"}\n\nevent: delta\ndata: {"te');
@@ -34,4 +34,13 @@ test('buildTranscript joins labelled turns and drops empty ones', () => {
     ]);
     assert.equal(md, '**You**\n\nShot summary sent to Derek\n\n---\n\n**Derek**\n\nGrind finer.');
     assert.equal(buildTranscript([]), '');
+});
+
+test('buildShareUrl accepts only a /share/<id> path from the server', () => {
+    assert.equal(buildShareUrl('/share/j4U2cTAuh5Q3uge0ZwRZExB-8LxLJyEB'),
+        'https://derek.decentespresso.com/share/j4U2cTAuh5Q3uge0ZwRZExB-8LxLJyEB');
+    for (const bad of ['', '/share/', '/share/a/b', '/other/abc', 'https://evil.example/share/abc',
+        '//evil.example/share/abc', '/share/../admin', null, undefined, 42]) {
+        assert.equal(buildShareUrl(bad), '', `rejected: ${bad}`);
+    }
 });
