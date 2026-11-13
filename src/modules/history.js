@@ -17,6 +17,7 @@ import { VISUALIZER_PLUGIN_ID, visualizerAccountConfigured } from './visualizer-
 // Gate only -- the 90K dyeStrip.js that owns openPluginOverlay is imported at
 // tap time below, so it stays off the boot graph.
 import { isDye2Enabled } from './dye2-enabled.js';
+import { historyNavBlocked } from './history-nav-gate.js';
 
 const PAGE_SIZE = 20;
 let shots = [];
@@ -530,6 +531,39 @@ async function uploadCurrentShotToVisualizer() {
     }
 }
 
+// Live-shot navigation lock. While the machine is pulling espresso the panel
+// and the chart belong to the running shot, so the arrows are dimmed and inert
+// (matching how ui.js dims the sidebar groups for the running state). The flag
+// is the authority; the DOM is only its paint, so it survives displayShot()
+// re-toggling the arrows' own `invisible` class.
+let navLocked = false;
+
+function paintNavLock() {
+    for (const id of ['history-prev-btn', 'history-next-btn']) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        // `disabled` rather than pointer-events:none: the arrows' own
+        // stopPropagation listeners must keep running, or a touch over a
+        // locked arrow reaches the panel and opens its press-and-hold menu.
+        btn.disabled = navLocked;
+        btn.style.opacity = navLocked ? '0.25' : '';
+    }
+}
+
+// Called from app.js on every machine-state change.
+export function updateHistoryNavLock(state) {
+    const next = historyNavBlocked(state);
+    if (next === navLocked) return;
+    navLocked = next;
+    // Locking while the user is pages deep would strand them on a past shot
+    // with no way back and no live chart (app.js holds the live feed while
+    // isReviewingHistory()), so bring them to the newest shot first.
+    if (navLocked && isReviewingHistory()) {
+        displayShot(0).catch(error => logger.warn('Could not return to the newest shot:', error));
+    }
+    paintNavLock();
+}
+
 export async function initHistory() {
     try {
         await openDB();
@@ -544,6 +578,7 @@ export async function initHistory() {
     const nextBtn = document.getElementById('history-next-btn');
 
     prevBtn.onclick = async () => {
+        if (navLocked) return;
         if (currentShotIndex < shots.length - 1) {
             displayShot(currentShotIndex + 1);
         } else if (historyHasMore) {
@@ -555,10 +590,13 @@ export async function initHistory() {
     };
 
     nextBtn.onclick = () => {
+        if (navLocked) return;
         if (currentShotIndex > 0) {
             displayShot(currentShotIndex - 1);
         }
     };
+
+    paintNavLock();
 
     // Paint instantly from whatever's cached locally, then confirm/correct it
     // against the network in parallel with the slower list+IDB sync below --

@@ -1033,6 +1033,10 @@ function handleData(data) {
         else ledStripOnMachineStateChange(state);
     }
 
+    // Shot-history arrows: inert while the machine is pulling espresso, so a
+    // step back cannot repaint the chart the running shot is drawing on.
+    if (state !== previousState.state) history.updateHistoryNavLock(state);
+
     previousState = data.state; // Update previous state
 
     // Update GHC stop button opacity: active (not idle/sleeping/error) = fully opaque

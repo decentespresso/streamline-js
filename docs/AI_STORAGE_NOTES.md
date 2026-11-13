@@ -44,6 +44,12 @@ Preserve:
 - cached-first paint followed by network refresh;
 - cancellation or staleness checks when the visible history item changes.
 
+The main-page history arrows are locked while the machine state is `espresso`:
+`src/modules/history-nav-gate.js` owns the state list, `history.updateHistoryNavLock()`
+paints it, and `app.js` calls that on each machine-state change. Locking also returns
+the panel to the newest shot, because `app.js` holds the live chart and data panel back
+for as long as `isReviewingHistory()` is true.
+
 ## Durable Preferences
 
 `src/modules/settingsSync.js` keeps localStorage as the synchronous working copy and mirrors selected keys into Decaid KV so preferences survive WebView storage replacement.
@@ -112,6 +118,7 @@ Browser and KV storage can contain profile names, notes, machine information, fe
 ```sh
 npm test
 node --test test/history-pager.test.mjs
+node --test test/history-nav-gate.test.mjs
 node --test test/settings-persistence.test.mjs
 node --test test/settings-data-race.test.mjs
 ```
