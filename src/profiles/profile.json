@@ -1,0 +1,146 @@
+{
+  "title": "Slayer Shot",
+  "author": "Decent",
+  "notes": "The signature Slayer Shot is a testament to precision, emphasizing control over Pre-Brew saturation, Total Contact Time (TCT), and balance between body, sweetness and acidity. Following adjustments are required.\n\n1. Adjust Pre-Brew Flow Rate : Default at 1 ml/s. Adjust by ±0.1 ml/s to fully saturate the puck until first drip of coffee within 25-30 seconds.\n\n2. Grind Adjustment : Aim for Total Contact Time (TCT) of 45-55 seconds. Adjust grind size to achieve this:\nA) TCT < 45s: Grind Finer. B) TCT > 55s: Grind Coarser. C) Adjust yield for desired body (lighter or heavier).\n\n3. Balance : A) Too acidic? Grind finer to increase TCT. B) Too bitter? Grind Coarser to decrease TCT.\n\n4. Extended Pre-Brew : Decrease flow rate (eg. -0.1 ml/s) to extend Pre-Brew for enhanced sweetness and reduce acidity. Increase flow rate (eg. +0.1 ml/s) to shorten Pre-Brew and reduce bitterness.\n\nDownloaded from Visualizer",
+  "beverage_type": "espresso",
+  "steps": [
+    {
+      "flow": "1.0",
+      "name": "Pre-Brew",
+      "pump": "flow",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "1.00",
+      "limiter": {
+        "range": "0.2",
+        "value": "0"
+      },
+      "seconds": "60.00",
+      "pressure": "0",
+      "transition": "fast",
+      "temperature": "93.0"
+    },
+    {
+      "exit": {
+        "type": "pressure",
+        "value": "8.30",
+        "condition": "over"
+      },
+      "flow": "8",
+      "name": "Ramp Up",
+      "pump": "flow",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "0",
+      "limiter": {
+        "range": "0.6",
+        "value": "7.5"
+      },
+      "seconds": "3.00",
+      "pressure": "0",
+      "transition": "fast",
+      "temperature": "93.0"
+    },
+    {
+      "exit": {
+        "type": "pressure",
+        "value": "8.20",
+        "condition": "over"
+      },
+      "flow": "0",
+      "name": "8 Bar High Limit",
+      "pump": "pressure",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "0.00",
+      "limiter": {
+        "range": "0.6",
+        "value": "0"
+      },
+      "seconds": "3.00",
+      "pressure": "8.0",
+      "transition": "fast",
+      "temperature": "93.0"
+    },
+    {
+      "exit": {
+        "type": "pressure",
+        "value": "7.80",
+        "condition": "under"
+      },
+      "flow": "0",
+      "name": "8 Bar Low Limit",
+      "pump": "pressure",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "0.00",
+      "limiter": {
+        "range": "0.6",
+        "value": "0"
+      },
+      "seconds": "3.00",
+      "pressure": "8.0",
+      "transition": "fast",
+      "temperature": "93.0"
+    },
+    {
+      "flow": "0",
+      "name": "Full-Brew",
+      "pump": "pressure",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "25.00",
+      "limiter": {
+        "range": "0.6",
+        "value": "0"
+      },
+      "seconds": "30.00",
+      "pressure": "8.0",
+      "transition": "fast",
+      "temperature": "93.0"
+    },
+    {
+      "flow": "0",
+      "name": "Ramp Down",
+      "pump": "pressure",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "0",
+      "limiter": {
+        "range": "0.6",
+        "value": "0"
+      },
+      "seconds": "5.00",
+      "pressure": "6.0",
+      "transition": "fast",
+      "temperature": "93.0"
+    },
+    {
+      "flow": "0",
+      "name": "Pressure Hold",
+      "pump": "pressure",
+      "sensor": "water",
+      "volume": "0",
+      "weight": "0",
+      "limiter": {
+        "range": "0.6",
+        "value": "0"
+      },
+      "seconds": "30.00",
+      "pressure": "6.0",
+      "transition": "fast",
+      "temperature": "93.0"
+    }
+  ],
+  "tank_temperature": "0",
+  "target_weight": "36.0",
+  "target_volume": "0",
+  "target_volume_count_start": "0",
+  "legacy_profile_type": "settings_2c",
+  "type": "advanced",
+  "lang": "en",
+  "hidden": "0",
+  "reference_file": "Slayer_Shot",
+  "changes_since_last_espresso": "",
+  "version": "2"
+}
