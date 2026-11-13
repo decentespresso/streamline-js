@@ -3,7 +3,7 @@ import { logger } from './logger.js';
 import { openDB, getLatestShotSummaries, getLatestCachedShotSummaries, getLatestCachedShot, getShot, addShot, addShots, deleteShot as idbDeleteShot, pruneShotsInRange, clearShots } from './idb.js';
 import { API_BASE_URL, getPlugins, getPluginSettings, callPluginEndpoint } from './api.js';
 import { createHistoryPager, isShotAlreadyDeleted } from './history-pager.js';
-import { renderPastShot, clearShotData } from './shotData.js';
+import { renderPastShot, clearShotData, setPaintSuspended } from './shotData.js';
 import { getTranslation } from './i18n.js';
 import { translateProfileTitle } from './profileManager.js';
 import { generateShotSummary } from './shotSummary.js';
@@ -151,6 +151,10 @@ async function displayShot(index) {
     }
 
     currentShotIndex = index;
+    // Anything but the newest shot means the user asked to look at a past one:
+    // stop the live shot repainting the chart and the data panel over it
+    // (a cleaning profile runs as espresso frames, so this bites mid-cycle).
+    setPaintSuspended(index > 0);
     const shot = shots[currentShotIndex];
 
     // Update footer text
@@ -584,6 +588,13 @@ export function getNewestShotId() {
     return shots[0]?.id ?? null;
 }
 
+// The user has stepped back off the newest shot, so the panel and the chart
+// belong to that shot, not to whatever the machine is doing. app.js stops
+// feeding the live chart while this is true; tapping -> back to NEWEST ends it.
+export function isReviewingHistory() {
+    return currentShotIndex > 0;
+}
+
 // After a shot finishes, REA can take several seconds to persist it to /shots.
 // A single fixed-delay reload races that write and silently shows the previous
 // shot. Poll the list until a shot newer than `knownNewestId` appears, then
@@ -603,13 +614,17 @@ async function runRefreshToNewestShot(knownNewestId, tries, intervalMs, expected
         // Success = the expected shot id is on top (exact, from the shotState
         // feed) — or, without one, any id newer than what we knew before.
         if (shots.length > 0 && (expectedId ? shots[0].id === expectedId : shots[0].id !== knownNewestId)) {
-            await displayShot(0); // labels itself NEWEST
+            // The list is refreshed either way; the jump is not. A cleaning
+            // profile finishes five times, and each one would drag the user off
+            // the shot they are reading. applyHistoryPage keeps their selection
+            // by id, so the new shot just shifts it along.
+            if (!isReviewingHistory()) await displayShot(0); // labels itself NEWEST
             return;
         }
         await new Promise(r => setTimeout(r, intervalMs));
     }
     // Gave up waiting — show whatever is newest so the panel isn't left stale.
-    if (shots.length > 0) displayShot(0);
+    if (shots.length > 0 && !isReviewingHistory()) displayShot(0);
 }
 
 export async function clearShotHistory() {

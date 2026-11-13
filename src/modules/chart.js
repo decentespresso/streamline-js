@@ -411,10 +411,14 @@ let isLiveShot = false;
 
 // Call when a shot finishes to reveal the trace-end labels on the chart that
 // was just live.
-export function finalizeLiveChart() {
+// `redraw: false` ends the live shot without painting: the user is reviewing a
+// past shot, so chartData holds THAT shot and a render here would relabel it as
+// the one that just finished.
+export function finalizeLiveChart(redraw = true) {
     cancelChartFlush();
     liveRenderDirty = false;
     isLiveShot = false;
+    if (!redraw) return;
     const theme = currentTheme;
     const layout = theme === 'dark' ? darkLayout : lightLayout;
     applyLabelLayout(layout);

@@ -144,12 +144,23 @@ export function clearShotData() {
 // Re-render the shot-data table's temperature column in the newly chosen
 // unit, without waiting for the next sample.
 document.addEventListener('streamline:unitchange', () => {
+    // Reviewing a past shot: the panel is not showing currentShot, so repainting
+    // it here would drop the running shot's numbers on top of the reviewed one.
+    if (paintSuspended) return updateTempHeader();
     if (currentShot.timestamps && currentShot.timestamps.length > 0) {
         calculateAndRender(currentShot);
     } else {
         updateTempHeader();
     }
 });
+
+// Set while the user reviews a past shot (history.js owns it). Live frames keep
+// accumulating into currentShot -- the stop toast and totals still read true --
+// but the panel stays on the shot they picked instead of the running one.
+// Gated at the two LIVE paint calls, not inside calculateAndRender: that one is
+// also how renderPastShot() draws the reviewed shot itself.
+let paintSuspended = false;
+export function setPaintSuspended(on) { paintSuspended = !!on; }
 
 function calculateAndRender(shotData) {
     try {
@@ -325,7 +336,7 @@ export function updateShotData(de1Data, scaleWeight) {
         }
     }
 
-    calculateAndRender(currentShot);
+    if (!paintSuspended) calculateAndRender(currentShot);
 }
 
 export function getCurrentShot() {
@@ -344,7 +355,7 @@ export function setFinalWeight(weight) {
     if (weight === currentShot.finalWeight) return;
     currentShot.finalWeight = weight;
     // Only re-render once the shot has at least one sample, otherwise calculateAndRender bails.
-    if (currentShot.timestamps.length > 0) calculateAndRender(currentShot);
+    if (currentShot.timestamps.length > 0 && !paintSuspended) calculateAndRender(currentShot);
 }
 
 export function getTotalTime() {

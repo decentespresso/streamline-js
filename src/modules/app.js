@@ -1088,13 +1088,19 @@ function handleData(data) {
                 // gateway mode so the fallback heuristics run at shot end.
                 seqTrackedShot = false;
                 seqStopToastShown = false;
-                chart.clearChart();
-                shotData.clearShotData();
-                startPerfShot();
-                const historyLabelEl = document.getElementById('shot-history-label');
-                if (historyLabelEl) {
-                    historyLabelEl.textContent = getTranslation('NEWEST');
+                // Not while the user is reading a past shot: these three wipe
+                // the chart, the data panel and the label they are looking at.
+                // A cleaning profile starts five shots, so without this the
+                // review survives at most one flush.
+                if (!history.isReviewingHistory()) {
+                    chart.clearChart();
+                    shotData.clearShotData();
+                    const historyLabelEl = document.getElementById('shot-history-label');
+                    if (historyLabelEl) {
+                        historyLabelEl.textContent = getTranslation('NEWEST');
+                    }
                 }
+                startPerfShot();
             }
             // Bengle: use the machine's true gravimetric flow (GFlow) straight from
             // the snapshot — no local delta+EMA smoothing. Non-Bengle keeps the
@@ -1102,7 +1108,14 @@ function handleData(data) {
             // `?? null` (not || 0): 0 is a real GFlow value; only an ABSENT field
             // may fall through to the chart's local EMA.
             const chartWeightFlow = isBengleMachine() ? (data.weightFlow ?? null) : latestScaleWeightFlow;
-            measure('chart', () => chart.updateChart(shotStartTime, data, latestScaleWeight, chartWeightFlow));
+            // The live chart renders from the same arrays plotHistoricalShot()
+            // empties, so feeding it while the user reviews a past shot repaints
+            // over that shot ~10x a second — the reported "prev does nothing".
+            // shotData keeps accumulating (totals and the stop toast stay true);
+            // only its paint is held, inside the module.
+            if (!history.isReviewingHistory()) {
+                measure('chart', () => chart.updateChart(shotStartTime, data, latestScaleWeight, chartWeightFlow));
+            }
             measure('shotData', () => shotData.updateShotData(data, latestScaleWeight));
         }
     } else {
@@ -1123,7 +1136,10 @@ function handleData(data) {
             // throw in finalize must not take the measurement down with it.
             endPerfShot(shotData.getTotalTime());
             try {
-                chart.finalizeLiveChart();
+                // Reviewing: end the live shot but do not paint. The labels
+                // belong to the shot that finished, chartData holds the one the
+                // user is reading.
+                chart.finalizeLiveChart(!history.isReviewingHistory());
             } catch (error) {
                 logger.error('finalizeLiveChart failed; shot ended without final labels:', error);
             }
