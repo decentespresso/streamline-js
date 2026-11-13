@@ -352,3 +352,57 @@ export function parseLedLibrary(json) {
 export function serializeLedLibrary(library) {
     return JSON.stringify(normalizeLibrary(library));
 }
+
+// ── Timeline ─────────────────────────────────────────────────────────────
+// A sequence is the one thing on the Lighting page that really is a sequence,
+// so the editor draws it as a timeline: segment width = duration, segment
+// colour = that step. These are the pure parts of that drawing.
+
+/** Smallest share of the bar any one step gets, so a 0.5s step next to a 60s
+ *  one is still big enough to hit with a finger. */
+export const MIN_SEGMENT_PERCENT = 6;
+
+/**
+ * Steps → { totalMs, segments:[{ index, percent, frontColor, rearColor }] }.
+ * Percents are proportional to duration, floored at MIN_SEGMENT_PERCENT and
+ * renormalized so they always sum to 100 -- the bar must fill exactly, or the
+ * last segment leaves a gap that reads as a step that is not there.
+ */
+export function sequenceTimeline(steps) {
+    const list = normalizeSteps(steps);
+    const totalMs = list.reduce((sum, s) => sum + s.durationMs, 0);
+    if (!list.length || !totalMs) return { totalMs, segments: [] };
+
+    const floor = Math.min(MIN_SEGMENT_PERCENT, 100 / list.length);
+    const raw = list.map((s) => Math.max(floor, (s.durationMs / totalMs) * 100));
+    const scale = 100 / raw.reduce((a, b) => a + b, 0);
+    const segments = list.map((step, index) => ({
+        index,
+        percent: raw[index] * scale,
+        frontColor: step.frontColor,
+        rearColor: step.rearColor,
+    }));
+    return { totalMs, segments };
+}
+
+/** ms → the seconds label the editor shows: '0.5', '1.2', '12' (whole from 10s up). */
+export function formatStepSeconds(ms) {
+    const s = (Number(ms) || 0) / 1000;
+    return s >= 10 ? String(Math.round(s)) : s.toFixed(1);
+}
+
+/**
+ * One press of - or + on a duration. The usable range spans 0.5s to 60s, so a
+ * fixed increment is either too coarse at the short end or hundreds of taps at
+ * the long end: the step grows with the value. Always lands on a clamped,
+ * round number.
+ */
+export function nudgeStepDuration(ms, direction) {
+    const current = clampStepDurationMs(ms);
+    const grain = current < 2000 ? 100 : current < 10000 ? 500 : 1000;
+    const dir = direction < 0 ? -1 : 1;
+    // Snap to the grain first, so a value carried over from a finer grain
+    // (1.7s stepping up at the 500ms grain) lands on 2.0s, not 2.2s.
+    const snapped = dir > 0 ? Math.floor(current / grain) * grain : Math.ceil(current / grain) * grain;
+    return clampStepDurationMs(snapped + dir * grain);
+}

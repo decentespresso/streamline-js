@@ -15,8 +15,8 @@ import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainin
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { wakeProfileChoices } from '../modules/wake-profile.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, resolveScreensaverDateFormat, resolveScreensaverClockFormat, resolveScreensaverClockPosition } from '../modules/screensaver-clock.js';
-import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewPayload } from '../modules/led-color.js';
-import { LED_SEQUENCE_KEY, MIN_STEP_DURATION_MS, MAX_STEP_DURATION_MS, MAX_PRESET_NAME_LENGTH, LED_TRIGGER_STATES, parseLedLibrary, serializeLedLibrary, addPreset, removePreset, renamePreset, selectPreset, updateActivePreset, setSequencesEnabled, getActivePreset, addStep, removeStep, updateStep, moveStep, toggleTriggerState } from '../modules/led-sequence.js';
+import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewPayload, ledValueOf, ledWithValue } from '../modules/led-color.js';
+import { LED_SEQUENCE_KEY, MAX_PRESET_NAME_LENGTH, sequenceTimeline, formatStepSeconds, nudgeStepDuration, LED_TRIGGER_STATES, parseLedLibrary, serializeLedLibrary, addPreset, removePreset, renamePreset, selectPreset, updateActivePreset, setSequencesEnabled, getActivePreset, addStep, removeStep, updateStep, moveStep, toggleTriggerState } from '../modules/led-sequence.js';
 import { requestStart as ledRunRequestStart, requestStop as ledRunRequestStop, forceStop as ledRunForceStop, onRunChange as ledRunOnChange, getRunState as ledRunGetState, onMachineStateChange as ledRunOnMachineStateChange, noteStoredPalette as ledRunNoteStoredPalette } from '../modules/led-strip-runner.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
@@ -3771,6 +3771,14 @@ let ledLastLit = {};           // last lit colour per 'zoneKey:state', restored 
 // type -- so they get separate tabs rather than one stacked column where
 // "Save" looks like it covers both.
 let ledActiveTab = 'colours';  // 'colours' | 'sequence'
+// The wheel is summoned, not docked: it costs a third of the page and most
+// visits only want a preset or a brightness nudge. Tapping a swatch opens it
+// on that swatch, so there is no separate "which target am I editing" mode --
+// ledSelectedZone/State are still the answer, the tap just sets them.
+let ledPickerOpen = false;
+// Front and rear as one control. Linked shows ONE card rather than a live card
+// and a ghost of it, so what you see is what the next edit writes.
+let ledLinked = false;
 // Colour step-sequence editor (REAL capability — see led-sequence.js header).
 // The ACTUAL playback timer/writes/ownership arbitration live in
 // led-strip-runner.js, shared with app.js's machine-state trigger -- this page
@@ -3788,6 +3796,10 @@ let ledSeqLoaded = false;
 let ledSeqLibrary = { enabled: true, activeId: '', presets: [] };
 let ledSeqRunUnsubscribe = null; // set once subscribed to led-strip-runner.js's onRunChange
 let ledSeqRunSnapshot = { owner: null, running: false, index: -1 };
+// Which step's editor is open, or -1. Same idea as ledPickerOpen on the other
+// tab: the thing you tapped is the thing you are editing, and only one editor
+// is on screen at a time.
+let ledSeqSelected = -1;
 let iroLoadPromise = null;
 let iroLoadFailed = false;
 const LED_DEFAULT_ON = 'FFFFAAAA5555'; // warm white — default colour when powering a zone on with no history
@@ -3921,24 +3933,10 @@ export function renderLedSettings() {
     ledSeqEnsureSubscribed();
 
     const isOn = ledCurrentColor16() !== '000000000000';
-    // One cell per target. The grid IS the picker -- tapping the colour you
-    // mean selects it -- so there are no separate Zone/State segment rows to
-    // keep in sync with it. 'both' paints front and rear together and shows
-    // them split, which is also what it looks like when they differ.
-    const cell = (zone, zoneLabel, stateKey) => {
-        const isActive = ledSelectedZone === zone && ledSelectedState === stateKey;
-        const keys = ledZoneKeys(zone);
-        const hexes = keys.map((k) => ledColor16ToHex8(ledCellColor16(k, stateKey)));
-        const fill = hexes.length > 1
-            ? `background-image: linear-gradient(90deg, ${hexes[0]} 0 50%, ${hexes[1]} 50% 100%)`
-            : `background-color: ${hexes[0]}`;
-        return `<button class="led-cell" aria-pressed="${isActive}" aria-label="${getTranslation(zoneLabel)} ${getTranslation(stateKey === 'awake' ? 'Awake' : 'Asleep')}"
-                    data-led-cell="${zone}:${stateKey}" onclick="window.ledSelectCell('${zone}','${stateKey}')"
-                    style="${fill}"></button>`;
-    };
     const currentHex = ledColor16ToHex8(ledCurrentColor16());
     const presetSwatches = LED_PRESETS.map(([name, hex]) =>
-        `<button class="led-swatch" title="${name}" aria-label="${name}" aria-pressed="${hex.toUpperCase() === currentHex.toUpperCase()}"
+        `<button class="led-swatch" title="${name}" aria-label="${name}" data-hex="${hex.toUpperCase()}"
+            aria-pressed="${hex.toUpperCase() === currentHex.toUpperCase()}"
             onclick="window.ledApplyPreset('${hex}')" style="background-color: ${hex}"></button>`
     ).join('');
 
@@ -3948,89 +3946,147 @@ export function renderLedSettings() {
             onclick="window.ledSelectTab('${id}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
 
     // ── Static Colours ───────────────────────────────────────────────────
-    // The palette that PERSISTS on the machine. Save/Reset belong here and
-    // only here: the sequence tab saves itself as you type, and having one
-    // Save button under both made it look like it covered the sequence too.
-    const coloursPanel = `
-        <div class="flex flex-row gap-[48px] w-full items-start flex-wrap">
-            <div class="flex flex-col gap-[24px] flex-1 min-w-[420px]">
-                <div class="led-grid">
-                    <div></div>
-                    <div class="led-col-head" data-i18n-key="Awake">Awake</div>
-                    <div class="led-col-head" data-i18n-key="Asleep">Asleep</div>
-                    <div class="led-row-head" data-i18n-key="Front">Front</div>
-                    ${cell('front', 'Front', 'awake')}
-                    ${cell('front', 'Front', 'sleeping')}
-                    <div class="led-row-head" data-i18n-key="Rear">Rear</div>
-                    ${cell('rear', 'Rear', 'awake')}
-                    ${cell('rear', 'Rear', 'sleeping')}
-                    <div class="led-row-head" data-i18n-key="Both">Both</div>
-                    ${cell('both', 'Both', 'awake')}
-                    ${cell('both', 'Both', 'sleeping')}
+    // One card per physical strip, because that is what the owner is thinking
+    // about ("the front light"), not a zone x state matrix. Each card carries
+    // the two colours that strip can hold and a brightness slider, which is
+    // the control people actually reach for and which used to be buried as the
+    // wheel's value track. The wheel itself only appears once you tap a colour.
+    //
+    // Save/Reset live here and only here: the Sequence tab saves itself as you
+    // type, and one Save under both made it look like it covered the sequence.
+    const stripCard = (zone, label) => {
+        const keys = ledZoneKeys(zone);
+        const swatch = (stateKey, stateLabel) => {
+            const open = ledPickerOpen && ledSelectedZone === zone && ledSelectedState === stateKey;
+            const hexes = keys.map((k) => ledColor16ToHex8(ledCellColor16(k, stateKey)));
+            const fill = hexes.length > 1 && hexes[0] !== hexes[1]
+                ? `background-image: linear-gradient(90deg, ${hexes[0]} 0 50%, ${hexes[1]} 50% 100%)`
+                : `background-color: ${hexes[0]}`;
+            const off = hexes.every((h) => h.toUpperCase() === '#000000');
+            return `
+                <div class="led-pick-wrap">
+                    <span class="led-pick-cap" data-i18n-key="${stateLabel}">${getTranslation(stateLabel)}</span>
+                    <button class="led-pick" aria-pressed="${open}" data-led-cell="${zone}:${stateKey}"
+                        aria-label="${getTranslation(label)} ${getTranslation(stateLabel)}"
+                        onclick="window.ledOpenPicker('${zone}','${stateKey}')" style="${fill}">${off ? '<span class="led-pick-off"></span>' : ''}</button>
+                </div>`;
+        };
+        // Brightness acts on the lit (awake) colour -- the asleep bank is almost
+        // always off, and a slider that silently moved both would surprise.
+        const level = ledValueOf(ledColor16ToHex8(ledCellColor16(keys[0], 'awake')));
+        return `
+            <div class="led-card">
+                <p class="led-card-title" data-i18n-key="${label}">${getTranslation(label)}</p>
+                <div class="led-card-swatches">
+                    ${swatch('awake', 'Awake')}
+                    ${swatch('sleeping', 'Asleep')}
                 </div>
-                <div class="h-0 relative w-full"><hr class="border-t border-[var(--profile-button-outline-color)] w-full" /></div>
-                <div class="led-swatches">${presetSwatches}</div>
-            </div>
+                <div class="led-bright">
+                    <span class="led-bright-icon" aria-hidden="true">&#9728;</span>
+                    <input type="range" class="brightness-slider led-bright-slider" min="0" max="100" step="1" value="${level}"
+                        aria-label="${getTranslation(label)} ${getTranslation('Brightness')}"
+                        oninput="window.ledSetBrightness('${zone}', this.value)">
+                    <span class="led-bright-val">${level}%</span>
+                </div>
+            </div>`;
+    };
 
-            <div class="flex flex-col gap-[20px] items-center">
-                <div class="flex items-center justify-between gap-[20px] w-full">
-                    <span class="led-label text-[26px]" data-i18n-key="Power">Power</span>
-                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                        <input type="checkbox" id="ledPowerToggle" class="sr-only peer" ${isOn ? 'checked' : ''} onchange="window.ledSetPower(this.checked)">
-                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                    </label>
-                </div>
-                <div id="led-picker-slot" style="position:relative;"><div id="led-picker" style="${isOn ? '' : 'opacity:0.35;pointer-events:none;'}"></div></div>
-                <p class="led-muted text-[20px]" data-i18n-key="Wheel picks colour · slider sets brightness">Wheel picks colour · slider sets brightness</p>
-                <div class="flex items-center gap-[16px]" style="${isOn ? '' : 'opacity:0.35;'}">
-                    <div id="led-current-swatch" class="w-[56px] h-[56px] rounded-[10px] border-2 border-[var(--profile-button-outline-color)]" style="background-color: ${ledColor16ToHex8(ledCurrentColor16())}"></div>
-                    <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[24px]">${isOn ? ledColor16ToHex8(ledCurrentColor16()) : 'Off'}</span>
-                </div>
+    const pickerPanel = !ledPickerOpen ? '' : `
+        <div class="led-picker-panel">
+            <div class="led-swatches">${presetSwatches}</div>
+            <div id="led-picker-slot" style="position:relative;"><div id="led-picker" style="${isOn ? '' : 'opacity:0.35;pointer-events:none;'}"></div></div>
+            <div class="led-picker-side">
+                <button class="led-icon-btn" data-size="lg" aria-label="${getTranslation('Close')}" onclick="window.ledClosePicker()">&times;</button>
+                <div id="led-current-swatch" class="led-picker-current" style="background-color: ${ledColor16ToHex8(ledCurrentColor16())}"></div>
+                <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[22px]">${isOn ? ledColor16ToHex8(ledCurrentColor16()) : getTranslation('Off')}</span>
+                <label class="flex items-center cursor-pointer">
+                    <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
+                        <input type="checkbox" id="ledPowerToggle" class="sr-only peer" aria-label="${getTranslation('Power')}" ${isOn ? 'checked' : ''} onchange="window.ledSetPower(this.checked)">
+                        <span class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></span>
+                        <span class="absolute top-1/2 left-[4px] -translate-y-1/2 peer-checked:translate-x-[34px] size-[30px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></span>
+                    </span>
+                </label>
+            </div>
+        </div>`;
+
+    const coloursPanel = `
+        <div class="led-cards">
+            ${ledLinked ? stripCard('both', 'Both') : stripCard('front', 'Front') + stripCard('rear', 'Rear')}
+        </div>
+        <div class="flex items-center gap-[20px] w-full flex-wrap">
+            <label class="flex items-center gap-[12px] cursor-pointer">
+                <span class="text-[var(--text-primary)] text-[20px] font-semibold" data-i18n-key="Both">${getTranslation('Both')}</span>
+                <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
+                    <input type="checkbox" class="sr-only peer" ${ledLinked ? 'checked' : ''} onchange="window.ledSetLinked(this.checked)">
+                    <span class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></span>
+                    <span class="absolute top-1/2 left-[4px] -translate-y-1/2 peer-checked:translate-x-[34px] size-[30px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></span>
+                </span>
+            </label>
+            <div class="flex justify-end gap-[20px] ml-auto">
+                <button class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledReset()" data-i18n-key="Reset">Reset</button>
+                <button class="bg-[var(--button-primary-bg)] text-white h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledSave()" data-i18n-key="Apply">Apply</button>
             </div>
         </div>
 
-        <div class="flex justify-end gap-[20px] w-full">
-            <button class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledReset()" data-i18n-key="Reset">Reset</button>
-            <button class="bg-[var(--button-primary-bg)] text-white h-[82px] px-[48px] rounded-[67.5px] text-[24px] font-bold" onclick="window.ledSave()" data-i18n-key="Save">Save</button>
-        </div>`;
+        ${pickerPanel}`;
 
     // ── Sequence & Triggers ──────────────────────────────────────────────
-    // A step's two colours are the front and rear of ONE moment, so they sit
-    // in a single bordered cell rather than as two loose inputs; the row's
-    // left edge is the active-step indicator (see .led-step in main.css).
-    const seqStepRow = (step, index) => `
-        <div class="led-step ${ledSeqRunSnapshot.index === index ? 'led-seq-step-active' : ''}" data-led-seq-step="${index}">
-            <span class="led-step-index">${index + 1}</span>
-            <div class="led-step-colors">
-                <input type="color" aria-label="${getTranslation('Front')}" value="${step.frontColor}"
-                    onchange="window.ledSeqUpdateStep(${index}, { frontColor: this.value })" />
-                <input type="color" aria-label="${getTranslation('Rear')}" value="${step.rearColor}"
-                    onchange="window.ledSeqUpdateStep(${index}, { rearColor: this.value })" />
-            </div>
-            <input type="number" class="led-step-duration" min="${MIN_STEP_DURATION_MS}" max="${MAX_STEP_DURATION_MS}" step="100"
-                value="${step.durationMs}" aria-label="${getTranslation('Duration (ms)')}"
-                onchange="window.ledSeqUpdateStep(${index}, { durationMs: this.value })" />
-            <span class="led-muted text-[16px]" data-i18n-key="ms">ms</span>
-            <div class="flex gap-[6px] ml-auto">
-                <button class="led-icon-btn" aria-label="${getTranslation('Move step up')}" ${index === 0 ? 'disabled' : ''}
-                    onclick="window.ledSeqMoveStep(${index}, 'up')">&uarr;</button>
-                <button class="led-icon-btn" aria-label="${getTranslation('Move step down')}" ${index === seqSteps.length - 1 ? 'disabled' : ''}
-                    onclick="window.ledSeqMoveStep(${index}, 'down')">&darr;</button>
-                <button class="led-icon-btn" data-variant="remove" aria-label="${getTranslation('Remove step')}"
-                    onclick="window.ledSeqRemoveStep(${index})">&times;</button>
-            </div>
-        </div>`;
-
+    // A sequence is the one thing on this page that genuinely IS a sequence,
+    // so it is drawn as a timeline rather than a form: each segment is as wide
+    // as its step is long and carries that step's two colours, which makes the
+    // shape of the whole light show readable at a glance. Tapping a segment
+    // opens its editor underneath -- the same "the thing you tapped is the
+    // thing you are editing" model the Static Colours tab uses.
     const seqPresets = ledSeqLibrary.presets;
     const seqActiveIndex = seqPresets.findIndex((p) => p.id === ledSeqLibrary.activeId);
     const seqChips = seqPresets.map((preset, index) => `
         <button type="button" class="led-chip" aria-pressed="${preset.id === ledSeqLibrary.activeId}"
             onclick="window.ledSeqSelectPreset('${preset.id}')">${escapeHtml(ledSeqPresetLabel(preset, index))}</button>`).join('');
 
+    const { totalMs, segments } = sequenceTimeline(seqSteps);
+    const seqSelected = (ledSeqSelected >= 0 && ledSeqSelected < seqSteps.length) ? ledSeqSelected : -1;
+
+    const timeline = !segments.length ? '' : `
+        <div class="led-timeline" role="group" aria-label="${getTranslation('Sequence')}">
+            ${segments.map((seg) => `
+                <button class="led-seg" style="width:${seg.percent}%; background-image: linear-gradient(90deg, ${seg.frontColor} 0 50%, ${seg.rearColor} 50% 100%)"
+                    data-led-seq-step="${seg.index}" aria-pressed="${seg.index === seqSelected}"
+                    aria-label="${seg.index + 1} · ${formatStepSeconds(seqSteps[seg.index].durationMs)}s"
+                    onclick="window.ledSeqSelectStep(${seg.index})"><span class="led-seg-no">${seg.index + 1}</span></button>`).join('')}
+        </div>`;
+
+    const stepEditor = seqSelected < 0 ? '' : (() => {
+        const step = seqSteps[seqSelected];
+        return `
+        <div class="led-step-editor">
+            <span class="led-step-index">${seqSelected + 1}</span>
+            <div class="led-step-colors">
+                <input type="color" aria-label="${getTranslation('Front')}" value="${step.frontColor}"
+                    onchange="window.ledSeqUpdateStep(${seqSelected}, { frontColor: this.value })" />
+                <input type="color" aria-label="${getTranslation('Rear')}" value="${step.rearColor}"
+                    onchange="window.ledSeqUpdateStep(${seqSelected}, { rearColor: this.value })" />
+            </div>
+            <div class="led-dur">
+                <button class="led-icon-btn" aria-label="${getTranslation('Duration (ms)')}"
+                    onclick="window.ledSeqNudgeDuration(${seqSelected}, -1)">&minus;</button>
+                <span class="led-dur-val">${formatStepSeconds(step.durationMs)}s</span>
+                <button class="led-icon-btn" aria-label="${getTranslation('Duration (ms)')}"
+                    onclick="window.ledSeqNudgeDuration(${seqSelected}, 1)">+</button>
+            </div>
+            <div class="flex gap-[8px] ml-auto">
+                <button class="led-icon-btn" aria-label="${getTranslation('Move step up')}" ${seqSelected === 0 ? 'disabled' : ''}
+                    onclick="window.ledSeqMoveStep(${seqSelected}, 'up')">&larr;</button>
+                <button class="led-icon-btn" aria-label="${getTranslation('Move step down')}" ${seqSelected === seqSteps.length - 1 ? 'disabled' : ''}
+                    onclick="window.ledSeqMoveStep(${seqSelected}, 'down')">&rarr;</button>
+                <button class="led-icon-btn" data-variant="remove" aria-label="${getTranslation('Remove step')}"
+                    onclick="window.ledSeqRemoveStep(${seqSelected})">&times;</button>
+            </div>
+        </div>`;
+    })();
+
     // No "Sequence"/"Name" headings: the chips sit under a tab already called
     // Sequence, and the field placeholder names the sequence it renames. New
-    // and Delete are the same + and x the step rows use, so the row reads as
+    // and Delete are the same + and x the step editor uses, so the row reads as
     // controls rather than prose.
     const presetPanel = `
         <div class="flex flex-wrap items-center gap-[12px] w-full">
@@ -4051,6 +4107,7 @@ export function renderLedSettings() {
 
     const sequencePanel = `
         ${presetPanel}
+        ${timeline}
         <div class="led-transport w-full">
             <button id="led-seq-transport" class="led-transport-btn" ${ledSeqTransportAttrs()}
                 onclick="window.ledSeqToggleRun()">${ledSeqTransportLabel()}</button>
@@ -4059,6 +4116,7 @@ export function renderLedSettings() {
                 <span id="led-now-back" class="led-now-swatch" style="background-color: ${ledNowColors().back}"></span>
             </div>
             <span id="led-seq-status" class="text-[20px] font-semibold">${ledSeqStatusHtml()}</span>
+            ${totalMs ? `<span class="led-muted text-[20px]">${formatStepSeconds(totalMs)}s</span>` : ''}
             <label class="flex items-center gap-[12px] ml-auto cursor-pointer">
                 <span class="text-[var(--text-primary)] text-[20px] font-semibold" data-i18n-key="Loop">Loop</span>
                 <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
@@ -4069,10 +4127,9 @@ export function renderLedSettings() {
             </label>
         </div>
 
-        <div class="flex flex-col gap-[10px] w-full">
-            ${seqSteps.length ? seqSteps.map(seqStepRow).join('')
-                : `<p class="led-muted text-[20px]" data-i18n-key="Add a step to start building a sequence.">Add a step to start building a sequence.</p>`}
-        </div>
+        ${stepEditor}
+
+        ${seqSteps.length ? '' : `<p class="led-muted text-[20px]" data-i18n-key="Add a step to start building a sequence.">Add a step to start building a sequence.</p>`}
         <button class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[56px] px-[28px] rounded-[28px] text-[18px] font-bold self-start"
             onclick="window.ledSeqAddStep()" data-i18n-key="Add step">Add step</button>
 
@@ -4090,11 +4147,11 @@ export function renderLedSettings() {
             </div>
             <p class="led-muted text-[20px]" data-i18n-key="Play this sequence whenever the machine enters:">Play this sequence whenever the machine enters:</p>
             <div class="flex flex-wrap gap-[10px]" style="${ledSeqLibrary.enabled ? '' : 'opacity:0.35;pointer-events:none;'}">
-                ${LED_TRIGGER_STATES.map((s) => {
-                    const active = ledSeqTriggerStates.includes(s.id);
+                ${LED_TRIGGER_STATES.map((st) => {
+                    const active = ledSeqTriggerStates.includes(st.id);
                     return `<button type="button" class="led-chip" aria-pressed="${active}"
-                        onclick="window.ledSeqToggleTriggerState('${s.id}', ${!active})"
-                        data-i18n-key="${s.label}">${getTranslation(s.label)}</button>`;
+                        onclick="window.ledSeqToggleTriggerState('${st.id}', ${!active})"
+                        data-i18n-key="${st.label}">${getTranslation(st.label)}</button>`;
                 }).join('')}
             </div>
         </div>`;
@@ -4209,15 +4266,90 @@ function initLedPicker() {
     ledPicker.on('input:end', () => ledCommitEdit());
 }
 
+// Repaint the Static Colours tab in place.
+//
+// Tapping a colour used to re-render the whole category, which throws the iro
+// wheel away and builds a new one -- mounted at natural size, measured, then
+// counter-scaled -- and that rebuild is visible as a flash. Nothing about the
+// panel's SHAPE changes when you pick a different target or a different
+// colour, only its values, so those are patched instead. A re-render is kept
+// for the two cases that really do change the shape: opening and closing.
+function ledPaintColoursDom() {
+    document.querySelectorAll('.led-pick[data-led-cell]').forEach((el) => {
+        const [zone, stateKey] = el.dataset.ledCell.split(':');
+        const hexes = ledZoneKeys(zone).map((k) => ledColor16ToHex8(ledCellColor16(k, stateKey)));
+        if (hexes.length > 1 && hexes[0] !== hexes[1]) {
+            el.style.backgroundImage = `linear-gradient(90deg, ${hexes[0]} 0 50%, ${hexes[1]} 50% 100%)`;
+            el.style.backgroundColor = '';
+        } else {
+            el.style.backgroundImage = '';
+            el.style.backgroundColor = hexes[0];
+        }
+        el.setAttribute('aria-pressed', String(ledPickerOpen && ledSelectedZone === zone && ledSelectedState === stateKey));
+        const isOff = hexes.every((h) => h.toUpperCase() === '#000000');
+        const mark = el.querySelector('.led-pick-off');
+        if (isOff && !mark) {
+            const span = document.createElement('span');
+            span.className = 'led-pick-off';
+            el.appendChild(span);
+        } else if (!isOff && mark) {
+            mark.remove();
+        }
+    });
+    document.querySelectorAll('.led-card').forEach((card) => {
+        const pick = card.querySelector('.led-pick[data-led-cell$=":awake"]');
+        if (!pick) return;
+        const zone = pick.dataset.ledCell.split(':')[0];
+        const level = ledValueOf(ledColor16ToHex8(ledCellColor16(ledZoneKeys(zone)[0], 'awake')));
+        const val = card.querySelector('.led-bright-val');
+        if (val) val.textContent = `${level}%`;
+        const slider = card.querySelector('.led-bright-slider');
+        // Never yank the slider out from under a finger that is still on it.
+        if (slider && document.activeElement !== slider) slider.value = String(level);
+    });
+    const hex = ledColor16ToHex8(ledCurrentColor16());
+    const lit = ledCurrentColor16() !== '000000000000';
+    const current = document.getElementById('led-current-swatch');
+    if (current) current.style.backgroundColor = hex;
+    const readout = document.getElementById('led-hex-readout');
+    if (readout) readout.textContent = lit ? hex : getTranslation('Off');
+    const power = document.getElementById('ledPowerToggle');
+    if (power) power.checked = lit;
+    const picker = document.getElementById('led-picker');
+    if (picker) picker.style.cssText = lit ? '' : 'opacity:0.35;pointer-events:none;';
+    document.querySelectorAll('.led-swatch[data-hex]').forEach((sw) => {
+        sw.setAttribute('aria-pressed', String(sw.dataset.hex === hex.toUpperCase()));
+    });
+}
+
+// Move the wheel to the colour the page now holds. iro fires 'color:change'
+// for a programmatic set and 'input:change' only for user gestures, so this
+// cannot loop back into the edit handler.
+function ledSyncPickerColor() {
+    if (!ledPicker) return;
+    try { ledPicker.color.set(ledColor16ToHex8(ledCurrentColor16())); } catch (e) { /* picker torn down */ }
+}
+
+// True when the open picker can simply be repainted. Closing or opening it
+// changes what is on the page, so those still re-render.
+function ledPickerStaysPut() {
+    return ledPickerOpen && !!document.querySelector('.led-picker-panel');
+}
+
 function ledUpdateSwatchesDom(hex8) {
     const sw = document.getElementById('led-current-swatch');
     const hx = document.getElementById('led-hex-readout');
     if (sw) sw.style.backgroundColor = hex8;
     if (hx) hx.textContent = hex8.toUpperCase();
-    ledZoneKeys(ledSelectedZone).forEach((k) => {
-        const c = document.querySelector(`[data-led-cell="${k}:${ledSelectedState}"]`);
-        if (c) c.style.backgroundColor = hex8;
-    });
+    // The card swatches are keyed by zone id ('front'/'rear'/'both'), not by
+    // palette key, and a linked edit writes the same colour to both strips --
+    // so the split gradient has to go when a flat colour lands on it.
+    const target = document.querySelector(`[data-led-cell="${ledSelectedZone}:${ledSelectedState}"]`);
+    if (target) {
+        target.style.backgroundImage = '';
+        target.style.backgroundColor = hex8;
+        target.querySelector('.led-pick-off')?.remove();
+    }
 }
 
 // ── LED strip write sequencing ───────────────────────────────────────────────
@@ -4345,8 +4477,68 @@ window.ledSelectCell = function(zone, stateKey) {
     if (ledSelectedZone !== zone || ledSelectedState !== stateKey) ledRestoreStrip();
     ledSelectedZone = zone;
     ledSelectedState = stateKey;
+    if (ledPickerStaysPut()) { ledPaintColoursDom(); ledSyncPickerColor(); return; }
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
+// Tapping a colour is both "edit this one" and "show me the wheel". Tapping
+// the one already open closes it again, so the same control puts the page back
+// the way it was.
+window.ledOpenPicker = function(zone, stateKey) {
+    const same = ledPickerOpen && ledSelectedZone === zone && ledSelectedState === stateKey;
+    ledPickerOpen = !same;
+    window.ledSelectCell(zone, stateKey);
+};
+window.ledClosePicker = function() {
+    ledPickerOpen = false;
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+};
+// Linked edits front and rear as one. Any open picker is retargeted rather
+// than left pointing at a card that is no longer on screen.
+window.ledSetLinked = function(checked) {
+    ledLinked = !!checked;
+    ledRestoreStrip();
+    ledSelectedZone = ledLinked ? 'both' : 'front';
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+};
+// Brightness without touching hue. A strip that is fully off has no hue left
+// to scale, so dragging up relights it from the colour it last had (the same
+// memory the Power toggle uses) rather than from an arbitrary white.
+window.ledSetBrightness = function(zone, value) {
+    if (!ledState) return;
+    ledZoneKeys(zone).forEach((k) => {
+        if (!ledState[k]) return;
+        const memory = k + ':awake';
+        const current = ledColor16ToHex8(ledState[k].awake);
+        if (current.toUpperCase() !== '#000000') ledLastLit[memory] = ledState[k].awake;
+        const base = current.toUpperCase() === '#000000'
+            ? ledColor16ToHex8(ledLastLit[memory] || LED_DEFAULT_ON)
+            : current;
+        ledState[k].awake = ledRgbToColor16(ledHexToRgb(ledWithValue(base, value)));
+    });
+    ledPaintBrightnessDom(zone, value);
+    ledSchedulePreview();
+};
+
+// Dragging the slider must not re-render the page under the finger, so the
+// readout and the swatch it describes are patched in place -- the same reason
+// ledSeqPaintActiveStep exists on the other tab.
+function ledPaintBrightnessDom(zone, value) {
+    const card = document.querySelector(`[data-led-cell="${zone}:awake"]`)?.closest('.led-card');
+    const val = card?.querySelector('.led-bright-val');
+    if (val) val.textContent = `${Math.round(Number(value) || 0)}%`;
+    const keys = ledZoneKeys(zone);
+    const hexes = keys.map((k) => ledColor16ToHex8(ledCellColor16(k, 'awake')));
+    const swatch = card?.querySelector(`[data-led-cell="${zone}:awake"]`);
+    if (swatch) {
+        if (hexes.length > 1 && hexes[0] !== hexes[1]) {
+            swatch.style.backgroundImage = `linear-gradient(90deg, ${hexes[0]} 0 50%, ${hexes[1]} 50% 100%)`;
+        } else {
+            swatch.style.backgroundImage = '';
+            swatch.style.backgroundColor = hexes[0];
+        }
+    }
+    if (ledSelectedState === 'awake') ledUpdateSwatchesDom(hexes[0]);
+}
 window.ledApplyPreset = function(hex8) {
     if (!ledState) return;
     const c16 = ledRgbToColor16(ledHexToRgb(hex8));
@@ -4356,7 +4548,9 @@ window.ledApplyPreset = function(hex8) {
         if (c16 === '000000000000' && cur && cur !== '000000000000') ledLastLit[k + ':' + ledSelectedState] = cur;
         ledState[k][ledSelectedState] = c16;
     });
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+    if (ledPickerStaysPut()) ledPaintColoursDom();
+    else if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+    ledSyncPickerColor();
     ledCommitEdit();
 };
 // Power toggle (Hue-style): Off = black (0,0,0), remembers the last lit colour;
@@ -4376,7 +4570,9 @@ window.ledSetPower = function(on) {
             ledState[k][ledSelectedState] = ledLastLit[key] || LED_DEFAULT_ON;
         }
     });
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+    if (ledPickerStaysPut()) ledPaintColoursDom();
+    else if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+    ledSyncPickerColor();
     ledCommitEdit();
 };
 // ── Colour step-sequence editor ──────────────────────────────────────────
@@ -4399,20 +4595,29 @@ window.ledSeqAddStep = function() {
     ledSeqLoad();
     // Steps belong to a preset, so the first one on an empty library makes it.
     if (!ledSeqLibrary.activeId) ledSeqLibraryEdit((lib) => addPreset(lib, {}));
-    ledSeqEdit(addStep(ledSeqLoad(), { frontColor: '#FFAA55', rearColor: '#FFAA55' }));
+    const next = addStep(ledSeqLoad(), { frontColor: '#FFAA55', rearColor: '#FFAA55' });
+    // Open the step that was just added -- adding one is a statement of intent
+    // to set its colours, and the timeline alone cannot be typed into.
+    ledSeqSelected = next.length - 1;
+    ledSeqEdit(next);
 };
 window.ledSeqRemoveStep = function(index) {
+    ledSeqSelected = -1;
     ledSeqEdit(removeStep(ledSeqLoad(), index));
 };
 window.ledSeqUpdateStep = function(index, patch) {
     ledSeqEdit(updateStep(ledSeqLoad(), index, patch));
 };
 window.ledSeqMoveStep = function(index, direction) {
-    ledSeqEdit(moveStep(ledSeqLoad(), index, index + (direction === 'up' ? -1 : 1)));
+    const to = index + (direction === 'up' ? -1 : 1);
+    const steps = ledSeqLoad();
+    if (to >= 0 && to < steps.length) ledSeqSelected = to;
+    ledSeqEdit(moveStep(steps, index, to));
 };
 // Saved sequences. Only the active one plays and only its triggers fire, so
 // switching preset is also what arms a different set of states.
 window.ledSeqSelectPreset = function(id) {
+    ledSeqSelected = -1;
     ledSeqLibraryEdit((lib) => selectPreset(lib, id));
     ledRunOnMachineStateChange(currentMachineState);
 };
@@ -4436,6 +4641,17 @@ window.ledSeqRenamePreset = function(name) {
 window.ledSeqSetEnabled = function(checked) {
     ledSeqLibraryEdit((lib) => setSequencesEnabled(lib, !!checked));
     ledRunOnMachineStateChange(currentMachineState);
+};
+// Tapping a timeline segment opens its editor; tapping the open one closes it.
+window.ledSeqSelectStep = function(index) {
+    ledSeqSelected = (ledSeqSelected === index) ? -1 : index;
+    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
+};
+window.ledSeqNudgeDuration = function(index, direction) {
+    const steps = ledSeqLoad();
+    const step = steps[index];
+    if (!step) return;
+    ledSeqEdit(updateStep(steps, index, { durationMs: nudgeStepDuration(step.durationMs, direction) }));
 };
 window.ledSeqSetLoop = function(checked) {
     ledSeqLoop = !!checked;
@@ -4462,7 +4678,9 @@ window.ledSeqToggleTriggerState = function(stateId, enabled) {
 // whichever step is ACTUALLY on the strip, even if a trigger run put it there.
 function ledSeqPaintActiveStep() {
     document.querySelectorAll('[data-led-seq-step]').forEach((el) => {
-        el.classList.toggle('led-seq-step-active', Number(el.dataset.ledSeqStep) === ledSeqRunSnapshot.index);
+        // The playhead: the segment the runner is actually on, patched rather
+        // than re-rendered so playback never rebuilds the page mid-edit.
+        el.classList.toggle('led-seq-playing', Number(el.dataset.ledSeqStep) === ledSeqRunSnapshot.index);
     });
     const transport = document.getElementById('led-seq-transport');
     if (transport) {

@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+    sequenceTimeline,
+    formatStepSeconds,
+    nudgeStepDuration,
     MAX_PRESET_NAME_LENGTH,
     normalizePresetName,
     normalizePreset,
@@ -402,4 +405,49 @@ test('parse/serialize round-trip a library and survive junk', () => {
     assert.deepEqual(parseLedLibrary(serializeLedLibrary(lib)), lib);
     assert.deepEqual(parseLedLibrary('{not json'), { enabled: true, activeId: '', presets: [] });
     assert.deepEqual(parseLedLibrary(''), { enabled: true, activeId: '', presets: [] });
+});
+
+// ── Timeline ────────────────────────────────────────────────────────────
+
+test('sequenceTimeline sizes segments by duration and always fills the bar', () => {
+    const { totalMs, segments } = sequenceTimeline([
+        { frontColor: '#FF0000', rearColor: '#FF0000', durationMs: 3000 },
+        { frontColor: '#00FF00', rearColor: '#00FF00', durationMs: 1000 },
+    ]);
+    assert.equal(totalMs, 4000);
+    assert.equal(segments.length, 2);
+    assert.equal(Math.round(segments.reduce((a, s) => a + s.percent, 0)), 100);
+    assert.ok(segments[0].percent > segments[1].percent, 'the longer step is wider');
+    assert.equal(segments[0].frontColor, '#FF0000');
+
+    // A tiny step beside a huge one stays big enough to hit.
+    const lopsided = sequenceTimeline([
+        { durationMs: 500 }, { durationMs: 60000 },
+    ]).segments;
+    assert.ok(lopsided[0].percent >= 5, `floored, got ${lopsided[0].percent}`);
+    assert.equal(Math.round(lopsided.reduce((a, s) => a + s.percent, 0)), 100);
+
+    assert.deepEqual(sequenceTimeline([]), { totalMs: 0, segments: [] });
+});
+
+test('formatStepSeconds reads as seconds, whole numbers from 10s up', () => {
+    assert.equal(formatStepSeconds(500), '0.5');
+    assert.equal(formatStepSeconds(1200), '1.2');
+    assert.equal(formatStepSeconds(10000), '10');
+    assert.equal(formatStepSeconds(12400), '12');
+});
+
+test('nudgeStepDuration grows its step with the value and stays in range', () => {
+    assert.equal(nudgeStepDuration(1000, 1), 1100);
+    assert.equal(nudgeStepDuration(1700, 1), 1800);
+    assert.equal(nudgeStepDuration(2000, 1), 2500);
+    assert.equal(nudgeStepDuration(10000, 1), 11000);
+    assert.equal(nudgeStepDuration(1000, -1), 900);
+    assert.equal(nudgeStepDuration(2500, -1), 2000);
+    // Off-grain values snap rather than drift.
+    assert.equal(nudgeStepDuration(2200, 1), 2500);
+    assert.equal(nudgeStepDuration(2200, -1), 2000);
+    // Clamped at both ends.
+    assert.equal(nudgeStepDuration(MIN_STEP_DURATION_MS, -1), MIN_STEP_DURATION_MS);
+    assert.equal(nudgeStepDuration(MAX_STEP_DURATION_MS, 1), MAX_STEP_DURATION_MS);
 });
