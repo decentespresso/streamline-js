@@ -4046,13 +4046,22 @@ export function renderLedSettings() {
     const { totalMs, segments } = sequenceTimeline(seqSteps);
     const seqSelected = (ledSeqSelected >= 0 && ledSeqSelected < seqSteps.length) ? ledSeqSelected : -1;
 
+    // Two lanes, front above rear, named in a gutter outside the bar -- a
+    // colour on its own cannot say which strip it drives, and a legend would
+    // make you look away from the thing you are reading.
     const timeline = !segments.length ? '' : `
-        <div class="led-timeline" role="group" aria-label="${getTranslation('Sequence')}">
-            ${segments.map((seg) => `
-                <button class="led-seg" style="width:${seg.percent}%; background-image: linear-gradient(90deg, ${seg.frontColor} 0 50%, ${seg.rearColor} 50% 100%)"
-                    data-led-seq-step="${seg.index}" aria-pressed="${seg.index === seqSelected}"
-                    aria-label="${seg.index + 1} · ${formatStepSeconds(seqSteps[seg.index].durationMs)}s"
-                    onclick="window.ledSeqSelectStep(${seg.index})"><span class="led-seg-no">${seg.index + 1}</span></button>`).join('')}
+        <div class="led-timeline-wrap">
+            <div class="led-lane-names">
+                <span data-i18n-key="Front">${getTranslation('Front')}</span>
+                <span data-i18n-key="Rear">${getTranslation('Rear')}</span>
+            </div>
+            <div class="led-timeline" role="group" aria-label="${getTranslation('Sequence')}">
+                ${segments.map((seg) => `
+                    <button class="led-seg" style="width:${seg.percent}%; background-image: linear-gradient(180deg, ${seg.frontColor} 0 50%, ${seg.rearColor} 50% 100%)"
+                        data-led-seq-step="${seg.index}" aria-pressed="${seg.index === seqSelected}"
+                        aria-label="${seg.index + 1} · ${formatStepSeconds(seqSteps[seg.index].durationMs)}s"
+                        onclick="window.ledSeqSelectStep(${seg.index})"><span class="led-seg-no">${seg.index + 1}</span></button>`).join('')}
+            </div>
         </div>`;
 
     const stepEditor = seqSelected < 0 ? '' : (() => {
@@ -4061,10 +4070,16 @@ export function renderLedSettings() {
         <div class="led-step-editor">
             <span class="led-step-index">${seqSelected + 1}</span>
             <div class="led-step-colors">
-                <input type="color" aria-label="${getTranslation('Front')}" value="${step.frontColor}"
-                    onchange="window.ledSeqUpdateStep(${seqSelected}, { frontColor: this.value })" />
-                <input type="color" aria-label="${getTranslation('Rear')}" value="${step.rearColor}"
-                    onchange="window.ledSeqUpdateStep(${seqSelected}, { rearColor: this.value })" />
+                <label class="led-step-color">
+                    <span class="led-pick-cap" data-i18n-key="Front">${getTranslation('Front')}</span>
+                    <input type="color" aria-label="${getTranslation('Front')}" value="${step.frontColor}"
+                        onchange="window.ledSeqUpdateStep(${seqSelected}, { frontColor: this.value })" />
+                </label>
+                <label class="led-step-color">
+                    <span class="led-pick-cap" data-i18n-key="Rear">${getTranslation('Rear')}</span>
+                    <input type="color" aria-label="${getTranslation('Rear')}" value="${step.rearColor}"
+                        onchange="window.ledSeqUpdateStep(${seqSelected}, { rearColor: this.value })" />
+                </label>
             </div>
             <div class="led-dur">
                 <button class="led-icon-btn" aria-label="${getTranslation('Duration (ms)')}"
@@ -4682,6 +4697,11 @@ function ledSeqPaintActiveStep() {
         // than re-rendered so playback never rebuilds the page mid-edit.
         el.classList.toggle('led-seq-playing', Number(el.dataset.ledSeqStep) === ledSeqRunSnapshot.index);
     });
+    // Marking the playing step with an accent stroke fails on a step that IS
+    // that accent, so the bar says it by contrast instead: while something is
+    // playing the rest of the timeline drops back. Driven from a class on the
+    // bar rather than :has(), which older embedded WebViews do not support.
+    document.querySelector('.led-timeline')?.classList.toggle('is-playing', ledSeqRunSnapshot.index >= 0);
     const transport = document.getElementById('led-seq-transport');
     if (transport) {
         const mode = ledSeqIsManualRun() ? 'stop' : 'play';

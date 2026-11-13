@@ -132,6 +132,86 @@ test('parses a representative Visualizer .tcl fixture end to end', () => {
     });
 });
 
+// ─── Simple (settings_2a/2b) profiles with an empty advanced_shot ──────────
+// Every read-only profile de1app bundles ships `advanced_shot {}`; the shot
+// only exists as simple-mode knobs that de1app expands at load time.
+
+test('a bundled de1app simple pressure profile expands into the frames de1app builds', () => {
+    const text = readFileSync(
+        new URL('./fixtures/de1app-simple-pressure.tcl', import.meta.url),
+        'utf8',
+    );
+    const profile = parseTclProfile(text);
+    assertValidatesAsProfile(profile);
+
+    assert.equal(profile.title, 'Best overall pressure profile');
+    assert.equal(profile.type, 'pressure');
+    assert.equal(profile.target_weight, 36);
+    // The two preinfusion frames plus the forced rise all pressurise rather
+    // than pour, so stop-at-volume starts counting at frame 4.
+    assert.equal(profile.target_volume_count_start, 3);
+
+    assert.deepEqual(profile.steps.map((s) => [s.name, s.seconds]), [
+        ['preinfusion temp boost', 2],   // temp_bump_time_seconds, temps enabled
+        ['preinfusion', 18],             // preinfusion_time 20 − 2
+        ['forced rise', 3],
+        ['rise and hold', 7],            // espresso_hold_time 10 − 3
+        ['decline', 30],
+    ]);
+    assert.deepEqual(profile.steps[1], {
+        name: 'preinfusion', pump: 'flow', transition: 'fast', temperature: 88,
+        sensor: 'coffee', seconds: 18, weight: 0, volume: 0,
+        exit: { type: 'pressure', condition: 'over', value: 4 }, // preinfusion_stop_pressure
+        limiter: null, flow: 8,                                  // preinfusion_flow_rate
+    });
+    assert.deepEqual(profile.steps[4], {
+        name: 'decline', pump: 'pressure', transition: 'smooth', temperature: 88,
+        sensor: 'coffee', seconds: 30, weight: 0, volume: 0, exit: null,
+        limiter: { value: 3.5, range: 1 },   // maximum_flow / maximum_flow_range_default
+        pressure: 6,                         // pressure_end
+    });
+});
+
+test('a simple flow profile expands onto the flow axis, limited by maximum_pressure', () => {
+    const profile = parseTclProfile(buildProfile({
+        advanced_shot: '{}',
+        settings_profile_type: 'settings_profile_flow', // pre-v2 spelling of settings_2b
+        espresso_temperature: '92',
+        espresso_temperature_steps_enabled: '0',
+        preinfusion_time: '10',
+        preinfusion_flow_rate: '4',
+        preinfusion_stop_pressure: '3',
+        espresso_hold_time: '8',
+        espresso_decline_time: '20',
+        flow_profile_hold: '2.2',
+        flow_profile_decline: '1.2',
+        maximum_pressure: '9',
+        maximum_pressure_range_default: '0.9',
+    }));
+
+    assert.equal(profile.type, 'flow');
+    assert.equal(profile.legacy_profile_type, 'settings_2b');
+    assert.equal(profile.target_volume_count_start, 1); // no temp bump: one preinfusion frame
+    assert.deepEqual(profile.steps.map((s) => [s.name, s.pump, s.flow, s.seconds]), [
+        ['preinfusion', 'flow', 4, 10],
+        ['hold', 'flow', 2.2, 8],
+        ['decline', 'flow', 1.2, 20],
+    ]);
+    assert.deepEqual(profile.steps[2].limiter, { value: 9, range: 0.9 });
+    assert.equal(profile.steps.every((s) => s.temperature === 92), true);
+});
+
+test('a simple profile whose durations are all zero still imports, as one empty frame', () => {
+    const profile = parseTclProfile(buildProfile({
+        advanced_shot: '{}',
+        settings_profile_type: 'settings_2a',
+    }));
+    assert.equal(profile.steps.length, 1);
+    assert.equal(profile.steps[0].name, 'empty');
+    assert.equal(profile.steps[0].seconds, 0);
+    assert.equal(profile.target_volume_count_start, 0);
+});
+
 // ─── settings_profile_type variants ────────────────────────────────────────
 
 test('settings_profile_type maps to type: settings_2a→pressure, 2b→flow, 2c→advanced, unknown→advanced', () => {

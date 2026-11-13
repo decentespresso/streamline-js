@@ -895,13 +895,30 @@ textarea,
   border: 2px solid var(--led-hairline);
 }
 
-/* The timeline. One bar, one segment per step, each as wide as its step is
-   long and split front | rear -- the shape of the whole light show, readable
-   without counting rows. Tapping a segment opens its editor below. */
+/* The timeline. One segment per step, as wide as its step is long, split into
+   two lanes: front on top, rear below, named in the gutter at the left. */
+.led-timeline-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+}
+.led-lane-names {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: flex-end;
+  flex-shrink: 0;
+  width: 72px;
+  color: var(--led-muted);
+  font-size: 18px;
+  font-weight: 600;
+}
 .led-timeline {
   display: flex;
-  width: 100%;
-  height: 84px;
+  flex: 1;
+  min-width: 0;
+  height: 96px;
   border: 2px solid var(--led-hairline);
   border-radius: 12px;
   overflow: hidden;
@@ -912,17 +929,25 @@ textarea,
   border: 0;
   border-right: 2px solid var(--led-hairline);
   cursor: pointer;
-  transition: box-shadow 0.15s ease-out;
 }
 .led-seg:last-child { border-right: 0; }
-.led-seg[aria-pressed='true'] { box-shadow: inset 0 0 0 4px var(--mimoja-blue-v2); }
-/* Where the strip actually is right now, written by ledSeqPaintActiveStep. */
-.led-seg.led-seq-playing::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-bottom: 6px solid var(--mimoja-blue-v2);
+/* Both markers have to stay legible on a colour the user chose, which rules
+   out a single accent stroke -- a blue ring vanishes on a blue step. Each is
+   drawn as a light/dark pair, so whichever half matches the step underneath,
+   the other half still reads. */
+.led-seg[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 3px #fff, inset 0 0 0 6px var(--mimoja-blue-v2);
 }
+/* Where the strip actually is right now, written by ledSeqPaintActiveStep.
+   Told by contrast rather than by an accent stroke: everything that is not
+   playing drops back, so the live step stands out whatever colour it is. */
+.led-timeline.is-playing .led-seg { opacity: 0.35; }
+.led-timeline.is-playing .led-seg.led-seq-playing { opacity: 1; }
+.led-seg.led-seq-playing .led-seg-no {
+  background-color: var(--mimoja-blue-v2);
+  color: #fff;
+}
+.led-seg { transition: opacity 0.12s linear; }
 /* The number sits on whatever colour the step happens to be, so it rides in a
    neutral badge instead of trusting the contrast of a user-picked colour. */
 .led-seg-no {
@@ -964,20 +989,22 @@ textarea,
 }
 .led-step-colors {
   display: flex;
-  border: 2px solid var(--led-hairline);
-  border-radius: 10px;
-  overflow: hidden;
+  gap: 14px;
+}
+.led-step-color {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
 }
 .led-step-colors input[type='color'] {
-  width: 72px;
-  height: 48px;
-  border: 0;
+  width: 84px;
+  height: 46px;
+  border: 2px solid var(--led-hairline);
+  border-radius: 8px;
   padding: 0;
   background: none;
   cursor: pointer;
-}
-.led-step-colors input[type='color'] + input[type='color'] {
-  border-left: 2px solid var(--led-hairline);
 }
 /* Seconds, not milliseconds, and nudged rather than typed -- nobody wants a
    number pad for "a bit longer" on a machine they are standing at. */
