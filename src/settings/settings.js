@@ -4396,7 +4396,14 @@ function ledPaintColoursDom() {
     const power = document.getElementById('ledPowerToggle');
     if (power) power.checked = lit;
     const picker = document.getElementById('led-picker');
-    if (picker) picker.style.cssText = lit ? '' : 'opacity:0.35;pointer-events:none;';
+    // Two properties, not cssText: initLedPicker pins and counter-scales this
+    // element inline, and writing cssText wholesale threw that away -- the
+    // wheel snapped back to its natural size (and its touch math broke) the
+    // moment you tapped a swatch on an already-open picker.
+    if (picker) {
+        picker.style.opacity = lit ? '' : '0.35';
+        picker.style.pointerEvents = lit ? '' : 'none';
+    }
     document.querySelectorAll('.led-swatch[data-hex]').forEach((sw) => {
         sw.setAttribute('aria-pressed', String(sw.dataset.hex === hex.toUpperCase()));
     });
@@ -4415,6 +4422,7 @@ function ledPaintSeqColorsDom() {
         const [index, field] = el.dataset.ledSeqPick.split(':');
         const step = steps[Number(index)];
         if (step) el.style.backgroundColor = step[field];
+        el.setAttribute('aria-pressed', String(!!ledPickSeq && ledPickSeq.index === Number(index) && ledPickSeq.field === field));
     });
 }
 
@@ -4591,8 +4599,14 @@ window.ledSeqOpenPicker = function(index, field) {
     const same = ledPickerOpen && ledPickSeq && ledPickSeq.index === index && ledPickSeq.field === field;
     // The strip is previewing a palette cell, not this step -- end that first.
     ledRestoreStrip();
+    // Front <-> Rear on an open wheel changes no shape, only which colour the
+    // wheel edits, so patch it like the Static Colours cards do. Re-rendering
+    // here rebuilt the iro wheel -- mounted at natural size, measured, then
+    // counter-scaled -- which is the size flash the user sees.
+    const retarget = !same && !!ledPickSeq && ledPickerStaysPut();
     ledPickerOpen = !same;
     ledPickSeq = same ? null : { index, field };
+    if (retarget) { ledPaintSeqColorsDom(); ledPaintColoursDom(); ledSyncPickerColor(); return; }
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
 window.ledClosePicker = function() {
