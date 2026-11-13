@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { compareVersions, getTag, normalizeReleaseState, recordSuccess } from '../src/modules/skin-version.js';
 
 const apiSource = readFileSync(new URL('../src/modules/api.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const apiStart = apiSource.indexOf('export function connectUpdateWebSocket');
@@ -130,21 +131,28 @@ const blockStart = settingsSource.indexOf('function renderAppUpdateBlock(state) 
 assert.notEqual(blockStart, -1, 'renderAppUpdateBlock not found in settings.js');
 const blockEnd = settingsSource.indexOf('\n}\n', blockStart) + 3;
 
-const cmpStart = settingsSource.indexOf('function compareVersions(a, b) {');
-assert.notEqual(cmpStart, -1, 'compareVersions not found in settings.js');
-const compareVersionsSource = settingsSource.slice(cmpStart, settingsSource.indexOf('\n}\n', cmpStart) + 3);
-
+// compareVersions and the release-tag cache live in skin-version.js (decaid
+// #1118), so the badge reads a real cache here: a tag is known only after a
+// successful check recorded it.
 const RELEASES_URL = 'https://github.com/decentespresso/decaid/releases';
-const renderBadge = ({ current, latest, state = {} }) => new Function(
-    'settingsCache', 'getTranslation', 'maybeCheckLatestRelease', 'DECAID_REPO', 'DECAID_RELEASES_URL',
-    `${compareVersionsSource}\n${settingsSource.slice(blockStart, blockEnd)}\n    return renderAppUpdateBlock;`,
-)(
-    { appInfo: current ? { version: current } : null, latestReleases: { 'decentespresso/decaid': latest } },
-    (key) => key,
-    () => {},
-    'decentespresso/decaid',
-    RELEASES_URL,
-)(state);
+const renderBadge = ({ current, latest, state = {} }) => {
+    const releases = normalizeReleaseState(null);
+    if (latest) recordSuccess(releases, 'decentespresso/decaid', latest);
+    return new Function(
+        'settingsCache', 'getTranslation', 'maybeCheckLatestRelease', 'DECAID_REPO', 'DECAID_RELEASES_URL',
+        'compareVersions', 'getTag', 'releaseState',
+        `${settingsSource.slice(blockStart, blockEnd)}\n    return renderAppUpdateBlock;`,
+    )(
+        { appInfo: current ? { version: current } : null },
+        (key) => key,
+        () => {},
+        'decentespresso/decaid',
+        RELEASES_URL,
+        compareVersions,
+        getTag,
+        () => releases,
+    )(state);
+};
 
 test('an older build than the newest release shows "Update available"', () => {
     const html = renderBadge({ current: '0.8.3', latest: 'v0.8.4' });

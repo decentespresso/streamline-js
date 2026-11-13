@@ -3730,13 +3730,29 @@ export function initFullscreenHandler() {
 // e.g. the 1.5s "Hold to assign profile." hint killing the assign error 1.1s in.
 let toastHideTimer = null;
 
-export function showToast(message, duration = 2400, type = 'info') {
+// Set while a tappable toast is on screen (the "tap to reload" update prompt).
+// One listener for the toast's whole lifetime: re-binding per toast would stack
+// handlers on the shared element.
+let toastClickFn = null;
+
+export function showToast(message, duration = 2400, type = 'info', { onClick = null } = {}) {
     const toastEl = document.getElementById('app-toast');
     const messageEl = document.getElementById('app-toast-message');
     if (toastEl && messageEl) {
         clearTimeout(toastHideTimer);
         toastHideTimer = null;
         messageEl.textContent = message;
+
+        toastClickFn = typeof onClick === 'function' ? onClick : null;
+        toastEl.style.cursor = toastClickFn ? 'pointer' : '';
+        if (!toastEl.dataset.clickBound) {
+            toastEl.dataset.clickBound = '1';
+            toastEl.addEventListener('click', () => {
+                const fn = toastClickFn;
+                hideToast();
+                fn?.();
+            });
+        }
 
         const alertEl = toastEl.querySelector('.alert');
         if (alertEl) {
@@ -3770,12 +3786,14 @@ export function hideToast() {
 
     clearTimeout(toastHideTimer);
     toastHideTimer = null;
+    toastClickFn = null;
 
     const toastEl = document.getElementById('app-toast');
 
     if (toastEl) {
 
         toastEl.style.display = 'none';
+        toastEl.style.cursor = '';
 
     }
 

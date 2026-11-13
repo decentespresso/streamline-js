@@ -3478,10 +3478,22 @@ export async function getWebuiServerStatus() {
     return response.json();
 }
 
+// Decaid attempts every skin and answers any failure -- including a partial one,
+// where some skins did update -- with HTTP 500 and a JSON `{ error }` that says
+// why in plain language (rest_v1.yml documents this). When GitHub's quota is
+// gone that message carries the cooldown and reset time, so throwing the status
+// alone turned the one useful sentence into "500 Internal Server Error" on
+// screen (decaid #1118).
 export async function updateSkins() {
     const response = await fetch(`${API_BASE_URL}/webui/skins/update`, { method: 'POST' });
-    if (!response.ok) throw new Error(`Failed to update skins: ${response.status} ${response.statusText}`);
-    return response.json();
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+        const reason = typeof body?.error === 'string' && body.error.trim()
+            ? body.error.trim()
+            : `${response.status} ${response.statusText}`;
+        throw new Error(reason);
+    }
+    return body;
 }
 
 // Decaid answers a refused or failed submission with a JSON body that says why

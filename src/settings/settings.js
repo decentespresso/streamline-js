@@ -22,6 +22,7 @@ import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmM
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
+import { compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure, recordRateLimit, limitRemainingMs, getTag } from '../modules/skin-version.js';
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
 import { openModal, shouldUseNumpad, initializeNumpadModal } from '../modules/numpad-modal.js';
@@ -5849,30 +5850,15 @@ export function renderSensorCalSettings() {
 // For every bundled skin installed from a GitHub release, "Update available"
 // compares the installed version the bridge reports (GET /api/v1/webui/skins ->
 // s.version) against the latest release tag of that skin's own repo. Older
-// installed version => update available. Skins not installed from a GitHub release
-// have no signal and show "Up to date". APP_VERSION is NOT used here — it is a
+// installed version => update available. A skin we have no release tag for --
+// not installed from a GitHub release, never checked, check failed, or GitHub's
+// quota gone -- gets NO badge: claiming "Up to date" off an unknown answer is
+// what decaid #1118 called out. APP_VERSION is NOT used here — it is a
 // hardcoded build marker shown only so dist/preview users know which build runs.
-
-function compareVersions(a, b) {
-    const parse = (v) => {
-        const [core, pre] = String(v || '').trim().replace(/^v/i, '').split('-');
-        return { nums: core.split('.').map((n) => parseInt(n, 10) || 0), pre: pre || '' };
-    };
-    const pa = parse(a), pb = parse(b);
-    const len = Math.max(pa.nums.length, pb.nums.length);
-    for (let i = 0; i < len; i++) {
-        const d = (pa.nums[i] || 0) - (pb.nums[i] || 0);
-        if (d !== 0) return d < 0 ? -1 : 1;
-    }
-    // Equal core: a release outranks a prerelease (1.0.0 > 1.0.0-beta.1).
-    if (pa.pre && !pb.pre) return -1;
-    if (!pa.pre && pb.pre) return 1;
-    if (pa.pre && pb.pre) {
-        const c = pa.pre.localeCompare(pb.pre, undefined, { numeric: true });
-        return c < 0 ? -1 : c > 0 ? 1 : 0;
-    }
-    return 0;
-}
+//
+// The per-repo cooldown lives in src/modules/skin-version.js and is persisted,
+// so re-entering Settings or reloading the page cannot re-spend GitHub's 60/h
+// budget. See that file's header for why the budget matters.
 
 // owner/repo for a skin from the bridge's install metadata, or null when it wasn't
 // installed from a GitHub release. Our own skin falls back to the canonical repo so
@@ -5884,22 +5870,58 @@ function skinRepoSlug(s) {
     return null;
 }
 
-// Fetch each repo's latest release tag once per settings session (deduped by repo),
-// then re-render. Non-fatal per repo: offline / rate-limited / no releases leaves
-// that skin at "Up to date".
+// Cooldown + last-answer cache, read once per page and written back after every
+// check. localStorage, not settingsCache: the cache dies with the settings
+// module, and the whole point is that a reload or a second visit does not get a
+// fresh 60-request budget.
+const RELEASE_STATE_KEY = 'githubReleaseChecks';
+
+function releaseState() {
+    if (!settingsCache.releaseState) {
+        let saved = null;
+        try { saved = JSON.parse(localStorage.getItem(RELEASE_STATE_KEY) || 'null'); } catch (e) { /* private mode / bad JSON */ }
+        settingsCache.releaseState = normalizeReleaseState(saved);
+    }
+    return settingsCache.releaseState;
+}
+
+function saveReleaseState() {
+    try { localStorage.setItem(RELEASE_STATE_KEY, JSON.stringify(settingsCache.releaseState)); } catch (e) { /* non-fatal */ }
+}
+
+// Ask GitHub for a repo's latest release tag, at most once per TTL and never
+// through an active cooldown, then re-render. Non-fatal per repo: a failed or
+// refused check leaves that skin with no badge rather than a false "Up to date".
 function maybeCheckLatestRelease(slug, categories) {
-    const cache = settingsCache.latestReleases || (settingsCache.latestReleases = {});
+    const state = releaseState();
     const inFlight = settingsCache.releaseInFlight || (settingsCache.releaseInFlight = new Set());
-    if (!slug || slug in cache || inFlight.has(slug)) return;
+    if (!slug || inFlight.has(slug) || !shouldCheck(state, slug)) return;
     inFlight.add(slug);
     fetch(`https://api.github.com/repos/${slug}/releases/latest`, {
         headers: { Accept: 'application/vnd.github+json' },
     })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((data) => { cache[slug] = data?.tag_name?.trim() || null; })
-        .catch(() => { cache[slug] = null; })
+        .then(async (r) => {
+            if (r.ok) {
+                const data = await r.json().catch(() => null);
+                recordSuccess(state, slug, data?.tag_name?.trim() || null);
+                return;
+            }
+            // 403 with the quota gone, or 429: stop asking for every repo until
+            // GitHub's own reset time, and say so once in the log.
+            if (r.status === 403 || r.status === 429) {
+                recordRateLimit(state, {
+                    reset: r.headers?.get?.('x-ratelimit-reset'),
+                    retryAfter: r.headers?.get?.('retry-after'),
+                });
+                logger.info(`GitHub release check rate-limited (${r.status}); cooling down for ${Math.round(limitRemainingMs(state) / 60000)} min`);
+                return;
+            }
+            recordFailure(state, slug);
+        })
+        .catch(() => { recordFailure(state, slug); })
         .finally(() => {
             inFlight.delete(slug);
+            saveReleaseState();
             // A page can be reached under more than one category id — re-render
             // whichever is active so the freshly-fetched release tag is shown.
             if (categories.includes(activeSettingsCategory)) {
@@ -5963,13 +5985,14 @@ export function renderSkinSettings() {
     maybeCheckLatestReleases();
 
     // Per-skin update badge: each skin installed from a GitHub release is compared
-    // against the latest release tag of its own repo. Skins without a GitHub-release
-    // source (or whose release we couldn't fetch) show "Up to date".
-    const releases = settingsCache.latestReleases || {};
+    // against the latest release tag of its own repo. No tag and no installed
+    // version means no answer, and no answer means no badge -- the same rule the
+    // Decaid app-update block below follows.
+    const state = releaseState();
     const skinBadge = (s, isActive) => {
-        const slug = skinRepoSlug(s);
-        const latest = slug ? releases[slug] : null;
-        const needsUpdate = !!latest && !!s.version && compareVersions(s.version, latest) < 0;
+        const { tag: latest, known } = getTag(state, skinRepoSlug(s));
+        if (!known || !s.version) return '';
+        const needsUpdate = compareVersions(s.version, latest) < 0;
         const base = 'text-[16px] font-semibold px-[8px] py-[2px] rounded-full';
         if (isActive) return needsUpdate
             ? `<span class="${base} bg-white/20 text-white" data-i18n-key="Update available">Update available</span>`
@@ -7499,10 +7522,10 @@ function renderAppUpdateBlock(state) {
     maybeCheckLatestRelease(DECAID_REPO, ['rea']);
 
     const current = settingsCache.appInfo?.version || state?.currentVersion || '';
-    const latest = (settingsCache.latestReleases || {})[DECAID_REPO];
     // No tag yet (still fetching, offline, or rate-limited) is not "up to date" --
     // say nothing rather than guess.
-    const known = !!latest && !!current;
+    const { tag: latest, known: tagKnown } = getTag(releaseState(), DECAID_REPO);
+    const known = tagKnown && !!current;
     const needsUpdate = known && compareVersions(current, latest) < 0;
     const latestPlain = String(latest || '').replace(/^v/i, '');
 

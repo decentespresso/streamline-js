@@ -38,6 +38,8 @@ import { initHelpLauncher } from './help-launcher.js';
 import { noteClearContext } from './workflow-note.js';
 import { sleepProfileMark, shouldApplyWakeProfile, createSleepMarkStore } from './wake-profile.js';
 import { legacyKeysToPurge, LEGACY_VISUALIZER_PURGED_FLAG } from './legacy-credentials-purge.js';
+import { shouldPromptReload } from './skin-version.js';
+import { APP_VERSION, SKIN_ID } from '../version.js';
 
 window.app = { api, ui, chart };
 
@@ -71,6 +73,54 @@ function initClockTicker() {
         tick();
         setInterval(tick, 60_000);
     }, msToNextMinute);
+}
+
+// ── "New version available" prompt (streamline-js #196) ──────────────────────
+// Decaid updates the skin's files on disk in the background, on its own timer.
+// The page running in the WebView keeps the OLD modules in memory, so a user who
+// never opens Settings stays on the old build indefinitely -- today the manual
+// "Check for skin updates" button is the only thing that ever reloads.
+//
+// Costs nothing on GitHub's quota: this only reads what Decaid already has on
+// disk (GET /webui/skins), never api.github.com. See skin-version.js.
+const SKIN_UPDATE_FIRST_CHECK_MS = 30_000;          // let boot traffic settle first
+const SKIN_UPDATE_POLL_MS = 12 * 60 * 60 * 1000;    // matches Decaid's own check interval
+const SKIN_UPDATE_TOAST_MS = 20_000;
+
+let skinUpdateWatchStarted = false;
+
+async function checkSkinUpdate() {
+    try {
+        const skins = await api.getAllSkins();
+        const disk = skins?.find(s => s.id === SKIN_ID)?.version;
+        if (!shouldPromptReload({ running: APP_VERSION, disk })) return;
+        logger.info(`Skin update on disk: running v${APP_VERSION}, disk v${disk}`);
+        ui.showToast(getTranslation('New version available — tap to reload'), SKIN_UPDATE_TOAST_MS, 'info', {
+            onClick: () => {
+                // Changed query string so the document is re-requested rather
+                // than served from the WebView's cache; keeps ?page= so a reload
+                // from a sub-page comes back to that sub-page.
+                // ponytail: module URLs are unversioned, so a stubborn cache can
+                // still hand back old modules -- same exposure as the existing
+                // Settings reload path. Hash the module URLs if that shows up.
+                const url = new URL(window.location.href);
+                url.searchParams.set('v', String(Date.now()));
+                window.location.replace(url.toString());
+            },
+        });
+    } catch (error) {
+        // Decaid unreachable or the skin not registered: ask again next tick.
+        logger.info(`Skin update check skipped: ${error.message || error}`);
+    }
+}
+
+function initSkinUpdateWatch() {
+    if (skinUpdateWatchStarted) return;
+    skinUpdateWatchStarted = true;
+    setTimeout(() => {
+        void checkSkinUpdate();
+        setInterval(() => { void checkSkinUpdate(); }, SKIN_UPDATE_POLL_MS);
+    }, SKIN_UPDATE_FIRST_CHECK_MS);
 }
 
 function initMobileValueInputs({ openModal, shouldUseNumpad }) {
@@ -2483,6 +2533,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // first tap on Settings / Profiles / Edit doesn't pay for it. Boot is
         // finished by here; the call schedules itself on idle from there.
         prefetchSubpages();
+
+        // Boot, not the main-page mount: a tablet left on a sub-page must still
+        // learn that Decaid downloaded a newer build.
+        initSkinUpdateWatch();
 
         logger.info('App initialization finished successfully.');
 
