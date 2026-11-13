@@ -26,7 +26,17 @@ export function createAutoSteamLifecycle({ session, getPlugins, getStatus, isAva
                 observed = revision;
                 const plugins = await getPlugins();
                 if (disposed) return;
-                if (plugins === null) throw new Error('Auto steam capability could not be checked. Using manual steam.');
+                // `connectivity`: getPlugins() returns null only when the call to
+                // Decaid itself failed, which api.js has already logged and the
+                // machine status already shows. Still a fail-safe -- auto steam goes
+                // off and manual settings come back -- but the UI logs this rather
+                // than firing a red toast at a disconnection the user cannot act on.
+                // A failure to restore manual settings is re-wrapped by failSafe()
+                // without the flag, so that one still surfaces.
+                if (plugins === null) throw Object.assign(
+                    new Error('Auto steam capability could not be checked. Using manual steam.'),
+                    { connectivity: true },
+                );
                 const available = isAvailable(plugins);
                 onAvailability(available);
                 if (!available) await session.disable();

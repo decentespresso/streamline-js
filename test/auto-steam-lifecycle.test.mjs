@@ -90,10 +90,14 @@ test('a failed capability query visibly fails safe to manual', async () => {
         isAvailable: () => true,
         onAvailability: value => availability.push(value),
         onChange() {},
-        onError: error => errors.push(error.message),
+        onError: error => errors.push(error),
     });
     await lifecycle.initialize();
     assert.deepEqual(availability, [false]);
     assert.equal(disabled, 1);
-    assert.match(errors[0], /Using manual steam/);
+    assert.match(errors[0].message, /Using manual steam/);
+    // An unreadable plugin list means Decaid is unreachable, not that the
+    // capability is genuinely absent: flagged so the UI logs it instead of
+    // toasting a disconnection the user can neither act on nor dismiss.
+    assert.equal(errors[0].connectivity, true);
 });

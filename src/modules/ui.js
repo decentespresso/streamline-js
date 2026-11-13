@@ -2994,7 +2994,12 @@ export function initUI(callbacks) {
             updateSteamDisplay({ targetSteamDuration: steam.duration, targetSteamFlow: steam.flow, stopAtTemperature: steam.stopAtTemperature });
             updateSteamPresetDisplay();
         },
-        onError(error) { showToast(`${error.message} Using manual steam.`, 5000, 'error'); },
+        onError(error) {
+            // Decaid unreachable: logged at the failing call and already visible in
+            // the machine status, so a red toast is a second report of one blip.
+            if (error?.connectivity) { logger.warn(error.message); return; }
+            showToast(`${error.message} Using manual steam.`, 5000, 'error');
+        },
     });
     for (const button of document.querySelectorAll('[data-auto-pitcher]')) {
         button.onclick = async () => {
