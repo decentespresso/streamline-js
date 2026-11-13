@@ -8,6 +8,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+    MAX_PRESET_NAME_LENGTH,
+    normalizePresetName,
+    normalizePreset,
+    nextPresetId,
+    normalizeLibrary,
+    getActivePreset,
+    addPreset,
+    removePreset,
+    renamePreset,
+    selectPreset,
+    updateActivePreset,
+    setSequencesEnabled,
+    resolveLibraryTrigger,
+    parseLedLibrary,
+    serializeLedLibrary,
     MIN_STEP_DURATION_MS,
     MAX_STEP_DURATION_MS,
     DEFAULT_STEP_DURATION_MS,
@@ -289,4 +304,102 @@ test('resolveTriggerSequence never hands back the trigger list itself', () => {
     const resolved = resolveTriggerSequence(sequence, 'idle');
     assert.equal(resolved.triggerStates, undefined);
     assert.deepEqual(Object.keys(resolved).sort(), ['loop', 'steps']);
+});
+
+// ── Sequence library ────────────────────────────────────────────────────
+
+const step = (frontColor = '#FF0000') => ({ frontColor, rearColor: '#00FF00', durationMs: 900 });
+
+test('normalizeLibrary migrates a pre-library single sequence into one preset', () => {
+    const lib = normalizeLibrary({ steps: [step()], loop: true, triggerStates: ['idle', 'nonsense'] });
+    assert.equal(lib.presets.length, 1);
+    assert.equal(lib.activeId, lib.presets[0].id);
+    assert.deepEqual(lib.presets[0].steps, [step()]);
+    assert.equal(lib.presets[0].loop, true);
+    assert.deepEqual(lib.presets[0].triggerStates, ['idle']);
+    // An upgrade must not silently disarm triggers that were already live.
+    assert.equal(lib.enabled, true);
+});
+
+test('normalizeLibrary repairs junk: bad activeId, duplicate ids, non-objects', () => {
+    const lib = normalizeLibrary({
+        enabled: false,
+        activeId: 'does-not-exist',
+        presets: [{ id: 'dup', steps: [step()] }, { id: 'dup', steps: [] }, null],
+    });
+    assert.equal(lib.enabled, false);
+    assert.equal(lib.presets.length, 3);
+    assert.equal(new Set(lib.presets.map((p) => p.id)).size, 3, 'ids deduped');
+    assert.equal(lib.activeId, lib.presets[0].id, 'falls back to the first preset');
+    assert.deepEqual(normalizeLibrary(null), { enabled: true, activeId: '', presets: [] });
+});
+
+test('nextPresetId skips ids already in use', () => {
+    assert.equal(nextPresetId([]), 's1');
+    assert.equal(nextPresetId([{ id: 's1' }, { id: 's3' }]), 's2');
+});
+
+test('normalizePresetName trims and caps; normalizePreset fills the rest in', () => {
+    assert.equal(normalizePresetName('  Sunrise  '), 'Sunrise');
+    assert.equal(normalizePresetName('x'.repeat(80)).length, MAX_PRESET_NAME_LENGTH);
+    assert.equal(normalizePresetName(42), '');
+    const p = normalizePreset({}, 2);
+    assert.deepEqual(p, { id: 's3', name: '', steps: [], loop: false, triggerStates: [] });
+});
+
+test('addPreset appends and activates; removePreset moves the active one along', () => {
+    let lib = addPreset(normalizeLibrary(null), { name: 'First' });
+    lib = addPreset(lib, { name: 'Second' });
+    assert.deepEqual(lib.presets.map((p) => p.name), ['First', 'Second']);
+    assert.equal(lib.activeId, lib.presets[1].id, 'a new preset becomes active');
+
+    const removed = removePreset(lib, lib.activeId);
+    assert.equal(removed.presets.length, 1);
+    assert.equal(removed.activeId, removed.presets[0].id);
+    assert.equal(removePreset(removed, removed.activeId).activeId, '', 'emptied library has no active id');
+    assert.deepEqual(removePreset(lib, 'nope'), lib, 'unknown id is a no-op');
+});
+
+test('select/rename/updateActivePreset touch only the preset they name', () => {
+    let lib = addPreset(addPreset(normalizeLibrary(null), { name: 'A' }), { name: 'B' });
+    const [a, b] = lib.presets;
+    lib = selectPreset(lib, a.id);
+    assert.equal(lib.activeId, a.id);
+    assert.equal(selectPreset(lib, 'nope').activeId, a.id, 'unknown id is a no-op');
+
+    lib = renamePreset(lib, b.id, '  Evening  ');
+    assert.equal(lib.presets[1].name, 'Evening');
+    assert.equal(lib.presets[0].name, 'A');
+
+    lib = updateActivePreset(lib, { steps: [step()], loop: true });
+    assert.deepEqual(lib.presets[0].steps, [step()]);
+    assert.equal(lib.presets[0].loop, true);
+    assert.deepEqual(lib.presets[1].steps, [], 'the inactive preset is untouched');
+    assert.equal(getActivePreset(lib).id, a.id);
+    assert.equal(getActivePreset(normalizeLibrary(null)), null);
+});
+
+test('resolveLibraryTrigger fires only for the active preset, and only when enabled', () => {
+    let lib = addPreset(normalizeLibrary(null), { steps: [step()], triggerStates: ['idle'] });
+    const idleOnly = lib.activeId;
+    lib = addPreset(lib, { steps: [step('#0000FF')], triggerStates: ['steam'] });
+
+    assert.equal(resolveLibraryTrigger(lib, 'steam').steps[0].frontColor, '#0000FF');
+    assert.equal(resolveLibraryTrigger(lib, 'idle'), null, 'the inactive preset does not fire');
+
+    lib = selectPreset(lib, idleOnly);
+    assert.equal(resolveLibraryTrigger(lib, 'idle').steps[0].frontColor, '#FF0000');
+    assert.equal(resolveLibraryTrigger(lib, 'steam'), null);
+
+    assert.equal(resolveLibraryTrigger(setSequencesEnabled(lib, false), 'idle'), null, 'switch off disarms');
+    assert.equal(resolveLibraryTrigger(normalizeLibrary(null), 'idle'), null, 'empty library');
+    // A preset with triggers but no steps has nothing to play.
+    assert.equal(resolveLibraryTrigger(updateActivePreset(lib, { steps: [] }), 'idle'), null);
+});
+
+test('parse/serialize round-trip a library and survive junk', () => {
+    const lib = setSequencesEnabled(addPreset(normalizeLibrary(null), { name: 'Sunrise', steps: [step()] }), false);
+    assert.deepEqual(parseLedLibrary(serializeLedLibrary(lib)), lib);
+    assert.deepEqual(parseLedLibrary('{not json'), { enabled: true, activeId: '', presets: [] });
+    assert.deepEqual(parseLedLibrary(''), { enabled: true, activeId: '', presets: [] });
 });

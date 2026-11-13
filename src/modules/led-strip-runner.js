@@ -50,7 +50,7 @@
 import { getLedStrip, setLedStrip, currentMachineState, MachineState } from './api.js';
 import { logger } from './logger.js';
 import { ledLiveWriteState } from './led-color.js';
-import { LED_SEQUENCE_KEY, parseLedSequence, resolveTriggerSequence, nextStepIndex, stepPreviewColors } from './led-sequence.js';
+import { LED_SEQUENCE_KEY, parseLedLibrary, resolveLibraryTrigger, nextStepIndex, stepPreviewColors } from './led-sequence.js';
 
 const MAX_CONSECUTIVE_FAILURES = 3; // stop rather than hammer a machine that stopped listening
 
@@ -248,10 +248,10 @@ export function forceStop() {
 
 // ── Machine-state trigger ────────────────────────────────────────────────
 
-function loadPersistedSequence() {
+function loadPersistedLibrary() {
     let stored = null;
     try { stored = localStorage.getItem(LED_SEQUENCE_KEY); } catch (e) { /* private mode */ }
-    return parseLedSequence(stored);
+    return parseLedLibrary(stored);
 }
 
 /**
@@ -262,8 +262,9 @@ function loadPersistedSequence() {
  * never touched by this either way.
  */
 export function onMachineStateChange(stateId) {
-    const sequence = loadPersistedSequence();
-    const mapped = resolveTriggerSequence(sequence, stateId);
+    // resolveLibraryTrigger answers null while the auto-run switch is off, so
+    // flipping it off also stops a trigger run already playing.
+    const mapped = resolveLibraryTrigger(loadPersistedLibrary(), stateId);
     if (mapped) {
         requestStart(mapped.steps, mapped.loop, 'trigger');
     } else if (owner === 'trigger') {

@@ -962,9 +962,67 @@ textarea,
   cursor: pointer;
 }
 .led-icon-btn:disabled { opacity: 0.3; cursor: default; }
+/* The preset row sits against 48px chips and the name field, so its + and x
+   match those rather than the 44px controls inside a step row. */
+.led-icon-btn[data-size='lg'] { width: 48px; height: 48px; font-size: 22px; }
 .led-icon-btn[data-variant='remove'] {
   border-color: var(--status-red-color);
   color: var(--status-red-color);
+}
+
+/* Target grid. The grid is the picker, so a cell has to read as a control and
+   not a readout: same 10px radius and hairline as every other box here, and
+   the same blue the active step row uses when it is the selected target. */
+.led-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr 1fr;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+}
+.led-col-head,
+.led-row-head {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 600;
+}
+.led-col-head { text-align: center; }
+.led-cell {
+  height: 52px;
+  border-radius: 10px;
+  border: 2px solid var(--led-hairline);
+  cursor: pointer;
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.led-cell[aria-pressed='true'] {
+  border-color: var(--mimoja-blue-v2);
+  box-shadow: 0 0 0 3px var(--led-tint);
+}
+.led-cell:focus-visible,
+.led-swatch:focus-visible { outline: 3px solid var(--mimoja-blue-v2); outline-offset: 2px; }
+
+/* Colour presets. Squared off to match the cells above them and the
+   now-playing swatches on the Sequence tab -- the page had one round shape
+   and this was it. The ring marks the preset the current colour already is. */
+.led-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.led-swatch {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  border: 2px solid var(--led-hairline);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease-out;
+}
+.led-swatch[aria-pressed='true'] {
+  box-shadow: 0 0 0 3px var(--button-primary-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-cell, .led-swatch { transition: none; }
 }
 
 /* Auto-run state chips. */
@@ -984,6 +1042,25 @@ textarea,
   background-color: var(--button-primary-bg);
   border-color: var(--button-primary-bg);
   color: #fff;
+}
+
+.led-chip[data-variant='remove'] {
+  border-color: var(--status-red-color);
+  color: var(--status-red-color);
+}
+
+/* Name of the saved sequence being edited. */
+.led-seq-name {
+  flex: 1;
+  min-width: 260px;
+  max-width: 520px;
+  height: 48px;
+  padding: 0 14px;
+  font-size: 20px;
+  border-radius: 8px;
+  border: 2px solid var(--led-hairline);
+  background-color: var(--profile-button-background-color);
+  color: var(--text-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {
