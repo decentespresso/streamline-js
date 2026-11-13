@@ -649,6 +649,11 @@ let devicesProbeInFlight = false;
 function markMachineDisconnected() {
     ui.updateMachineStatus({ status: "disconnected" });
     isDe1Connected = false;
+    // handleData() has stopped running, so the machine state is frozen at
+    // whatever arrived last. Left alone, a socket that falls silent mid-shot
+    // would strand the history arrows locked until frames resume. Release
+    // them; the per-frame call above re-locks if the shot is in fact still on.
+    history.updateHistoryNavLock(null);
 }
 
 async function probeMachineOnSilentSocket() {
@@ -1032,6 +1037,14 @@ function handleData(data) {
         if (state === MachineState.ERROR) ledStripForceStop();
         else ledStripOnMachineStateChange(state);
     }
+
+    // Shot-history arrows: inert while the machine is pulling espresso, so a
+    // step back cannot repaint the chart the running shot is drawing on. Every
+    // frame, not just the state-change edge: markMachineDisconnected() releases
+    // the lock while frames are absent, and a resumed shot arrives on frames
+    // that do not change `state`, so an edge-only call would leave it unlocked.
+    // The lock returns early when nothing changed, so this costs one comparison.
+    history.updateHistoryNavLock(state);
 
     previousState = data.state; // Update previous state
 

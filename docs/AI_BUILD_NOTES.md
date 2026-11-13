@@ -57,7 +57,7 @@ The release workflow currently stages the committed `src/` tree; it does not reb
 
 Tests use Node's built-in runner and strict assertions:
 
-- files are named `test/<topic>.test.mjs`;
+- files are named `test/<topic>.test.mjs`, and `npm test` globs exactly that. Node's own discovery treats *every* file under `test/` as a suite, which swept in `test/personas/run.mjs` -- a manual Playwright harness that needs a dev server -- and failed CI. A new suite must match the glob or it will not run;
 - source modules under `src/` are ES modules;
 - testable modules must be DOM-free at import time;
 - no jsdom and no separate test framework;
