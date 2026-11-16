@@ -11,8 +11,11 @@ import {
     isUploadComplete,
     estimateVerifyRemainingSeconds,
     estimateTotalRemainingSeconds,
-    FIRMWARE_ESTIMATED_TOTAL_SECONDS,
+    transportFromDeviceId,
+    firmwareEstimatedTotalSeconds,
+    FIRMWARE_ESTIMATED_SECONDS,
     FIRMWARE_VERIFY_SECONDS,
+    FIRMWARE_LAST_TICK_PERCENT,
     formatDuration,
 } from '../src/modules/firmware-progress.js';
 
@@ -124,10 +127,12 @@ test('an offered newer build reads as an update', () => {
     assert.equal(s.releaseNotes, 'Fixed a thing.');
 });
 
-test('installed build newer than the bundle is "ahead", not "up to date"', () => {
-    // The live case on a beta machine: build 1357 vs bundled 1352.
+test('a machine ahead of the bundle reads as up to date, with nothing offered', () => {
+    // The live case on a beta machine: build 1357 vs bundled 1352. Nothing to
+    // install, so it is the same answer as matching — and it must never offer
+    // the older build, which decaid would refuse with 422 anyway.
     const s = summarizeFirmwareCatalog(catalog({ build: 1357, updateAvailable: false, reasons: ['not_newer'] }));
-    assert.equal(s.status, 'ahead');
+    assert.equal(s.status, 'upToDate');
     assert.equal(s.installedBuild, 1357);
     assert.equal(s.latestBuild, 1352);
 });
@@ -155,6 +160,57 @@ test('an unreachable service is unknown with a reason', () => {
 test('an in-flight operation is surfaced', () => {
     const s = summarizeFirmwareCatalog(catalog({ build: 1340, updateAvailable: true, operation: 'uploading' }));
     assert.equal(s.operationState, 'uploading');
+});
+
+// Channel filtering. The entries the helper above builds carry no `channel` at
+// all, which is the older-decaid shape and must keep reading as stable — these
+// cases cover a bundle that does label its artifacts.
+/** @param {Array<{build: number, channel: string, applicable?: boolean}>} entries */
+function channelCatalog(entries, { build, updateAvailable, recommended }) {
+    return {
+        artifacts: entries.map(e => ({
+            id: `de1-${e.build}`, build: e.build, versionLabel: String(e.build), channel: e.channel,
+            eligibility: e.applicable
+                ? { status: 'applicable', reasons: [] }
+                : { status: 'notApplicable', reasons: ['not_newer'] },
+        })),
+        machine: { model: 'DE1Pro', build },
+        recommendedArtifactId: recommended,
+        updateAvailable,
+        operation: { state: 'idle' },
+    };
+}
+
+test('a prerelease build is not offered, even when decaid recommends it', () => {
+    // decaid ranks the whole bundle: its recommendation is the beta. The page
+    // offers the newest STABLE build instead, so Download & Install installs the
+    // artifact the pill is talking about.
+    const s = summarizeFirmwareCatalog(channelCatalog([
+        { build: 1352, channel: 'stable', applicable: true },
+        { build: 1360, channel: 'beta', applicable: true },
+    ], { build: 1340, updateAvailable: true, recommended: 'de1-1360' }));
+    assert.equal(s.status, 'updateAvailable');
+    assert.equal(s.artifactId, 'de1-1352');
+    assert.equal(s.latestBuild, 1352);
+});
+
+test('a bundle whose only newer build is prerelease is not an update', () => {
+    // Nothing installable on the stable channel, so the verdict must not light up
+    // an Install button that would have to reach for the hidden artifact.
+    const s = summarizeFirmwareCatalog(channelCatalog([
+        { build: 1352, channel: 'stable', applicable: false },
+        { build: 1360, channel: 'beta', applicable: true },
+    ], { build: 1352, updateAvailable: true, recommended: 'de1-1360' }));
+    assert.equal(s.status, 'upToDate');
+    assert.equal(s.latestBuild, 1352, 'names the stable build, not the beta');
+});
+
+test('the highest applicable stable build wins', () => {
+    const s = summarizeFirmwareCatalog(channelCatalog([
+        { build: 1352, channel: 'stable', applicable: true },
+        { build: 1358, channel: 'stable', applicable: true },
+    ], { build: 1337, updateAvailable: true, recommended: 'de1-1358' }));
+    assert.equal(s.artifactId, 'de1-1358');
 });
 
 test('an empty catalog does not throw', () => {
@@ -254,6 +310,23 @@ test('the upload is complete once the measured projection runs out', () => {
     assert.equal(at(T0 + 101_000), true, 'projected last chunk has gone out');
 });
 
+test('a stalled upload is late, not complete', () => {
+    // The rate decays towards 0 whenever events stop, so an exhausted projection
+    // at 40% used to flip the UI to "Check…" and then to "taking longer than
+    // usual" with the bytes still mid-flight.
+    assert.equal(estimateRemainingSeconds({
+        startedAt: T0, startPercent: 0, percent: 40, updatedAt: T0 + 60_000, now: T0 + 10_000_000,
+    }), 0, 'the projection really is exhausted');
+    assert.equal(isUploadComplete({
+        startedAt: T0, startPercent: 0, percent: 40, updatedAt: T0 + 60_000, now: T0 + 10_000_000,
+    }), false, 'but verification cannot have started');
+    // One point short of the last tick the stream emits is still mid-upload.
+    assert.equal(isUploadComplete({
+        startedAt: T0, startPercent: 0, percent: FIRMWARE_LAST_TICK_PERCENT - 1,
+        updatedAt: T0 + 60_000, now: T0 + 10_000_000,
+    }), false);
+});
+
 test('a 100% event still counts as complete where one arrives', () => {
     assert.equal(isUploadComplete({ startedAt: T0, percent: 100, updatedAt: T0 + 60_000, now: T0 + 60_000 }), true);
     // ...and nothing is claimed complete before there is anything to measure.
@@ -279,20 +352,47 @@ test('verification countdown is null past the bound, not zero forever', () => {
     assert.equal(estimateVerifyRemainingSeconds(0, T0), null, 'not verifying yet');
 });
 
-// ── Ballpark countdown (erase / pre-first-tick) ─────────────────────────────
-// Used only where estimateRemainingSeconds has nothing to extrapolate from —
-// see firmwareClock in settings.js.
-test('ballpark counts down from the published total estimate', () => {
-    assert.equal(estimateTotalRemainingSeconds(T0, T0), FIRMWARE_ESTIMATED_TOTAL_SECONDS);
-    assert.equal(estimateTotalRemainingSeconds(T0, T0 + 60_000), FIRMWARE_ESTIMATED_TOTAL_SECONDS - 60);
+// ── Transport, read off the device id ───────────────────────────────────────
+// decaid publishes no transport field for a connected machine, but a wired one's
+// id is minted from the USB descriptor (serial_reconcile.dart / utils.dart) and
+// a BLE one's is the platform handle. That prefix picks the ballpark.
+test('a wired machine is recognised from its device id', () => {
+    assert.equal(transportFromDeviceId('usb-2e8a-a-8549628789ABCDEF'), 'wired');
+    assert.equal(transportFromDeviceId('usb-session-7'), 'wired', 'descriptor-less USB still wired');
+    assert.equal(transportFromDeviceId('serial-cu.usbmodem1101'), 'wired', 'desktop fallback id');
 });
 
-test('ballpark is null once the estimate is exhausted, not negative', () => {
-    assert.equal(estimateTotalRemainingSeconds(T0, T0 + (FIRMWARE_ESTIMATED_TOTAL_SECONDS + 1) * 1000), null);
+test('a BLE machine, and anything unrecognised, reads as BLE', () => {
+    assert.equal(transportFromDeviceId('1A3AAE9B-A643-5C64-C29B-CAF8664D8BC7'), 'ble', 'Apple UUID');
+    assert.equal(transportFromDeviceId('AA:BB:CC:DD:EE:FF'), 'ble', 'Android MAC');
+    // Unknown shapes take the slow estimate: over-stating the wait is the safe
+    // direction, under-stating it is what makes a live update look hung.
+    assert.equal(transportFromDeviceId('MockDe1'), 'ble');
+    assert.equal(firmwareEstimatedTotalSeconds(transportFromDeviceId('MockDe1')),
+        FIRMWARE_ESTIMATED_SECONDS.ble);
 });
 
-test('ballpark is null with nothing started', () => {
-    assert.equal(estimateTotalRemainingSeconds(0, T0), null);
+test('no device id means no estimate at all', () => {
+    assert.equal(transportFromDeviceId(undefined), null);
+    assert.equal(transportFromDeviceId(''), null);
+    // ...and the caller shows no clock rather than guessing — see firmwareClock.
+    assert.equal(estimateTotalRemainingSeconds(T0, 0, T0), null);
+});
+
+test('the ballpark counts down against the transport total', () => {
+    const wired = FIRMWARE_ESTIMATED_SECONDS.wired;
+    assert.equal(firmwareEstimatedTotalSeconds('wired'), wired);
+    assert.equal(estimateTotalRemainingSeconds(T0, wired, T0 + 60_000), wired - 60);
+    assert.equal(estimateTotalRemainingSeconds(T0, wired, T0 + (wired + 1) * 1000), null,
+        'spent, not negative — the caller says "taking longer than usual"');
+    assert.ok(FIRMWARE_ESTIMATED_SECONDS.ble > wired, 'BLE is the slow one');
+});
+
+test('the verify bound matches the one decaid actually waits', () => {
+    // unified_de1.dart constructs firmwareVerificationTimeout at 120s and nothing
+    // overrides it (Bengle doesn't either). It was 30 here, so the label claimed
+    // the check had overrun after a quarter of the time decaid allows it.
+    assert.equal(FIRMWARE_VERIFY_SECONDS, 120);
 });
 
 test('m:ss formatting pads the seconds', () => {

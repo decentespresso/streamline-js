@@ -19,6 +19,13 @@
 /** Recognised stream phases, in the order they occur. */
 export const FIRMWARE_PHASES = ['erasing', 'uploading', 'done', 'error'];
 
+// The only release channel this page offers. The catalog carries a `channel` per
+// artifact (FirmwareCatalogEntry in rest_v1.yml) and decaid ranks all of them
+// regardless of channel, so the filter lives here: a prerelease build must not
+// be the thing an Update button flashes onto someone's machine.
+// A missing channel is an older decaid that bundled stable builds only.
+export const FIRMWARE_CHANNEL = 'stable';
+
 export function isFirmwareCancellationError(error) {
     const message = typeof error === 'string' ? error : error?.message;
     return typeof message === 'string' && message.includes('FirmwareUpdateCancelledException');
@@ -101,18 +108,35 @@ export const initialFirmwareState = { phase: null, percent: 0, error: null };
 // immediately: every chunk is the same 16 bytes written with the same
 // write-with-response cadence and the same pacing pause
 // (_uploadFirmwareBytes in unified_de1.firmware.dart), so the average over the
-// upload so far is a projection, not a guess — and the sooner it replaces the
-// fixed FIRMWARE_ESTIMATED_TOTAL_SECONDS ballpark the sooner the label reflects
-// THIS machine's link speed (serial is minutes faster than BLE).
+// upload so far is a projection, not a guess, and it replaces the per-transport
+// ballpark below as soon as it exists.
 const MIN_ETA_SPAN_PERCENT = 1;
 const MIN_ETA_SAMPLE_SECONDS = 15;
 
+// How the connected machine is attached, read off the device id decaid already
+// publishes for it. A wired machine's id is minted from the USB descriptor
+// ("usb-2e8a-a-<serial>" via computeUsbStableId, or "serial-<port>" when the
+// descriptor is incomplete — serial_reconcile.dart); a BLE machine's is the
+// platform's own handle, a UUID on Apple and a MAC on Android. decaid has no
+// transport FIELD for a connected machine (diagnostics' activeTargetTransport is
+// cleared at phase == ready), so the prefix is the signal.
+//
+// Anything unrecognised reads as BLE on purpose: that is the slow case, so an
+// unknown id over-states the wait rather than promising a flash that is done in
+// half the time.
+export function transportFromDeviceId(deviceId) {
+    if (typeof deviceId !== 'string' || deviceId === '') return null;
+    return /^(usb|serial)[-_]/i.test(deviceId) ? 'wired' : 'ble';
+}
+
 // decaid's own ceiling on the silent CRC phase that runs after the last byte is
-// sent: firmwareVerificationTimeout in unified_de1.dart, 30 s. The stream emits
-// nothing between the final `uploading` and `done`, so this bound is the only
-// thing there is to count down against — and it is a real bound, not a guess:
-// past it decaid throws 'Timed out waiting for firmware verification'.
-export const FIRMWARE_VERIFY_SECONDS = 30;
+// sent: firmwareVerificationTimeout in unified_de1.dart — 120 s, as constructed
+// everywhere (nothing passes another value, and Bengle does not override it).
+// The stream emits nothing between the final `uploading` and `done`, so this
+// bound is the only thing there is to count down against — and it is a real
+// bound, not a guess: past it decaid throws 'Timed out waiting for firmware
+// verification'. (The erase ceiling alongside it is 60 s.)
+export const FIRMWARE_VERIFY_SECONDS = 120;
 
 /**
  * Seconds left in the upload, extrapolated from the rate the bytes sent so far
@@ -157,6 +181,11 @@ export function estimateRemainingSeconds({ startedAt, startPercent = 0, percent,
     return Math.max(0, Math.round(projected - (now - measuredAt) / 1000));
 }
 
+// The highest percentage the stream ever puts on the wire, for the bundled
+// 463872-byte image: decaid's own 1%-granularity filter swallows the final 1.0
+// (the arithmetic is in the comment on isUploadComplete, and pinned by a test).
+export const FIRMWARE_LAST_TICK_PERCENT = 99;
+
 /**
  * Are the bytes all sent — i.e. has the silent CRC verification started?
  *
@@ -172,12 +201,19 @@ export function estimateRemainingSeconds({ startedAt, startPercent = 0, percent,
  * projection reaching 0 IS the projected last chunk. (An image whose chunk count
  * does let the final tick through still reports 100, and that counts too.)
  *
+ * Only once the stream has reached its own last tick, though. An exhausted
+ * projection at 40% is a STALLED upload, not a finished one — the rate decays
+ * towards 0 whenever events stop arriving — and calling that verification put
+ * the UI on "Check…", then on "taking longer than usual", while the bytes were
+ * in fact still mid-flight. Below the last tick the honest answer is that the
+ * upload is late, which is what the caller then says.
+ *
  * @param {{startedAt: number, startPercent?: number, percent: number|null,
  *          updatedAt?: number, now?: number}} args
- * @returns {boolean} false while uploading, and while unmeasurable
+ * @returns {boolean} false while uploading, while stalled, and while unmeasurable
  */
 export function isUploadComplete(args) {
-    return estimateRemainingSeconds(args) === 0;
+    return (args?.percent ?? 0) >= FIRMWARE_LAST_TICK_PERCENT && estimateRemainingSeconds(args) === 0;
 }
 
 /**
@@ -204,26 +240,34 @@ export function formatDuration(totalSeconds) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// The whole-operation ballpark shown before there is any real upload rate to
-// extrapolate from (erase, and the slow trickle before the first upload tick —
-// see the comment on firmwareStartedAt in settings.js). Matches the number
-// FIRMWARE_DURATION_NOTE already promises the user, so the UI never states two
-// different durations. This is a floor, not a measurement: decaid's own erase
-// and verify BLE timeouts are 30s each (unified_de1.dart), but the label can sit
-// on "Erase…" for minutes past that while it waits for the first 1%-granularity
-// upload event, so a countdown pinned to those short timeouts would hit 0:00
-// and then freeze — exactly the "looks hung" symptom this is meant to fix.
-export const FIRMWARE_ESTIMATED_TOTAL_SECONDS = 50 * 60;
+// Whole-operation ballpark, shown while the erase runs and until the upload has
+// been timed. One number per transport, because that is what sets the pace:
+// 28992 16-byte chunks are ~24 minutes of pure pacing on a DE1 over serial
+// (400 ms per 8 chunks, unified_de1.dart) but are not paced at all on BLE, where
+// the wait is one write-with-response round trip per chunk at whatever interval
+// the link negotiated — the ~50 minutes users report. A single constant for both
+// was wrong by 2x on whichever machine it did not describe.
+//
+// Both are deliberately the DE1 figures. A Bengle over serial pauses 20 ms per 8
+// chunks (bengle.dart) and finishes far sooner, so it over-states the wait,
+// which is the safe direction: the countdown lands early rather than stalling at
+// 0:00 while the flash is still running.
+export const FIRMWARE_ESTIMATED_SECONDS = { wired: 25 * 60, ble: 50 * 60 };
+
+/** The ballpark for a transport from transportFromDeviceId (unknown = BLE). */
+export function firmwareEstimatedTotalSeconds(transport) {
+    return transport === 'wired' ? FIRMWARE_ESTIMATED_SECONDS.wired : FIRMWARE_ESTIMATED_SECONDS.ble;
+}
 
 /**
- * Ballpark countdown against FIRMWARE_ESTIMATED_TOTAL_SECONDS, for the
- * stretches where estimateRemainingSeconds has nothing to extrapolate from.
- * Returns null once the estimate is exhausted — the caller then says "taking
- * longer than usual" instead of showing a countdown that lied about being done.
+ * Ballpark countdown, for the stretch where estimateRemainingSeconds has nothing
+ * to extrapolate from. Returns null once the estimate is spent — the caller then
+ * says "taking longer than usual" rather than showing a countdown that claimed
+ * to be finished.
  */
-export function estimateTotalRemainingSeconds(startedAt, now = Date.now()) {
-    if (!startedAt) return null;
-    const remaining = FIRMWARE_ESTIMATED_TOTAL_SECONDS - (now - startedAt) / 1000;
+export function estimateTotalRemainingSeconds(startedAt, totalSeconds, now = Date.now()) {
+    if (!startedAt || !totalSeconds) return null;
+    const remaining = totalSeconds - (now - startedAt) / 1000;
     return remaining > 0 ? Math.round(remaining) : null;
 }
 
@@ -237,8 +281,10 @@ export function estimateTotalRemainingSeconds(startedAt, now = Date.now()) {
  * compared is the one wrong answer here.
  *
  * The installed build can legitimately be NEWER than anything bundled (a beta
- * machine): that reads as `notApplicable`/`not_newer` and is reported as `ahead`,
- * not as an update.
+ * machine): that reads as `notApplicable`/`not_newer` and is reported as
+ * `upToDate`, never as an update — the older build must not be offered.
+ *
+ * Only FIRMWARE_CHANNEL artifacts are considered — see the comment there.
  *
  * @param {object|null} catalog parsed FirmwareCatalog, or null if unreachable
  * @returns {{status: string, installedBuild: number|null, model: string|null,
@@ -254,29 +300,43 @@ export function summarizeFirmwareCatalog(catalog) {
     };
     if (!catalog || typeof catalog !== 'object') return empty;
 
-    const artifacts = Array.isArray(catalog.artifacts) ? catalog.artifacts : [];
+    const all = Array.isArray(catalog.artifacts) ? catalog.artifacts : [];
+    const artifacts = all.filter(a => a && (a.channel ?? FIRMWARE_CHANNEL) === FIRMWARE_CHANNEL);
     const installedBuild = typeof catalog.machine?.build === 'number' ? catalog.machine.build : null;
 
-    // The recommended artifact is the one the middleware would apply. With none
-    // recommended (nothing eligible), fall back to the highest build on offer so
-    // the page can still name what is bundled.
-    const recommended = artifacts.find(a => a && a.id === catalog.recommendedArtifactId);
-    const highest = artifacts.reduce((best, a) => {
-        if (!a || typeof a.build !== 'number') return best;
+    // The pick is re-derived from the stable subset rather than read off
+    // `recommendedArtifactId`: that is decaid's verdict over the WHOLE bundle, so
+    // on a bundle carrying a prerelease build it can name an artifact this page
+    // will not offer -- and then "update available" would point at nothing
+    // installable. Per-artifact `eligibility` is decaid's verdict for that one
+    // artifact (applicable = supported model, known installed build, and strictly
+    // newer -- firmware_validator.evaluateEligibility), so the highest applicable
+    // stable build is the same answer scoped to this channel.
+    //
+    // With none applicable, fall back to the highest stable build on offer so the
+    // page can still name what is bundled and why it was not offered.
+    const highestOf = (list) => list.reduce((best, a) => {
+        if (typeof a.build !== 'number') return best;
         return !best || a.build > best.build ? a : best;
     }, null);
-    const latest = recommended || highest || null;
+    const applicable = artifacts.filter(a => a.eligibility?.status === 'applicable');
+    const latest = highestOf(applicable) || highestOf(artifacts) || null;
 
-    // A `not_newer` verdict means the bundle is behind the machine, not that the
-    // machine is current — worth saying out loud so a beta build isn't mistaken
-    // for a failed check.
     const reasons = latest?.eligibility?.reasons;
     const reason = Array.isArray(reasons) && reasons.length ? reasons[0] : null;
 
-    const status = catalog.updateAvailable === true ? 'updateAvailable'
-        : catalog.updateAvailable === false
-            ? (reason === 'not_newer' && installedBuild !== null && latest?.build < installedBuild ? 'ahead' : 'upToDate')
-            : 'unknown';
+    // Three outcomes, not four. A machine whose build is NEWER than the bundle
+    // (a beta machine) used to get its own 'ahead' verdict, but from the user's
+    // side it is the same answer as matching the bundle: nothing to install, no
+    // decision to make. The distinction only ever named decaid's inventory.
+    //
+    // `updateAvailable` null (offline, unknown build) still decides `unknown`
+    // first: nothing was compared, and "up to date" is the one harmful answer
+    // there. Past that the stable subset decides, so a prerelease build the page
+    // hides cannot announce an update.
+    const status = catalog.updateAvailable !== true && catalog.updateAvailable !== false ? 'unknown'
+        : applicable.length ? 'updateAvailable'
+        : 'upToDate';
 
     return {
         status,

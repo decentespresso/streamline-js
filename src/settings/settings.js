@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo, getDevices } from '../modules/api.js';
 import { isCustomSaverBrightness, setCustomSaverBrightnessEnabled, getSaverBrightness, setSaverBrightness, SAVER_BRIGHTNESS_DEFAULT } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
@@ -11,7 +11,7 @@ import { logger } from '../modules/logger.js';
 import { isBengleMachine, setMachineModel } from '../modules/machine.js';
 import { brightnessNotices, QUEUED_NOTICE, LOW_BATTERY_NOTICE, GO_TO_SETTING_LABEL, LOW_BATTERY_SETTING_CATEGORY, REQUESTED_APPLIED_TEMPLATE, requestedBrightnessReadout } from '../modules/brightness-notice.js';
 import { resolveSteamStopMode, applyMilkProbeGate, steamDurationIntent, steamOffPatch, steamOnPatch, isSteamOff, MIN_STEAM_DURATION_S, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP } from '../modules/steam-mode.js';
-import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
+import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, transportFromDeviceId, firmwareEstimatedTotalSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { wakeProfileChoices } from '../modules/wake-profile.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, resolveScreensaverDateFormat, resolveScreensaverClockFormat, resolveScreensaverClockPosition } from '../modules/screensaver-clock.js';
@@ -184,23 +184,29 @@ let screensaverImagesCache = [];
 let firmwareUploadInFlight = false;
 // Which button started the in-flight operation. Distinguishes "the manual
 // card's own Upload button is mid-upload" (card must stay visible — it's
-// showing that button's progress) from "the catalog's Download & Install
-// button is running" (the manual card is irrelevant noise and hides).
+// showing that button's progress) from "the catalog's Update button
+// is running" (the manual card is irrelevant noise and hides).
 let firmwareOperationSource = null; // 'manual' | 'catalog' | null
 let lastFirmwareProgress = null;
 // Set on window.cancelFirmwareUpdate, read once the stream's 'error' event
 // lands, so that expected termination reads as "cancelled" not "failed".
 let firmwareCancelRequested = false;
-// When the current operation started, and the 1 Hz repaint that shows it.
-// The stream is silent for the whole erase, and then again for the first ~1% of
-// the upload (the handler emits one event per percent, and a percent is ~290
-// BLE round-trips) -- in a real log the label sat on "Erase…" for minutes while
-// the machine was in fact uploading. A running clock is what separates "silent
-// because it is working" from "silent because it is dead".
-let firmwareStartedAt = 0;
+// The 1 Hz repaint. The stream is silent for the whole erase, and then again
+// for the first ~1% of the upload (the handler emits one event per percent, and
+// a percent is ~290 BLE round-trips) -- in a real log the label sat on "Erase…"
+// for minutes while the machine was in fact uploading. Nothing arrives to drive
+// a repaint across that gap, and the verify hand-off happens between events, so
+// the tick is what keeps the countdown falling and the tracker honest.
 let firmwareElapsedTimer = null;
+// When the current operation started, and the whole-operation ballpark to count
+// it down against — picked from the connected machine's transport before the
+// first byte moves (see firmwareOperationEstimate). Zero means no estimate, and
+// then no clock is shown rather than a guessed one.
+let firmwareStartedAt = 0;
+let firmwareTotalEstimateSeconds = 0;
 // When the upload proper began, and the percentage the first event reported.
-// The countdown is measured from here, not from firmwareStartedAt: the erase
+// The countdown is measured from the first upload event, not from the start of
+// the operation: the erase
 // carries no percentages, so timing the upload from the start of the operation
 // would price minutes of erase into the upload's rate and overstate what is left.
 let firmwareUploadStartedAt = 0;
@@ -7649,13 +7655,17 @@ const FIRMWARE_REASON_TEXT = {
 // check" must never look like "up to date".
 function renderFirmwareCheckBlock(summary) {
     if (!summary) {
-        return `<p class="text-[22px] text-[var(--text-secondary)]">${getTranslation('Check for firmware updates')}…</p>`;
+        return `<p class="text-[22px] text-[var(--text-secondary)]">${getTranslation('Loading...')}</p>`;
     }
 
     const { status, latestBuild, latestLabel, releaseNotes, reason, operationState } = summary;
 
+    // An update this page did not start — another client, or one that outlived a
+    // reload. One word: the raw operation state ('erasing', 'verifying') was a
+    // machine token in the middle of a sentence, untranslated and unexplained,
+    // and the tracker below says the same thing properly once we are driving.
     if (operationState && operationState !== 'idle') {
-        return `<p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">${getTranslation('A firmware update is already in progress')} (${escapeHtml(operationState)})</p>`;
+        return `<p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">${getTranslation('Updating')}…</p>`;
     }
 
     const pill = (text, cls) =>
@@ -7668,26 +7678,35 @@ function renderFirmwareCheckBlock(summary) {
         return `
             <div class="flex flex-col gap-[10px]">
                 <div class="flex items-center gap-[14px] flex-wrap">
-                    ${pill(getTranslation('Firmware update available'), 'bg-green-500/15 text-green-600')}
-                    <span class="text-[22px] text-[var(--text-primary)]">${getTranslation('Build')} ${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
+                    ${pill(getTranslation('Update available'), 'bg-green-500/15 text-green-600')}
+                    <!-- Bare number, matching the installed one in the Version row
+                         directly above: two build numbers on one screen read as a
+                         before/after without a word in front of either. -->
+                    <span class="text-[22px] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
                 </div>
-                ${releaseNotes ? `<p class="text-[20px] text-[var(--text-secondary)] leading-[1.4]">${escapeHtml(releaseNotes)}</p>` : ''}
-                <p class="text-[20px] font-bold text-[var(--text-primary)] leading-[1.4]">${getTranslation(FIRMWARE_DURATION_NOTE)}</p>
+                <!-- max-w-[70ch]: both lines are prose, and at this font size the
+                     settings pane is wide enough to run them past 100 characters,
+                     which is where a line stops being easy to track back from. -->
+                ${releaseNotes ? `<p class="text-[20px] text-[var(--text-secondary)] leading-[1.4] max-w-[70ch]">${escapeHtml(releaseNotes)}</p>` : ''}
+                <!-- Two notes, one slot. Before the start: how long to set aside.
+                     Once it is running, runFirmwareOperation swaps in the safety
+                     half alone — the duration claim is then the wrong one to make
+                     (the live clock beside the tracker is more specific, and on a
+                     wired machine half that figure), but "do not power off" is at
+                     its most load-bearing exactly while the flash is in progress. -->
+                <p id="firmware-duration-note" class="text-[20px] font-bold text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : FIRMWARE_DURATION_NOTE)}</p>
                 <button id="firmware-apply-btn" class="self-start bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[22px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         ${artifactId ? `onclick="window.applyFirmwareUpdate('${escapeHtml(artifactId)}')"` : 'disabled'}>
-                    ${getTranslation('Download & Install')}
+                    ${getTranslation('Update')}
                 </button>
             </div>`;
     }
 
+    // Covers a machine that matches the bundle AND one that is ahead of it (a
+    // beta build): either way there is nothing to install. See
+    // summarizeFirmwareCatalog.
     if (status === 'upToDate') {
         return pill(getTranslation('Up to date'), 'bg-[var(--button-primary-tint)] text-[var(--mimoja-blue-v2)]');
-    }
-
-    // Installed build is newer than anything bundled — a beta machine, not a
-    // failed check. Saying "up to date" here would be a guess.
-    if (status === 'ahead') {
-        return pill(getTranslation('Newer than bundled'), 'bg-amber-500/15 text-amber-600');
     }
 
     const why = FIRMWARE_REASON_TEXT[reason];
@@ -7726,9 +7745,15 @@ async function initFirmwareCheck() {
 // barely moving — someone who expected "a few minutes" reads that as a hang and
 // pulls the plug, which is the one thing that turns a slow update into a broken
 // machine. One constant so the number cannot drift between the three places.
-// Keep in sync with FIRMWARE_ESTIMATED_TOTAL_SECONDS in firmware-progress.js —
-// that's this same number driving the countdown, not an independent guess.
+// 50 minutes is the BLE case, which is the one worth bracing someone for; a
+// wired machine comes in around half that and the live clock says so once the
+// update is running (firmwareClock picks the figure from the device id).
 const FIRMWARE_DURATION_NOTE = 'The whole update takes at least 50 minutes. Do not power off the machine and leave this page until it finishes.';
+
+// The safety half on its own, shown in place of the note while the flash runs:
+// the duration claim is stale by then (the clock beside the tracker is the live
+// one) but pulling the plug mid-write is exactly the risk of that window.
+const FIRMWARE_POWER_NOTE = 'Do not power off the machine and leave this page until it finishes.';
 
 // Phase -> user-facing line. Shared by the live progress callback and the page
 // re-render, so a rejoined update reads identically to one watched throughout.
@@ -7740,14 +7765,34 @@ function firmwareProgressLabel(progress) {
         // The stream stays on `uploading` right through verification — it never
         // reports 100% and never says 'verifying' (see isUploadComplete), so the
         // latch is what moves this on. Neither is "update applied": only `done`.
+        // "Verify", not "Check": it is the word the step chip above uses and the
+        // word decaid uses for the same phase (FirmwareUpdateState.verifying,
+        // 'Timed out waiting for firmware verification'). The machine really is
+        // validating the image it was just sent — a second FW map write, then a
+        // terminal response that fails with 'Firmware verification failed at 0x…'.
         uploading: firmwareVerifyStartedAt
-            ? `${getTranslation('Check')}…`
+            ? `${getTranslation('Verify')}…`
             : `${getTranslation('Uploading...')} ${percent}%`,
         done: getTranslation('Your DE1 firmware has been upgraded. Restart the machine to apply it.'),
     }[phase] || '';
+    if (!text) return '';
     // Only while something is actually running: a finished or failed update
     // must not keep a clock next to it.
-    return text && phase !== 'done' ? `${text}${firmwareClock(percent)}` : text;
+    const line = phase !== 'done' ? `${text}${firmwareClock(percent)}` : text;
+    return `${firmwareStepPrefix(progress)}${line}`;
+}
+
+// "Step 2 of 4 · " in front of the phase. Most of a flash is a phase that says
+// nothing for minutes, and the number puts that silence somewhere in a sequence
+// with a known end — the tracker shows it as a lit node, this says it in words
+// for anyone reading the line rather than the graphic. Driven by the same step
+// machine the tracker draws from, so the two cannot disagree.
+function firmwareStepPrefix(progress) {
+    const step = firmwareStepIndex(progress);
+    if (step < 0) return '';
+    return `${getTranslation('Step {n} of {total}')
+        .replace('{n}', String(step + 1))
+        .replace('{total}', String(FIRMWARE_STEP_LABELS.length))} · `;
 }
 
 // The clock beside the phase. Three sources, best first, because each phase
@@ -7757,14 +7802,15 @@ function firmwareProgressLabel(progress) {
 //     already includes the verification still to come, so it counts down to
 //     `done` rather than to 0:00-then-wait.
 //  2. Verification — bounded. No percentages on the wire, but decaid's own
-//     30s timeout (FIRMWARE_VERIFY_SECONDS) is a real ceiling to count against.
-//     Past it, say so: the next thing to happen is that timeout firing.
-//  3. Erase / before the first upload tick — ballpark only. Nothing has been
-//     measured yet, so it counts down against FIRMWARE_ESTIMATED_TOTAL_SECONDS
-//     (the same "at least 50 minutes" FIRMWARE_DURATION_NOTE promises) and the
-//     silence reads as "still within the estimate" rather than as a hang.
+//     120s timeout (FIRMWARE_VERIFY_SECONDS) is a real ceiling to count
+//     against. Past it, say so: the next thing to happen is that timeout firing.
+//  3. Erase / before the first upload tick — the per-transport ballpark, picked
+//     from the connected machine's device id (25 min wired, 50 min BLE). Marked
+//     with a ~ because it describes this kind of link, not this flash. Past it,
+//     "taking longer than usual" rather than a countdown that claimed to be
+//     done. With no device id to classify, there is no estimate and no clock.
 //
-// Returns '' when nothing is running.
+// Returns '' when nothing is running and nothing can be estimated.
 function firmwareClock(percent, now = Date.now()) {
     // Verification first: the stream sits on `uploading` at 99% for the whole of
     // it, so an upload-rate estimate is still answerable here and would win the
@@ -7782,11 +7828,16 @@ function firmwareClock(percent, now = Date.now()) {
         updatedAt: firmwareProgressAt,
         now,
     });
+    // An exhausted projection below the stream's last tick means the events
+    // stopped arriving, not that the bytes are out (the verify branch above has
+    // already claimed the real end-of-upload case). A 0:00 countdown there would
+    // read as "done in a moment" for as long as the stall lasts.
+    if (remaining === 0) return ` — ${getTranslation('taking longer than usual')}`;
     // The verification still to come is part of what's remaining — without it the
-    // countdown reaches 0:00 with up to half a minute of CRC left to sit through.
+    // countdown reaches 0:00 with two minutes of CRC left to sit through.
     if (remaining !== null) return ` — ${formatDuration(remaining + FIRMWARE_VERIFY_SECONDS)} ${getTranslation('remaining')}`;
-    if (!firmwareStartedAt) return '';
-    const estimated = estimateTotalRemainingSeconds(firmwareStartedAt, now);
+    if (!firmwareStartedAt || !firmwareTotalEstimateSeconds) return '';
+    const estimated = estimateTotalRemainingSeconds(firmwareStartedAt, firmwareTotalEstimateSeconds, now);
     if (estimated !== null) return ` — ~${formatDuration(estimated)} ${getTranslation('remaining')}`;
     return ` — ${getTranslation('taking longer than usual')}`;
 }
@@ -7875,7 +7926,7 @@ export function renderFirmwareUpdateSettings() {
 
             <div class="content-stretch flex flex-col gap-[10px] relative w-full">
                 <div class="content-stretch flex items-center justify-between relative w-full">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]"><span data-i18n-key="Firmware">Firmware</span> <span data-i18n-key="Version">Version</span></p>
+                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Version">Version</p>
                     <p id="de1-firmware-version" class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${de1Version || '—'}</p>
                 </div>
                 <!-- Filled by initFirmwareCheck from GET /machine/firmware. Seeded from
@@ -7884,55 +7935,6 @@ export function renderFirmwareUpdateSettings() {
             </div>
 
             <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
-                <!-- Folded away behind "Advanced" so the page pushes Download & Install:
-                     that path is the safe one (a validated, model-checked bundled image),
-                     while hand-picking a .bin is the expert escape hatch for a file Decent
-                     support sent you. Native <details> — no JS to open and close it.
-                     (It re-renders closed after leaving the page: this whole subtree is
-                     rebuilt from a template string, so there is no element left to hold
-                     the open state. Folding back to the safe default is the right way
-                     round for this particular control.)
-                     Hidden outright while the catalog's Download & Install is running (see
-                     runFirmwareOperation): this card's own Select File/Upload controls are
-                     moot for an update it didn't start. Kept open when it's the one running,
-                     so a re-render mid-upload doesn't fold its own Upload button away. -->
-                <details id="firmware-manual-upload-section" class="w-full" ${firmwareUploadInFlight && firmwareOperationSource === 'manual' ? 'open' : ''}
-                         style="display:${firmwareUploadInFlight && firmwareOperationSource === 'catalog' ? 'none' : ''}">
-                    <!-- Both marker rules: list-none covers modern browsers, the webkit
-                         pseudo-element covers the older WebKit the tablet webview ships. -->
-                    <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[22px] font-bold text-[var(--text-secondary)] py-[8px]">
-                        <span data-i18n-key="Advanced">Advanced</span> ▾
-                    </summary>
-
-                    <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full pt-[8px]">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="DE1 Firmware File">DE1 Firmware File</p>
-
-                        <!-- The file and the buttons that act on it live in one card so the
-                             "what did I pick" state reads as a unit with "what happens to it".
-                             Select File and Upload stay paired on the same row/level — they're
-                             the two steps of one action, in reading order. -->
-                        <div class="rounded-[10px] border border-[var(--border-primary)] p-4 bg-[var(--box-color)] flex items-center justify-between gap-[20px] flex-wrap w-full">
-                            <div class="min-w-0">
-                                <p id="firmware-filename" class="font-['Inter:Regular',sans-serif] text-[22px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
-                                <!-- Filled by onFirmwareFileSelected: size in KB/MB, plus a plain-
-                                     language flag once it's bigger than any real DE1 image — a toast
-                                     fades, this stays on screen next to the file it's about. -->
-                                <p id="firmware-filename-hint" class="text-[16px] text-[var(--text-secondary)]"></p>
-                            </div>
-                            <div class="flex items-center gap-[16px] flex-shrink-0">
-                                <button class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[20px] font-bold"
-                                        onclick="document.getElementById('firmware-file-input').click()">
-                                    ${getTranslation('Select')} ${getTranslation('File')}
-                                </button>
-                                <button id="firmware-upload-btn" class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[20px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                                        disabled onclick="window.uploadFirmware()">
-                                    ${getTranslation(firmwareUploadInFlight ? 'Uploading...' : 'Upload')}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </details>
-
                 <!-- Filled by window.uploadFirmware from the NDJSON progress stream. Hidden
                      via inline display, not the hidden attribute: the flex utility would override it.
                      Seeded from lastFirmwareProgress so leaving this page and coming back
@@ -7957,6 +7959,58 @@ export function renderFirmwareUpdateSettings() {
                         ${getTranslation('Cancel')}
                     </button>
                 </div>
+
+                <!-- Last on the page, under the progress tracker: the safe path is
+                     the Update button above (a validated, model-checked bundled
+                     image), and hand-picking a .bin is the expert escape hatch for a
+                     file Decent support sent you — so it sits below the thing someone
+                     watches during an update rather than between them and it.
+                     Folded away behind "Advanced" with a native <details> — no JS to
+                     open and close it. (It re-renders closed after leaving the page:
+                     this whole subtree is rebuilt from a template string, so there is
+                     no element left to hold the open state. Folding back to the safe
+                     default is the right way round for this particular control.)
+                     Hidden outright while the catalog's Update button is running (see
+                     runFirmwareOperation): this card's own Select File/Upload controls are
+                     moot for an update it didn't start. Kept open when it's the one running,
+                     so a re-render mid-upload doesn't fold its own Upload button away. -->
+                <details id="firmware-manual-upload-section" class="w-full" ${firmwareUploadInFlight && firmwareOperationSource === 'manual' ? 'open' : ''}
+                         style="display:${firmwareUploadInFlight && firmwareOperationSource === 'catalog' ? 'none' : ''}">
+                    <!-- Both marker rules: list-none covers modern browsers, the webkit
+                         pseudo-element covers the older WebKit the tablet webview ships. -->
+                    <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[22px] font-bold text-[var(--text-secondary)] py-[8px]">
+                        <span data-i18n-key="Advanced">Advanced</span> ▾
+                    </summary>
+
+                    <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full pt-[8px]">
+                        <!-- No heading: the card below is the only thing behind "Advanced"
+                             on a page already titled Firmware Update, and "No file
+                             selected" next to Select File says what it is.
+                             The file and the buttons that act on it live in one card so the
+                             "what did I pick" state reads as a unit with "what happens to it".
+                             Select File and Upload stay paired on the same row/level — they're
+                             the two steps of one action, in reading order. -->
+                        <div class="rounded-[10px] border border-[var(--border-primary)] p-4 bg-[var(--box-color)] flex items-center justify-between gap-[20px] flex-wrap w-full">
+                            <div class="min-w-0">
+                                <p id="firmware-filename" class="font-['Inter:Regular',sans-serif] text-[22px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
+                                <!-- Filled by onFirmwareFileSelected: size in KB/MB, plus a plain-
+                                     language flag once it's bigger than any real DE1 image — a toast
+                                     fades, this stays on screen next to the file it's about. -->
+                                <p id="firmware-filename-hint" class="text-[16px] text-[var(--text-secondary)]"></p>
+                            </div>
+                            <div class="flex items-center gap-[16px] flex-shrink-0">
+                                <button class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[20px] font-bold"
+                                        onclick="document.getElementById('firmware-file-input').click()">
+                                    ${getTranslation('Select')} ${getTranslation('File')}
+                                </button>
+                                <button id="firmware-upload-btn" class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[20px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                                        disabled onclick="window.uploadFirmware()">
+                                    ${getTranslation(firmwareUploadInFlight ? 'Uploading...' : 'Upload')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <!-- No accept filter: firmware ships as .dat as well as .bin/.fw/.dfu, and a
@@ -9620,6 +9674,28 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
     };
 
+    // How long this flash should take, before a single byte has moved: the
+    // connected machine's device id says how it is attached (usb-/serial- prefix
+    // vs a BLE handle), and the transport is what sets the pace. Read once per
+    // operation — /devices is deduped and the answer cannot change mid-flash.
+    //
+    // Returns 0 when there is no connected machine to classify, and then no
+    // ballpark clock is shown at all: a guessed duration on an unknown link is
+    // the thing that makes a working update look hung.
+    async function firmwareOperationEstimate() {
+        try {
+            const devices = await getDevices();
+            const machine = Array.isArray(devices)
+                ? devices.find(d => d?.type === 'machine' && d?.state === 'connected')
+                : null;
+            const transport = transportFromDeviceId(machine?.id);
+            return transport ? firmwareEstimatedTotalSeconds(transport) : 0;
+        } catch (error) {
+            logger.debug('Firmware estimate: device list unavailable:', error);
+            return 0;
+        }
+    }
+
     // Shared by the manual file-upload button and the catalog "Download &
     // Install" button — both drive the same NDJSON progress bar and need the
     // same in-flight guard, wake-lock, and unload-block around the flash.
@@ -9690,6 +9766,12 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         firmwareUploadInFlight = true;
         firmwareCancelRequested = false;
         firmwareStartedAt = Date.now();
+        firmwareTotalEstimateSeconds = await firmwareOperationEstimate();
+        // The duration half of the note has done its job; the clock beside the
+        // tracker speaks from here. The power-off half stays. Swapped imperatively,
+        // like the cancel button, because the card is not re-rendered mid-flash.
+        const durationNote = document.getElementById('firmware-duration-note');
+        if (durationNote) durationNote.textContent = getTranslation(FIRMWARE_POWER_NOTE);
         firmwareUploadStartedAt = 0;
         firmwareUploadStartPercent = 0;
         firmwareProgressAt = 0;
@@ -9772,10 +9854,15 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             clearInterval(firmwareElapsedTimer);
             firmwareElapsedTimer = null;
             firmwareStartedAt = 0;
+            firmwareTotalEstimateSeconds = 0;
             firmwareUploadStartedAt = 0;
             firmwareUploadStartPercent = 0;
             firmwareProgressAt = 0;
             firmwareVerifyStartedAt = 0;
+            // Back for the next time: whatever happened, the next update is again
+            // a thing the user is deciding whether to start.
+            const noteEl = document.getElementById('firmware-duration-note');
+            if (noteEl) noteEl.textContent = getTranslation(FIRMWARE_DURATION_NOTE);
             setScreensaverSuppressed(false);
             setFirmwareFlashInFlight(false);
             // The dim we suppressed was the idle->sleeping TRANSITION, and the
@@ -9838,7 +9925,8 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             source: 'catalog',
             onBeforeStart: () => {
                 const btn = document.getElementById('firmware-apply-btn');
-                if (btn) { btn.disabled = true; btn.textContent = getTranslation('Installing...'); }
+                // Same verb as the button they pressed — Update, then Updating.
+                if (btn) { btn.disabled = true; btn.textContent = `${getTranslation('Updating')}…`; }
             },
             // The catalog's own verdict is now stale (installed build changed) —
             // re-check instead of leaving the old "update available" block up.
@@ -9847,7 +9935,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             onDone: () => { initFirmwareCheck(); },
             onError: () => {
                 const btn = document.getElementById('firmware-apply-btn');
-                if (btn) { btn.disabled = false; btn.textContent = getTranslation('Download & Install'); }
+                if (btn) { btn.disabled = false; btn.textContent = getTranslation('Update'); }
             },
         });
     };
