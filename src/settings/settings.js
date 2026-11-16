@@ -524,6 +524,10 @@ async function mountMaintenanceCategory(category, container) {
 // `nav` is passed only by the one call the user actually tapped for
 // (activateSubcategory); the other ~50 callers are re-renders after a write or a
 // language change, and timing those would bury the navigations in the log.
+// Which category the content area currently shows, so a re-render can tell
+// itself apart from a navigation and keep the scroll offset.
+let lastRenderedCategory = null;
+
 function updateSettingsContentArea(category, nav = null) {
     // Always tear the previous maintenance mount down, including when moving
     // between two maintenance pages — its poller and listeners are per-mount.
@@ -575,10 +579,19 @@ function updateSettingsContentArea(category, nav = null) {
         && document.getElementById('sensor-cal-warning-modal')?.open === true;
     const contentArea = document.getElementById('settings-content-area');
     if (contentArea) {
+        // Replacing innerHTML drops #right-panel's scroll position, so a write
+        // made halfway down a long page (scalePowerMode, a toggle, a preset)
+        // threw the user back to the top. Keep the offset across a re-render of
+        // the SAME page; a real navigation (nav is passed only by the tap that
+        // changed page) still starts at the top.
+        const scroller = document.getElementById('right-panel');
+        const keepScroll = !nav && category === lastRenderedCategory ? scroller?.scrollTop ?? 0 : 0;
+        lastRenderedCategory = category;
         contentArea.innerHTML = renderSettingsContent(category);
         nav?.mark('render');
         translatePage();
         nav?.mark('translate');
+        if (scroller && keepScroll) scroller.scrollTop = keepScroll;
         // The CSS default is a fixed 75% stop, so without this the bar sits at 75%
         // on first paint no matter what the value is.
         const slider = contentArea.querySelector('#brightness-slider');
