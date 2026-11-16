@@ -40,7 +40,9 @@ export function isMachineAsleep(machineState) {
 // caused for a foreground operation isn't an idle machine.
 //
 // ponytail: one module-global boolean — the firmware endpoint 409s a second
-// concurrent update, so there is never more than one thing suppressing.
+// concurrent update, so there is never more than one thing suppressing. The
+// long-press sleep-and-exit deliberately does NOT take this: it hides the
+// overlay itself on the way back in, and the wake it sends restores the dim.
 let suppressed = false;
 
 /** Suppress the screensaver + panel dim for the duration of a foreground op. */
@@ -173,4 +175,20 @@ export function deriveDisplayAction(previousState, currentState) {
  */
 export function mayTapWakeMachine({ screensaverActive = false, onPluginControl = false } = {}) {
     return !!screensaverActive && !onPluginControl;
+}
+
+/**
+ * Should coming back to the app wake the machine we put to sleep on the way out?
+ *
+ * Asleep, idle, or unknown all wake: the sleep confirmation can land after the app
+ * has already left, so the last state we saw may still read 'idle', and waking an
+ * idle machine is a no-op. Anything else means the machine is busy (espresso,
+ * steam, heating, flush, error...) — leave it alone.
+ *
+ * @returns {'wake'|'skip'}
+ */
+export function deriveReturnWake(machineState) {
+    if (isMachineAsleep(machineState)) return 'wake';
+    const state = String(machineState || '').toLowerCase();
+    return (state === '' || state === 'idle') ? 'wake' : 'skip';
 }

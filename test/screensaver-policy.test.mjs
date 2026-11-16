@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 
 import {
     deriveDisplayAction,
+    deriveReturnWake,
     deriveScreensaverAction,
     deriveSleepButtonAction,
     isMachineAsleep,
@@ -269,4 +270,14 @@ test('a tap on the overlay wakes; a tap on a plugin control or an idle overlay d
     assert.equal(mayTapWakeMachine({ screensaverActive: true, onPluginControl: true }), false);
     assert.equal(mayTapWakeMachine({ screensaverActive: false }), false);
     assert.equal(mayTapWakeMachine(), false);
+});
+
+// --- return from a long-press sleep exit ---------------------------------------
+
+test('returning wakes a sleeping, idle or unknown machine and leaves a busy one alone', () => {
+    assert.equal(deriveReturnWake('sleeping'), 'wake');
+    assert.equal(deriveReturnWake('idle'), 'wake');
+    assert.equal(deriveReturnWake(undefined), 'wake');
+    assert.equal(deriveReturnWake(null), 'wake');
+    assert.equal(deriveReturnWake('espresso'), 'skip');
 });
