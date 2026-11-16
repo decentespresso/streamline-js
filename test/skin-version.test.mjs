@@ -230,3 +230,21 @@ test('the reload prompt fires only when the build on disk is strictly newer', ()
     assert.equal(shouldPromptReload({}), false);
     assert.equal(shouldPromptReload(), false);
 });
+
+// The prompt is the toast itself: there is no button in it, so the toast has to
+// read as the thing to tap. A solid alert-info fill read as a plain notice.
+test('a toast with an onClick is painted as an invitation to tap', () => {
+    const ui = readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../src/css/main.css', import.meta.url), 'utf8');
+
+    assert.match(ui, /classList\.toggle\('toast-tappable', !!toastClickFn\)/,
+        'only a toast that does something gets the treatment');
+    assert.match(ui, /classList\.remove\('toast-tappable'\)/,
+        'and it is dropped when the toast hides, so the next one starts clean');
+
+    const rule = css.match(/\.alert\.toast-tappable \{[^}]*\}/);
+    assert.ok(rule, 'two classes, so it beats .alert-info whatever the sheet order');
+    assert.match(rule[0], /color: var\(--status-clickable-color\)/,
+        "the skin's own blue for 'you can tap this'");
+    assert.match(rule[0], /cursor: pointer/);
+});

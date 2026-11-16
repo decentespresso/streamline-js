@@ -166,3 +166,22 @@ test('the overlay hands the shot DYE2 was showing back to the caller', () => {
     assert.ok(code.includes("close.addEventListener('click', () => closePluginOverlay(false))"),
         'the skin Close button must not look like a sentinel return');
 });
+
+// While the machine is pulling espresso the panel belongs to the running shot
+// (see history-nav-gate.test.mjs). The arrows are locked; so are the two ways
+// into the shot on screen, because both end in a repaint of the live chart --
+// DYE2 through refreshShotAfterDye2Edit(), the menu through its own entries.
+test('the espresso lock also closes the DYE2 tap and the press-and-hold menu', () => {
+    const code = stripComments(historySrc);
+    const start = code.indexOf('function setupHistoryLongPress()');
+    const body = code.slice(start, code.indexOf('\n}\n', start));
+
+    const tapAt = body.indexOf('openShotInDye2()');
+    const menuAt = body.indexOf('openContextMenu(');
+    assert.ok(tapAt > 0 && menuAt > tapAt, 'both callbacks found');
+
+    const guards = [...body.matchAll(/if \(navLocked\) return;/g)].map(m => m.index);
+    assert.equal(guards.length, 2, 'one guard per callback');
+    assert.ok(guards[0] < tapAt, 'a tap on the shot lines cannot open DYE2 mid-shot');
+    assert.ok(guards[1] > tapAt && guards[1] < menuAt, 'a long press opens no menu mid-shot');
+});

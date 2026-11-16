@@ -3783,6 +3783,7 @@ export function showToast(message, duration = 2400, type = 'info', { onClick = n
 
         toastClickFn = typeof onClick === 'function' ? onClick : null;
         toastEl.style.cursor = toastClickFn ? 'pointer' : '';
+        // Paint below, once the alert's own type class is set.
         if (!toastEl.dataset.clickBound) {
             toastEl.dataset.clickBound = '1';
             toastEl.addEventListener('click', () => {
@@ -3796,6 +3797,9 @@ export function showToast(message, duration = 2400, type = 'info', { onClick = n
         if (alertEl) {
             alertEl.classList.remove('alert-info', 'alert-success', 'alert-error');
             alertEl.classList.add(`alert-${type}`);
+            // A toast the user is meant to tap says so: blue action text on the
+            // card surface rather than a solid fill with nothing to press.
+            alertEl.classList.toggle('toast-tappable', !!toastClickFn);
         }
 
         // Set accessibility roles based on type
@@ -3832,6 +3836,7 @@ export function hideToast() {
 
         toastEl.style.display = 'none';
         toastEl.style.cursor = '';
+        toastEl.querySelector('.alert')?.classList.remove('toast-tappable');
 
     }
 

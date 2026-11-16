@@ -368,6 +368,18 @@ body {
     color: var(--status-red-color);
 }
 
+/* A toast that does something when tapped. The solid alert-info fill read as a
+   notice with nowhere to act, so a tappable one takes the skin's blue action
+   colour on the card surface instead -- the same invitation
+   .status-msg-clickable below gives the machine status line. Two classes, so it
+   wins over .alert-info whatever order the sheets load in. */
+.alert.toast-tappable {
+    background-color: var(--card-bg);
+    border: 1px solid var(--status-clickable-color);
+    color: var(--status-clickable-color);
+    cursor: pointer;
+}
+
 .status-msg-clickable {
     font-family: 'NotoSansMono', monospace;
     font-weight: 600;

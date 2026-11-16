@@ -450,6 +450,11 @@ function setupHistoryLongPress() {
     refreshDialInAvailability();
     refreshVisualizerAvailability();
     setupPressAndHold(panel, (event) => {
+        // Not while the machine is pulling espresso: DYE2 owns the whole screen,
+        // and closing it runs refreshShotAfterDye2Edit() -> displayShot(), which
+        // repaints the chart the running shot is drawing on. Same reason the
+        // arrows are locked (see updateHistoryNavLock).
+        if (navLocked) return;
         // Only the four info lines open DYE2: an arrow tap bubbles here too, and the
         // block's own padding is not a control. A long press is swallowed by
         // setupPressAndHold.
@@ -458,6 +463,10 @@ function setupHistoryLongPress() {
         // surfaces as an unhandled rejection instead of a log line.
         openShotInDye2().catch(error => logger.warn('Could not open the shot in DYE2:', error));
     }, () => {
+        // Locked during espresso too: half the menu (DYE2 analysis, dial-in,
+        // Visualizer upload, plugin entries) acts on the shot on screen, and
+        // several of those paths repaint the chart mid-shot.
+        if (navLocked) return;
         // Dial-in entries only appear when the plugin is installed and loaded, so
         // nobody taps one just to get a "not installed" toast. Uses the cached
         // answer so the menu opens instantly; the refresh catches installs for next time.
