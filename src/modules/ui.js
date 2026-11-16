@@ -906,6 +906,11 @@ export function setupPressAndHold(element, clickCallback, longPressCallback, opt
 
     element.addEventListener('contextmenu', event => {
         event.preventDefault();
+        // A right-click, or a WebView raising its own menu at ~500 ms, lands here
+        // with no hold at all. Fine for a preset edit; not for closing the app, so
+        // that caller opts out and the timer stays the only way in. The press is
+        // left running on purpose, so a genuine hold still fires at `duration`.
+        if (options.contextMenuHolds === false) return;
         cancelPress();
         longPressCallback(element);
     });
@@ -2186,7 +2191,17 @@ export function isSleepExitEnabled() {
 
 /** Does this host offer the exit the gesture needs? Decides whether the setting is shown. */
 export function canExitApp() {
-    return typeof window.decentApp?.exitApp === 'function';
+    // __DECENT_HOST__ is exactly what exitApp() itself checks before doing
+    // anything: the skin API script is served to any browser Decaid serves, so
+    // the function exists in a desktop tab pointed at the tablet, where it only
+    // ever returns false.
+    return !!window.__DECENT_HOST__ && typeof window.decentApp?.exitApp === 'function';
+}
+
+/** Nothing is pending any more: drop the marker and our screensaver hold. */
+function clearSleepExitPending() {
+    try { localStorage.removeItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
+    setScreensaverSuppressed(false, SLEEP_EXIT_SUPPRESS_OWNER);
 }
 
 /**
@@ -2198,11 +2213,10 @@ function handleSleepExitReturn() {
     let pending = null;
     try { pending = localStorage.getItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
     if (pending === null) return;
-    try { localStorage.removeItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
     // Drained whatever the setting now says: the gesture may have been switched
     // off (here or on another synced tablet) while this marker was pending, and
     // leaving it would latch the suppression with nothing left to clear it.
-    setScreensaverSuppressed(false, SLEEP_EXIT_SUPPRESS_OWNER);
+    clearSleepExitPending();
     if (deriveReturnWake(currentMachineState) !== 'wake') return;
     hideScreensaver();
     noteWakeRequested();
@@ -2768,21 +2782,25 @@ export function initUI(callbacks) {
                 if (isHold && action.command === 'sleeping' && canExitApp() && isSleepExitEnabled()) {
                     try { localStorage.setItem(SLEEP_EXIT_KEY, String(Date.now())); } catch (e) { /* private mode */ }
                     setScreensaverSuppressed(true, SLEEP_EXIT_SUPPRESS_OWNER);
-                    // Decaid pauses background timers, so a timer that fires on time
-                    // while the page is visible means the app never left (iOS no-ops,
-                    // or the exit failed): let the screensaver follow the machine again.
-                    setTimeout(() => {
-                        if (document.visibilityState !== 'visible') return;
-                        let pending = false;
-                        try { pending = localStorage.getItem(SLEEP_EXIT_KEY) !== null; } catch (e) { /* private mode */ }
-                        if (!pending) return;
-                        try { localStorage.removeItem(SLEEP_EXIT_KEY); } catch (e) { /* private mode */ }
-                        setScreensaverSuppressed(false, SLEEP_EXIT_SUPPRESS_OWNER);
-                    }, 3000);
                     // Its own try: a host that throws here must not be reported as a
-                    // failed sleep -- the machine is already asleep, and the 3 s net
-                    // above still clears the marker.
-                    try { window.decentApp.exitApp(); } catch (e) { logger.error('Sleep exit: exitApp() failed:', e); }
+                    // failed sleep -- the machine is already asleep either way.
+                    let leaving = false;
+                    try { leaving = window.decentApp.exitApp() === true; } catch (e) { logger.error('Sleep exit: exitApp() failed:', e); }
+                    if (!leaving) {
+                        // Decaid 0.9.2+ returns false without doing anything when it is
+                        // not the host or the nonce is missing. Nothing to come back
+                        // from, so don't leave a marker that would wake the machine on
+                        // the next visibilitychange.
+                        clearSleepExitPending();
+                    } else {
+                        // iOS returns true and then does nothing, because an app cannot
+                        // close itself there. Decaid pauses background timers, so a timer
+                        // that fires on time while the page is still visible means the
+                        // app never left: let the screensaver follow the machine again.
+                        setTimeout(() => {
+                            if (document.visibilityState === 'visible') clearSleepExitPending();
+                        }, 3000);
+                    }
                 }
             } catch (err) {
                 logger.error(`Sleep button: failed to set machine state to "${action.command}":`, err);
@@ -2792,7 +2810,7 @@ export function initUI(callbacks) {
             }
         };
 
-        setupPressAndHold(sleepButton, () => handleSleepPress(false), () => handleSleepPress(true), { duration: SLEEP_EXIT_HOLD_MS });
+        setupPressAndHold(sleepButton, () => handleSleepPress(false), () => handleSleepPress(true), { duration: SLEEP_EXIT_HOLD_MS, contextMenuHolds: false });
         initSleepExitReturn();
     }
 

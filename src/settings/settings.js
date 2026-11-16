@@ -2141,7 +2141,7 @@ export function renderScreenSaverSettings() {
     // Read off globalThis and localStorage directly, like every other preference
     // in this function: the render is extracted and eval'd DOM-free by
     // test/screensaver-clock.test.mjs, where the `ui` namespace does not exist.
-    const sleepExitSupported = typeof globalThis.decentApp?.exitApp === 'function';
+    const sleepExitSupported = !!globalThis.__DECENT_HOST__ && typeof globalThis.decentApp?.exitApp === 'function';
     const sleepExitEnabled = localStorage.getItem('sleepExitEnabled') !== 'false';
     const clockFormat = resolveScreensaverClockFormat(localStorage.getItem('screensaverClockFormat'));
     const clockPosition = resolveScreensaverClockPosition(localStorage.getItem('screensaverClockPosition'));
