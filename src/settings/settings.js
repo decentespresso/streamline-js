@@ -6495,9 +6495,9 @@ export function renderSkinSettings() {
                         <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]">${skinUpdateCheckText()}</p>
                         </div>
-                        <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
-                                onclick="window.updateSkin()" data-i18n-key="Check">
-                            Check
+                        <button id="skinUpdateBtn" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
+                                onclick="window.updateSkin()" data-i18n-key="Update">
+                            Update
                         </button>
                     </div>
                 </div>
@@ -9913,8 +9913,11 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     };
 
     window.updateSkin = async function() {
+        // The button is the progress indicator: this call installs a newer skin
+        // and then reloads, so a toast that outlives the page is wasted.
+        const btn = document.getElementById('skinUpdateBtn');
+        if (btn) { btn.disabled = true; btn.textContent = getTranslation('Updating'); }
         try {
-            ui.showToast(skinUpdateCheckText(), 3000, 'info');
             await updateSkins(); // bridge checks sources & downloads newer skin files server-side
             settingsCache.allSkins = await getAllSkins();
             const diskVersion = settingsCache.allSkins.find(s => s.id === SKIN_ID)?.version;
@@ -9931,6 +9934,10 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             // download: skin-version.js points the user at the Decaid app,
             // where the same check runs with no token.
             ui.showToast(skinUpdateFailureText(error, getTranslation), 6000, 'error');
+        } finally {
+            // A re-render or the reload replaces the button; only restore the one
+            // still on the page.
+            if (btn && btn.isConnected) { btn.disabled = false; btn.textContent = getTranslation('Update'); }
         }
     };
     window.updateSteamSetting = updateSteamSetting;
