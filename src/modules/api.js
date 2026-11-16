@@ -3491,7 +3491,12 @@ export async function updateSkins() {
         const reason = typeof body?.error === 'string' && body.error.trim()
             ? body.error.trim()
             : `${response.status} ${response.statusText}`;
-        throw new Error(reason);
+        const error = new Error(reason);
+        // The caller phrases 401 and 429 itself: Decaid's own words for those
+        // two are "Missing or malformed bearer token" and a bare retry count,
+        // neither of which tells the user what to do. See updateSkin().
+        error.status = response.status;
+        throw error;
     }
     return body;
 }

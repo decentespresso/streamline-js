@@ -141,3 +141,26 @@ export function shouldPromptReload({ running, disk } = {}) {
     if (!running || !disk) return false;
     return compareVersions(running, disk) < 0;
 }
+
+// Decaid gates POST /webui/skins/update behind an `extensions:manage` bearer
+// token (decaid #1163). The skin holds no token, and the tokenless exception
+// made for the embedded skin admits only a same-device loopback caller, on a
+// Decaid new enough to carry it (0.9.2+3191 has the gate but not the
+// exception). Both refusals arrive as 401 "Missing or malformed bearer token",
+// which tells the user neither what happened nor what to do -- and the way out
+// is not in this skin at all, it is Decaid's own Skins page, which runs the
+// same check in-process with no token involved.
+//
+// Everything else already answers in plain language: GitHub quota, a partial
+// update, and the 30-second tokenless throttle ("An update check just ran;
+// retry in N seconds") all arrive as a sentence worth showing as-is.
+export const SKIN_UPDATE_TOKEN_REFUSED =
+    'Decaid would not run this check from the skin. Update from the Decaid app instead: Skins > Check for updates.';
+
+// `translate` is the caller's getTranslation: this module stays DOM-free and
+// i18n-free, and the English text above is the CSV key.
+export function skinUpdateFailureText(error, translate = (text) => text) {
+    if (error?.status === 401) return translate(SKIN_UPDATE_TOKEN_REFUSED);
+    const reason = error?.message || String(error ?? 'unknown error');
+    return `Failed to update skin: ${reason}`;
+}

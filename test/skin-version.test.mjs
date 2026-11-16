@@ -2,6 +2,7 @@ import {
     compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure,
     recordRateLimit, getTag, isRateLimited, limitRemainingMs, shouldPromptReload,
     SUCCESS_TTL_MS, FAILURE_TTL_MS, DEFAULT_LIMIT_MS, MAX_LIMIT_MS, MAX_REPOS,
+    skinUpdateFailureText, SKIN_UPDATE_TOKEN_REFUSED,
 } from '../src/modules/skin-version.js';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -247,4 +248,33 @@ test('a toast with an onClick is painted as an invitation to tap', () => {
     assert.match(rule[0], /color: var\(--status-clickable-color\)/,
         "the skin's own blue for 'you can tap this'");
     assert.match(rule[0], /cursor: pointer/);
+});
+
+// ── skin update refusals (decaid #1163) ────────────────────────────────────
+test('a 401 points at the Decaid app, anything else keeps the server sentence', () => {
+    const refused = Object.assign(new Error('Missing or malformed bearer token'), { status: 401 });
+    const text = skinUpdateFailureText(refused);
+    assert.ok(!text.includes('bearer'), 'Decaid\'s wording tells the user nothing');
+    assert.match(text, /Check for updates/, 'it names the way out instead');
+
+    // The throttle, GitHub quota and partial-update messages are already
+    // sentences a user can act on, so they are shown as they arrived.
+    const throttled = Object.assign(new Error('An update check just ran; retry in 12 seconds'), { status: 429 });
+    assert.equal(skinUpdateFailureText(throttled), 'Failed to update skin: An update check just ran; retry in 12 seconds');
+    assert.equal(skinUpdateFailureText(new Error('500 Internal Server Error')), 'Failed to update skin: 500 Internal Server Error');
+    // A thrown non-Error (a rejected fetch, a string) must still say something.
+    assert.equal(skinUpdateFailureText(null), 'Failed to update skin: unknown error');
+
+    // The English text is the CSV key; settings.js passes getTranslation in.
+    assert.equal(skinUpdateFailureText(refused, () => 'translated'), 'translated');
+    const csv = readFileSync(new URL('../src/ui/de1 gui translation - Sheet1.csv', import.meta.url), 'utf8');
+    assert.ok(csv.split('\r\n').some(line => line.startsWith(SKIN_UPDATE_TOKEN_REFUSED + ',')),
+        'the key has a row to translate into');
+});
+
+test('updateSkins carries the status so the caller can tell a refusal from a failure', () => {
+    const api = readFileSync(new URL('../src/modules/api.js', import.meta.url), 'utf8');
+    const start = api.indexOf('export async function updateSkins()');
+    const body = api.slice(start, api.indexOf('\n}\n', start));
+    assert.match(body, /error\.status = response\.status/);
 });

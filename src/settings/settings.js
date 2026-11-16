@@ -22,7 +22,7 @@ import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmM
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
-import { compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure, recordRateLimit, limitRemainingMs, getTag } from '../modules/skin-version.js';
+import { compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure, recordRateLimit, limitRemainingMs, getTag, skinUpdateFailureText } from '../modules/skin-version.js';
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
 import { openModal, shouldUseNumpad, initializeNumpadModal } from '../modules/numpad-modal.js';
@@ -9927,7 +9927,10 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             }
         } catch (error) {
             logger.error('Error updating skin:', error);
-            ui.showToast(`Failed to update skin: ${error.message}`, 5000, 'error');
+            // A 401 is Decaid refusing the skin's tokenless call, not a failed
+            // download: skin-version.js points the user at the Decaid app,
+            // where the same check runs with no token.
+            ui.showToast(skinUpdateFailureText(error, getTranslation), 6000, 'error');
         }
     };
     window.updateSteamSetting = updateSteamSetting;
