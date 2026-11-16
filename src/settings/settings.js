@@ -2137,7 +2137,7 @@ export function renderScreenSaverSettings() {
     const showClock = localStorage.getItem('screensaverShowClock') !== 'false';
     // Sleep-button gesture. Only Decaid builds with exitApp() can honour it, so
     // the card is absent rather than dead everywhere else (a browser tab, an
-    // older Decaid) -- see ui.canExitApp().
+    // older Decaid) -- see canExitApp() in src/modules/ui.js.
     // Read off globalThis and localStorage directly, like every other preference
     // in this function: the render is extracted and eval'd DOM-free by
     // test/screensaver-clock.test.mjs, where the `ui` namespace does not exist.

@@ -39,31 +39,20 @@ export function isMachineAsleep(machineState) {
 // "confirmed state only" rule can't fix this; what's wrong is that a sleep WE
 // caused for a foreground operation isn't an idle machine.
 //
-// Two things suppress now -- a firmware flash, and the window between a
-// long-press sleep-and-exit and the return -- and they can overlap (a hold on
-// Sleep during a flash). So suppression carries its OWNER: a release only
-// counts if it comes from whoever took it, and the one that is still running
-// keeps the overlay down.
-//
-// ponytail: a set of owners, not a refcount. Neither caller takes it twice, so
-// membership is all the bookkeeping there is; a counter would add nothing.
-const suppressedBy = new Set();
+// ponytail: one module-global boolean — the firmware endpoint 409s a second
+// concurrent update, so there is never more than one thing suppressing. The
+// long-press sleep-and-exit deliberately does NOT take this: it hides the
+// overlay itself on the way back in, and the wake it sends restores the dim.
+let suppressed = false;
 
-/**
- * Suppress the screensaver + panel dim for the duration of a foreground op.
- *
- * @param {boolean} value
- * @param {string} owner - who is asking; a release by anyone else is ignored.
- *   Defaults to the firmware flash, the original and still the longest holder.
- */
-export function setScreensaverSuppressed(value, owner = 'firmware') {
-    if (value) suppressedBy.add(owner);
-    else suppressedBy.delete(owner);
+/** Suppress the screensaver + panel dim for the duration of a foreground op. */
+export function setScreensaverSuppressed(value) {
+    suppressed = !!value;
 }
 
-/** Is the screensaver currently suppressed (by anyone)? */
+/** Is the screensaver currently suppressed? */
 export function isScreensaverSuppressed() {
-    return suppressedBy.size > 0;
+    return suppressed;
 }
 
 /**

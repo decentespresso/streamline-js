@@ -22,8 +22,6 @@ import {
     isMachineAsleep,
     mayTapWakeMachine,
     isWakePending,
-    isScreensaverSuppressed,
-    setScreensaverSuppressed,
     WAKE_CONFIRM_GRACE_MS,
 } from '../src/modules/screensaver-policy.js';
 
@@ -282,21 +280,4 @@ test('returning wakes a sleeping, idle or unknown machine and leaves a busy one 
     assert.equal(deriveReturnWake(undefined), 'wake');
     assert.equal(deriveReturnWake(null), 'wake');
     assert.equal(deriveReturnWake('espresso'), 'skip');
-});
-
-// --- suppression is owned: two holders can overlap -----------------------------
-
-test('a release only counts from the owner, so a sleep-exit cannot unsuppress a firmware flash', () => {
-    setScreensaverSuppressed(true, 'firmware');
-    setScreensaverSuppressed(true, 'sleepExit');
-    // The sleep-exit path returns and releases its own hold; the flash is still running.
-    setScreensaverSuppressed(false, 'sleepExit');
-    assert.equal(isScreensaverSuppressed(), true);
-    setScreensaverSuppressed(false, 'firmware');
-    assert.equal(isScreensaverSuppressed(), false);
-    // The default owner keeps the original firmware call sites working unchanged.
-    setScreensaverSuppressed(true);
-    assert.equal(isScreensaverSuppressed(), true);
-    setScreensaverSuppressed(false);
-    assert.equal(isScreensaverSuppressed(), false);
 });
