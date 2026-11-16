@@ -86,7 +86,13 @@ jobs:
           # so leaving this at the released number would make every dist load
           # look like a pending update.
           sed -i "s/^export const APP_VERSION = '.*';/export const APP_VERSION = '${dev}';/" dist/src/version.js
-          grep -n "APP_VERSION" dist/src/version.js
+          # SKIN_ID is how the running bundle finds ITSELF in GET /webui/skins.
+          # Left at 'streamline.js' the dist build reads the bundled released
+          # skin's version instead, and a prerelease stamp always sorts below
+          # that release, so every dist load showed "new version available"
+          # (streamline-js #196 follow-up).
+          sed -i "s/^export const SKIN_ID = '.*';/export const SKIN_ID = 'streamline.js-dist';/" dist/src/version.js
+          grep -n "APP_VERSION\|SKIN_ID" dist/src/version.js
           cat dist/skin-manifest.json
 
       - name: Validate skin-manifest.json
