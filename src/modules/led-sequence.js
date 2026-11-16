@@ -219,3 +219,190 @@ export function stepPreviewColors(step) {
         back: ledRgbToColor16(ledHexToRgb(s.rearColor)),
     };
 }
+
+// ── Sequence library (several saved sequences, one of them active) ────────
+// Stored under the same LED_SEQUENCE_KEY as before. The value used to BE a
+// single sequence; normalizeLibrary() migrates that shape into one preset so
+// an existing strip keeps its steps and triggers across the upgrade.
+//
+// Only the ACTIVE preset plays and only its triggerStates fire -- the others
+// are saved, not armed -- so two sequences can never fight over the strip.
+// `enabled` gates the auto-run path only: the Settings Play button still
+// works with it off, which is how you build a sequence before arming it.
+
+export const MAX_PRESET_NAME_LENGTH = 40;
+
+/** Arbitrary value → a trimmed, length-capped preset name ('' when unusable). */
+export function normalizePresetName(name) {
+    return typeof name === 'string' ? name.trim().slice(0, MAX_PRESET_NAME_LENGTH) : '';
+}
+
+/** Arbitrary value → a complete { id, name, steps, loop, triggerStates } preset. */
+export function normalizePreset(raw, index = 0) {
+    const src = (raw && typeof raw === 'object') ? raw : {};
+    const id = typeof src.id === 'string' && src.id ? src.id : `s${index + 1}`;
+    return { id, name: normalizePresetName(src.name), ...normalizeSequence(src) };
+}
+
+/** An id no preset in `presets` already uses. Deterministic, so it is testable. */
+export function nextPresetId(presets) {
+    const used = new Set((Array.isArray(presets) ? presets : []).map((p) => p?.id));
+    let n = 1;
+    while (used.has(`s${n}`)) n += 1;
+    return `s${n}`;
+}
+
+export const DEFAULT_LIBRARY = Object.freeze({ enabled: true, activeId: '', presets: [] });
+
+/**
+ * Arbitrary value → a complete { enabled, activeId, presets } library.
+ * Accepts the pre-library single-sequence shape and migrates it. Duplicate
+ * ids are re-issued, and activeId always names a preset that exists (or '' when
+ * there are none), so callers never have to guard either.
+ */
+export function normalizeLibrary(raw) {
+    const src = (raw && typeof raw === 'object') ? raw : {};
+    const legacy = !Array.isArray(src.presets) && (Array.isArray(src.steps) || 'loop' in src || 'triggerStates' in src);
+    const list = legacy ? [src] : (Array.isArray(src.presets) ? src.presets : []);
+    const presets = [];
+    for (const item of list) {
+        const preset = normalizePreset(item, presets.length);
+        if (presets.some((p) => p.id === preset.id)) preset.id = nextPresetId(presets);
+        presets.push(preset);
+    }
+    const activeId = presets.some((p) => p.id === src.activeId) ? src.activeId : (presets[0]?.id || '');
+    // Missing `enabled` means a store written before the switch existed, whose
+    // triggers were live -- default on so an upgrade changes nothing.
+    return { enabled: src.enabled !== false, activeId, presets };
+}
+
+/** The preset currently in use, or null when the library is empty. */
+export function getActivePreset(library) {
+    const lib = normalizeLibrary(library);
+    return lib.presets.find((p) => p.id === lib.activeId) || null;
+}
+
+/** Append a preset and make it the active one. */
+export function addPreset(library, preset = {}) {
+    const lib = normalizeLibrary(library);
+    const added = { ...normalizePreset(preset, lib.presets.length), id: nextPresetId(lib.presets) };
+    return { ...lib, presets: [...lib.presets, added], activeId: added.id };
+}
+
+/** Drop a preset; the active one moves to its neighbour. Unknown id is a no-op. */
+export function removePreset(library, id) {
+    const lib = normalizeLibrary(library);
+    const index = lib.presets.findIndex((p) => p.id === id);
+    if (index < 0) return lib;
+    const presets = lib.presets.filter((p) => p.id !== id);
+    if (lib.activeId !== id) return { ...lib, presets };
+    const neighbour = presets[index] || presets[index - 1] || presets[0];
+    return { ...lib, presets, activeId: neighbour?.id || '' };
+}
+
+/** Rename a preset. Unknown id is a no-op. */
+export function renamePreset(library, id, name) {
+    const lib = normalizeLibrary(library);
+    return { ...lib, presets: lib.presets.map((p) => (p.id === id ? { ...p, name: normalizePresetName(name) } : p)) };
+}
+
+/** Make `id` the active preset. Unknown id is a no-op. */
+export function selectPreset(library, id) {
+    const lib = normalizeLibrary(library);
+    return lib.presets.some((p) => p.id === id) ? { ...lib, activeId: id } : lib;
+}
+
+/** Merge `patch` (steps/loop/triggerStates/name) into the active preset. */
+export function updateActivePreset(library, patch) {
+    const lib = normalizeLibrary(library);
+    return {
+        ...lib,
+        presets: lib.presets.map((p) => (p.id === lib.activeId ? normalizePreset({ ...p, ...patch }) : p)),
+    };
+}
+
+/** Turn the auto-run switch on or off. */
+export function setSequencesEnabled(library, enabled) {
+    return { ...normalizeLibrary(library), enabled: enabled === true };
+}
+
+/**
+ * The machine just entered `stateId` -- what should auto-run, if anything?
+ * `{ steps, loop }` only when the switch is on and the ACTIVE preset is mapped
+ * to that state; otherwise null.
+ */
+export function resolveLibraryTrigger(library, stateId) {
+    const lib = normalizeLibrary(library);
+    if (!lib.enabled) return null;
+    const active = getActivePreset(lib);
+    return active ? resolveTriggerSequence(active, stateId) : null;
+}
+
+/** Stored JSON string → normalized library. Malformed/missing → empty, never throws. */
+export function parseLedLibrary(json) {
+    if (!json) return normalizeLibrary(null);
+    try {
+        return normalizeLibrary(JSON.parse(json));
+    } catch (e) {
+        return normalizeLibrary(null);
+    }
+}
+
+/** Normalized library → JSON string for storage. */
+export function serializeLedLibrary(library) {
+    return JSON.stringify(normalizeLibrary(library));
+}
+
+// ── Timeline ─────────────────────────────────────────────────────────────
+// A sequence is the one thing on the Lighting page that really is a sequence,
+// so the editor draws it as a timeline: segment width = duration, segment
+// colour = that step. These are the pure parts of that drawing.
+
+/** Smallest share of the bar any one step gets, so a 0.5s step next to a 60s
+ *  one is still big enough to hit with a finger. */
+export const MIN_SEGMENT_PERCENT = 6;
+
+/**
+ * Steps → { totalMs, segments:[{ index, percent, frontColor, rearColor }] }.
+ * Percents are proportional to duration, floored at MIN_SEGMENT_PERCENT and
+ * renormalized so they always sum to 100 -- the bar must fill exactly, or the
+ * last segment leaves a gap that reads as a step that is not there.
+ */
+export function sequenceTimeline(steps) {
+    const list = normalizeSteps(steps);
+    const totalMs = list.reduce((sum, s) => sum + s.durationMs, 0);
+    if (!list.length || !totalMs) return { totalMs, segments: [] };
+
+    const floor = Math.min(MIN_SEGMENT_PERCENT, 100 / list.length);
+    const raw = list.map((s) => Math.max(floor, (s.durationMs / totalMs) * 100));
+    const scale = 100 / raw.reduce((a, b) => a + b, 0);
+    const segments = list.map((step, index) => ({
+        index,
+        percent: raw[index] * scale,
+        frontColor: step.frontColor,
+        rearColor: step.rearColor,
+    }));
+    return { totalMs, segments };
+}
+
+/** ms → the seconds label the editor shows: '0.5', '1.2', '12' (whole from 10s up). */
+export function formatStepSeconds(ms) {
+    const s = (Number(ms) || 0) / 1000;
+    return s >= 10 ? String(Math.round(s)) : s.toFixed(1);
+}
+
+/**
+ * One press of - or + on a duration. The usable range spans 0.5s to 60s, so a
+ * fixed increment is either too coarse at the short end or hundreds of taps at
+ * the long end: the step grows with the value. Always lands on a clamped,
+ * round number.
+ */
+export function nudgeStepDuration(ms, direction) {
+    const current = clampStepDurationMs(ms);
+    const grain = current < 2000 ? 100 : current < 10000 ? 500 : 1000;
+    const dir = direction < 0 ? -1 : 1;
+    // Snap to the grain first, so a value carried over from a finer grain
+    // (1.7s stepping up at the 500ms grain) lands on 2.0s, not 2.2s.
+    const snapped = dir > 0 ? Math.floor(current / grain) * grain : Math.ceil(current / grain) * grain;
+    return clampStepDurationMs(snapped + dir * grain);
+}

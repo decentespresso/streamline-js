@@ -962,7 +962,7 @@ export async function openGrinderSurface() {
 // any new utility class would need a CSS rebuild to exist in app.css (see CLAUDE.md).
 
 // ponytail: numeric compare only — dye2 tags are plain vMAJOR.MINOR.PATCH. If it
-// ever ships `-beta` tags, borrow settings.js's compareVersions, which orders them.
+// ever ships `-beta` tags, use skin-version.js's compareVersions, which orders them.
 function isOlderVersion(a, b) {
     const nums = (v) => String(v || '').trim().replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
     const x = nums(a), y = nums(b);

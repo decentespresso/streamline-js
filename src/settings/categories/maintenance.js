@@ -7,6 +7,7 @@ import {
     setSteamHeaterEnabled,
 } from '../../modules/api.js';
 import {
+    AIR_PURGE_PROCEDURE,
     CLEANING_PROCEDURE,
     DESCALE_STEAM_MAX_C,
     DESCALING_PROCEDURE,
@@ -71,7 +72,7 @@ function procedureView({ title, action, description, confirmation, extra = '' })
             <div class="flex flex-col gap-[30px] w-full">
                 <div class="flex items-center justify-between w-full">
                     <p class="font-bold text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="${title}">${title}</p>
-                    <button type="button" data-action="${action}" class="${PRIMARY_BTN}" data-i18n-key="Start">Start</button>
+                    <button type="button" data-action="${action}" data-procedure-start class="${PRIMARY_BTN}" data-i18n-key="Start">Start</button>
                 </div>
                 <p class="text-[var(--text-primary)] text-[24px] pr-[220px]" data-i18n-key="${description}">${description}</p>
                 ${extra}
@@ -113,32 +114,20 @@ function descaling() {
 }
 
 function airPurge() {
-    return `
-        <div class="flex flex-col gap-[60px] items-start w-full">
-            <h2 class="font-semibold text-[var(--text-primary)] text-[36px] text-center w-full" data-i18n-key="Transport Mode">Transport Mode</h2>
-            <hr class="border-t border-[var(--border-primary)] w-full">
-            <div class="flex flex-col gap-[30px] w-full">
-                <div class="flex items-center justify-between w-full">
-                    <p class="font-bold text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="Transport Mode">Transport Mode</p>
-                    <button type="button" data-action="air-purge" class="${PRIMARY_BTN}" data-i18n-key="Start">Start</button>
-                </div>
-                <p class="text-[var(--text-primary)] text-[24px] pr-[220px]" data-i18n-key="Purges remaining water from inside the machine. Run before packing the machine to prevent leaks during transport.">Purges remaining water from inside the machine. Run before packing the machine to prevent leaks during transport.</p>
-            </div>
-            <dialog data-air-purge-confirm class="modal">
-                <div class="modal-box bg-[var(--box-color)] max-w-2xl">
-                    <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2" data-i18n-key="Transport Mode">Transport Mode</h3>
-                    <p class="text-[20px] text-[var(--text-primary)] opacity-80 mb-4" data-i18n-key="Prepare your espresso machine for transport">Prepare your espresso machine for transport</p>
-                    <div class="modal-action">
-                        <button type="button" data-action="cancel" class="${DIALOG_CANCEL_BTN}" data-i18n-key="Cancel">Cancel</button>
-                        <button type="button" data-action="confirm-air-purge" class="${DIALOG_BTN}" data-i18n-key="Start">Start</button>
-                    </div>
-                </div>
-            </dialog>
-        </div>`;
+    return procedureView({
+        title: 'Transport Mode',
+        action: 'air-purge',
+        description: 'Purges remaining water from inside the machine. Run before packing the machine to prevent leaks during transport.',
+        confirmation: 'You can turn your machine off once it is out of water. It will then be ready for transport.',
+    });
 }
 
 const VIEWS = { maint_airpurge: airPurge, maint_cleaning: cleaning, maint_descaling: descaling };
-const PROCEDURES = { maint_cleaning: CLEANING_PROCEDURE, maint_descaling: DESCALING_PROCEDURE };
+const PROCEDURES = {
+    maint_cleaning: CLEANING_PROCEDURE,
+    maint_descaling: DESCALING_PROCEDURE,
+    maint_airpurge: AIR_PURGE_PROCEDURE,
+};
 const PROCEDURE_TICK_MS = 1000;
 
 export async function mountSettingsCategory({ container, category }) {
@@ -186,7 +175,7 @@ export async function mountSettingsCategory({ container, category }) {
             caption.textContent = getTranslation(view.caption) + (view.suffix ?? '');
         }
 
-        const button = container.querySelector('[data-action="clean"], [data-action="descale"]');
+        const button = container.querySelector('[data-procedure-start]');
         if (!button) return;
         const label = isProcedureActive(procedureState) ? 'Stop' : 'Start';
         button.dataset.i18nKey = label;
@@ -257,11 +246,10 @@ export async function mountSettingsCategory({ container, category }) {
         const action = event.target.closest('[data-action]')?.dataset.action;
         if (!action) return;
         if (action === 'cancel') {
-            container.querySelector('[data-air-purge-confirm]')?.close();
             container.querySelector('[data-procedure-confirm]')?.close();
             return;
         }
-        if (action === 'clean' || action === 'descale') {
+        if (action === 'clean' || action === 'descale' || action === 'air-purge') {
             // The same button stops a run in flight, matching the tap-anywhere
             // abort the DE1 tablet app puts over its cleaning and descaling
             // screens.
@@ -316,38 +304,6 @@ export async function mountSettingsCategory({ container, category }) {
                 ui.showToast(`${getTranslation('Failed to start')}: ${error.message}`, 5000, 'error');
             }
             return;
-        }
-        if (action === 'air-purge') {
-            if (currentMachineState === MachineState.NEEDS_WATER) {
-                ui.showToast(`${getTranslation('Out of water')} - ${getTranslation('Press the stop button on the group head to override, then tap Start again.')}`, 6000, 'error');
-                return;
-            }
-            container.querySelector('[data-air-purge-confirm]')?.showModal();
-            return;
-        }
-        if (action !== 'confirm-air-purge') return;
-        try {
-            await setMachineState('airPurge');
-            if (!active) return;
-            container.querySelector('[data-air-purge-confirm]')?.close();
-            ui.showToast(getTranslation('Now removing water from your espresso machine.'), 0, 'info');
-            let entered = false;
-            const startedAt = Date.now();
-            timer = setInterval(() => {
-                if (currentMachineState === MachineState.AIR_PURGE) entered = true;
-                if (entered && currentMachineState !== MachineState.AIR_PURGE) {
-                    clearInterval(timer);
-                    timer = 0;
-                    ui.showToast(getTranslation('You can turn your machine off once it is out of water. It will then be ready for transport.'), 8000, 'success');
-                } else if (Date.now() - startedAt > 300000) {
-                    clearInterval(timer);
-                    timer = 0;
-                    ui.hideToast();
-                }
-            }, 1000);
-        } catch (error) {
-            logger.error('Maintenance command failed:', error);
-            ui.showToast(`${getTranslation('Failed to start')}: ${error.message}`, 5000, 'error');
         }
     };
 

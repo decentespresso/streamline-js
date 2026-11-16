@@ -3478,10 +3478,22 @@ export async function getWebuiServerStatus() {
     return response.json();
 }
 
+// Decaid attempts every skin and answers any failure -- including a partial one,
+// where some skins did update -- with HTTP 500 and a JSON `{ error }` that says
+// why in plain language (rest_v1.yml documents this). When GitHub's quota is
+// gone that message carries the cooldown and reset time, so throwing the status
+// alone turned the one useful sentence into "500 Internal Server Error" on
+// screen (decaid #1118).
 export async function updateSkins() {
     const response = await fetch(`${API_BASE_URL}/webui/skins/update`, { method: 'POST' });
-    if (!response.ok) throw new Error(`Failed to update skins: ${response.status} ${response.statusText}`);
-    return response.json();
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+        const reason = typeof body?.error === 'string' && body.error.trim()
+            ? body.error.trim()
+            : `${response.status} ${response.statusText}`;
+        throw new Error(reason);
+    }
+    return body;
 }
 
 // Decaid answers a refused or failed submission with a JSON body that says why
@@ -3504,6 +3516,26 @@ export async function submitFeedback(payload) {
         throw error;
     }
     return body || {};
+}
+
+// Turn an answered question into a shareable Derek page. Derek's own server
+// sends no CORS headers (OPTIONS -> 405), so the skin cannot POST to it from
+// the browser; this needs the same server-side relay treatment as the stream.
+// Decaid builds older than that route answer 404, which the caller treats as
+// "no share available" and falls back to the clipboard.
+export async function shareDerekAnswer(answerId, uiLanguage = 'en') {
+    const res = await fetch(`${API_BASE_URL}/derek/shared-conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer_id: answerId, ui_language: uiLanguage }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+        const error = new Error(body?.error || body?.detail || `HTTP ${res.status}`);
+        error.status = res.status;
+        throw error;
+    }
+    return body?.share_path || '';
 }
 
 // Stream a Derek answer through Decaid's relay. Calls onEvent({event, data})

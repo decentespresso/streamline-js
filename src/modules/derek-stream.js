@@ -35,3 +35,23 @@ export function buildFollowUpQuery(summaryMd, question) {
 export function splitBold(line) {
     return line.split(/\*\*(.+?)\*\*/g).map((text, i) => ({ text, bold: i % 2 === 1 })).filter((p) => p.text);
 }
+
+// Flatten the chat into markdown for the clipboard. Entries are
+// { label, text }; empty ones (a status placeholder that never got an answer)
+// are dropped so a copy mid-request is still clean.
+export function buildTranscript(entries) {
+    return entries
+        .filter((e) => e && e.text && e.text.trim())
+        .map((e) => `**${e.label}**\n\n${e.text.trim()}`)
+        .join('\n\n---\n\n');
+}
+
+export const DEREK_WEB_ORIGIN = 'https://derek.decentespresso.com';
+
+// A share_path comes back from a server, so treat it as untrusted: only
+// "/share/<id>" becomes a URL, anything else (absolute URL, traversal, empty)
+// returns '' and the caller stays on the plain Derek page.
+export function buildShareUrl(sharePath) {
+    if (typeof sharePath !== 'string') return '';
+    return /^\/share\/[A-Za-z0-9_-]+$/.test(sharePath) ? DEREK_WEB_ORIGIN + sharePath : '';
+}

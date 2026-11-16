@@ -10,6 +10,7 @@ import {
     startSettingsData
 } from './settings-data.js';
 import { SETTINGS_TREE as CANONICAL_SETTINGS_TREE } from './settings-tree.js';
+import { timeNav } from '../modules/perf-probe.js';
 
 // [name, category, bengleOnly?] tuples for the pre-legacy-load nav and search,
 // derived from the canonical tree (settings-tree.js) so the two can't drift —
@@ -103,6 +104,7 @@ function renderSkeleton() {
 }
 
 async function renderCategory(mainCategory, category) {
+    const nav = timeNav(`settings/${category}`);
     activeMainCategory = mainCategory;
     currentCleanup?.();
     currentCleanup = null;
@@ -112,6 +114,7 @@ async function renderCategory(mainCategory, category) {
     try {
         const module = await CATEGORY_LOADERS[mainCategory]();
         if (sequence !== renderSequence) return;
+        nav.mark('module');
         currentCleanup = await module.mountSettingsCategory({
             container: content,
             mainCategory,
@@ -120,6 +123,7 @@ async function renderCategory(mainCategory, category) {
                 legacyMounted = true;
             }
         });
+        nav.done();
     } catch (error) {
         if (sequence !== renderSequence) return;
         content.innerHTML = `<div class="flex flex-col items-center justify-center h-full gap-[24px]" role="alert"><p class="text-red-500 text-[24px]">Failed to load settings</p><button type="button" data-retry-category class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[10px] text-white text-[24px] font-bold">Retry</button></div>`;

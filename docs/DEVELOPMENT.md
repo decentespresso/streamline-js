@@ -162,6 +162,42 @@ src/
 
 ---
 
+## Profiling a live shot on the device
+
+The open performance findings in #161 are all device-dependent, and a desktop
+browser answers none of them. `src/modules/perf-probe.js` times the live-shot
+path in place, on whatever tablet is actually running the skin.
+
+**Every shot leaves one line behind, in every build:**
+
+```
+[AUDIT] perf: ua=... cores=8 dpr=2 screen=1920x1200
+[AUDIT] perf: shot 24.1s n=240 chart=0.70/9.9 shotData=0.19/2.5 status=0.09/0.3 (mean/max ms)
+```
+
+Nothing has to be switched on. The skin runs in Decaid's WebView, which has no
+address bar, so anything a user cannot reach would only ever measure developers'
+machines — the hardware the question is not about. Decaid attaches the console
+log to in-app feedback, so the numbers arrive with any bug report, from whatever
+tablet the person owns. The device line is emitted once per session, before the
+first summary.
+
+Runs shorter than `MIN_REPORTED_SHOT_S` are dropped: a two-second flush measures
+the machine stopping, not the skin.
+
+**Verbose mode**, where an address bar exists (dev server, desktop browser, a
+tablet with remote debugging): open the skin with `?perf=1` and the full table is
+reported every 10 s, shot or no shot. `?perf=0` clears it; the flag persists in
+between, so Decaid re-serving the skin on another port keeps it on.
+
+Segments measured: `status`, `sleepButton`, `strip`, `temps`, `chart`,
+`shotData`, `chartFlush`.
+
+Read the numbers against the device line: the target is an older Android 12
+tablet, not a current Samsung.
+
+---
+
 ## Contributing
 
 See `CLAUDE.md` for coding conventions, [`docs/API.md`](API.md) for the REST and WebSocket reference, and `DESIGN_SYSTEM.md` for the design system.

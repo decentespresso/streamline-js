@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { led8to16, ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite, ledLiveWriteState, ledPreviewPayload } from '../src/modules/led-color.js';
+import { led8to16, ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewComposite, ledLiveWriteState, ledPreviewPayload, ledValueOf, ledWithValue } from '../src/modules/led-color.js';
 
 test('led8to16 byte-replicates the 8-bit value up', () => {
     assert.equal(led8to16(0x00), '0000');
@@ -276,4 +276,22 @@ test('a rejected colour still throws, so a bad payload is not silently dropped',
     await assert.rejects(() => ledPreviewApi(400).previewLedStrip({ frontStrip: 'nope' }), /status 400/);
     await assert.rejects(() => ledPreviewApi(500).previewLedStrip({ frontStrip: 'FFFF00000000' }), /status 500/);
     await assert.rejects(() => ledPreviewApi(500).clearLedStripPreview(), /status 500/);
+});
+
+test('ledValueOf reads HSV value, ledWithValue rescales without shifting hue', () => {
+    assert.equal(ledValueOf('#000000'), 0);
+    assert.equal(ledValueOf('#FFFFFF'), 100);
+    assert.equal(ledValueOf('#804000'), 50);
+
+    // Half brightness halves every channel, so the ratios -- the hue -- hold.
+    assert.equal(ledWithValue('#FF8000', 50), '#804000');
+    assert.equal(ledWithValue('#FF8000', 100), '#FF8000');
+    assert.equal(ledWithValue('#FF8000', 0), '#000000');
+    // Round-trip: what you read back is what you asked for.
+    for (const v of [10, 25, 60, 90]) assert.equal(ledValueOf(ledWithValue('#3FA0FF', v)), v);
+    // Black has no hue to scale back up; the caller restores a base colour.
+    assert.equal(ledWithValue('#000000', 80), '#000000');
+    // Out-of-range input is clamped, not trusted.
+    assert.equal(ledWithValue('#FF8000', 500), '#FF8000');
+    assert.equal(ledWithValue('#FF8000', -5), '#000000');
 });

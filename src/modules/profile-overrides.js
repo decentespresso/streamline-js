@@ -92,7 +92,12 @@ export function getProfileOverride(profileId) {
 /** Pull the namespace into memory. Resolves either way — no Decaid, no overrides. */
 export async function loadProfileOverrides() {
     try {
-        const { getKVAll } = await kvClient();
+        // Skip the await when the client is already in hand: awaiting a
+        // resolved dynamic import still costs a microtask, and a microtask does
+        // not run until the call stack unwinds -- which on the profile selector
+        // means after its chart init and first paint. That is what pushed this
+        // read past the other two it was meant to run alongside.
+        const { getKVAll } = kv || await kvClient();
         const raw = await getKVAll(OVERRIDES_NAMESPACE);
         overrides = {};
         for (const [key, value] of Object.entries(raw || {})) {

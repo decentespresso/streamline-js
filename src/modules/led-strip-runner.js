@@ -50,7 +50,7 @@
 import { getLedStrip, setLedStrip, currentMachineState, MachineState } from './api.js';
 import { logger } from './logger.js';
 import { ledLiveWriteState } from './led-color.js';
-import { LED_SEQUENCE_KEY, parseLedSequence, resolveTriggerSequence, nextStepIndex, stepPreviewColors } from './led-sequence.js';
+import { LED_SEQUENCE_KEY, parseLedLibrary, resolveLibraryTrigger, nextStepIndex, stepPreviewColors } from './led-sequence.js';
 
 const MAX_CONSECUTIVE_FAILURES = 3; // stop rather than hammer a machine that stopped listening
 
@@ -205,7 +205,7 @@ function stopAndSettle(finishedOwner) {
  * (returns false, nothing changes). An empty step list is a no-op.
  */
 export function requestStart(steps, loop, source) {
-    if (owner === 'manual' && source === 'trigger') return false;
+    if (source === 'trigger' && (triggerSuspended || owner === 'manual')) return false;
     if (!Array.isArray(steps) || !steps.length) return false;
     stopInternal(false); // takeover: keep the baseline, the new run restores it
     owner = source;
@@ -215,6 +215,23 @@ export function requestStart(steps, loop, source) {
     failures = 0;
     advance();
     return true;
+}
+
+// ── Trigger suspension ───────────────────────────────────────────────────
+// The Lighting settings page suspends trigger runs while it is open: a
+// state-triggered animation repainting the strip under the open editor fights
+// the user, who is there to build steps and press Play. Manual runs are not
+// affected. Lifting the suspension re-resolves the current machine state, so
+// leaving the page resumes whatever that state maps to.
+let triggerSuspended = false;
+
+/** Suspend (true) or resume (false) machine-state-triggered runs. */
+export function setTriggerSuspended(on) {
+    const next = !!on;
+    if (next === triggerSuspended) return;
+    triggerSuspended = next;
+    if (next) requestStop('trigger');
+    else onMachineStateChange(currentMachineState);
 }
 
 /**
@@ -248,10 +265,10 @@ export function forceStop() {
 
 // ── Machine-state trigger ────────────────────────────────────────────────
 
-function loadPersistedSequence() {
+function loadPersistedLibrary() {
     let stored = null;
     try { stored = localStorage.getItem(LED_SEQUENCE_KEY); } catch (e) { /* private mode */ }
-    return parseLedSequence(stored);
+    return parseLedLibrary(stored);
 }
 
 /**
@@ -262,8 +279,9 @@ function loadPersistedSequence() {
  * never touched by this either way.
  */
 export function onMachineStateChange(stateId) {
-    const sequence = loadPersistedSequence();
-    const mapped = resolveTriggerSequence(sequence, stateId);
+    // resolveLibraryTrigger answers null while the auto-run switch is off, so
+    // flipping it off also stops a trigger run already playing.
+    const mapped = resolveLibraryTrigger(loadPersistedLibrary(), stateId);
     if (mapped) {
         requestStart(mapped.steps, mapped.loop, 'trigger');
     } else if (owner === 'trigger') {

@@ -21,10 +21,18 @@ test('loadAvailableProfiles merges drafts in before overrides are folded on, in 
     const successBlock = pmSource.slice(
         pmSource.indexOf('export async function loadAvailableProfiles()'),
         pmSource.indexOf('} catch (apiError)'));
-    const draftsIdx = successBlock.indexOf('await loadProfileDrafts()');
+    // The drafts read is started early so it overlaps getProfiles(), so what
+    // matters is where the MERGE lands, not where the fetch is issued.
+    const draftsIdx = successBlock.indexOf('mergeProfileDrafts(await draftsFetch)');
     const applyIdx = successBlock.indexOf('applyOverridesToRecords(availableProfiles)');
     assert.ok(draftsIdx >= 0 && applyIdx >= 0, 'both calls must exist in the API-success branch');
-    assert.ok(draftsIdx < applyIdx, 'loadProfileDrafts() must run before applyOverridesToRecords() in the API-success branch');
+    assert.ok(draftsIdx < applyIdx, 'the drafts merge must run before applyOverridesToRecords() in the API-success branch');
+
+    // ...and the merge must come after availableProfiles is rebuilt, or the
+    // rebuild wipes every draft row out of the list.
+    const rebuildIdx = successBlock.indexOf('availableProfiles = {}');
+    assert.ok(rebuildIdx >= 0 && rebuildIdx < draftsIdx,
+        'the drafts merge must land after availableProfiles is rebuilt from the API response');
 
     const fallbackBlock = pmSource.slice(
         pmSource.indexOf('} catch (apiError)'),

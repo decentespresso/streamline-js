@@ -15,20 +15,26 @@
 // one Tcl list.
 //
 // `advanced_shot`'s value is itself a Tcl list of one `{...}` per step, and
-// each step is itself a flat key/value dict. This module always reads steps
-// from `advanced_shot`, regardless of `settings_profile_type` — de1app's
-// "simple" pressure/flow profile builder (settings_2a/settings_2b) still
-// expands its shot into `advanced_shot` for storage/export (confirmed by the
-// bundled converted samples in src/profiles/, e.g. mild_und.json, whose
-// legacy_profile_type is settings_2a but which carries a full multi-step
-// `steps` array). The simple-mode-only knobs it derives that shot from
-// (`espresso_pressure`, `flow_profile_*`, `preinfusion_*`, etc.) are not
-// consulted here.
+// each step is itself a flat key/value dict. Steps are read from
+// `advanced_shot` whenever it has any.
+//
+// ─── Simple (settings_2a/settings_2b) profiles ─────────────────────────────
+// A de1app "simple" pressure/flow profile can ship with `advanced_shot {}`
+// empty — the shot only exists as the simple-mode knobs (`preinfusion_time`,
+// `espresso_pressure`, `espresso_hold_time`, `espresso_decline_time`,
+// `pressure_end`, `flow_profile_*`, `maximum_flow`/`maximum_pressure`, …).
+// Every read-only profile de1app bundles is like this, including "Best
+// overall pressure profile". de1app expands those knobs into frames at load
+// time (profile.tcl, pressure_to_advanced_list / flow_to_advanced_list);
+// expandSimpleShot() below mirrors that expansion frame for frame, so such a
+// file imports as the same shot de1app would run instead of being rejected
+// for having no steps.
 //
 // ─── Required vs. defaulted fields ─────────────────────────────────────────
 // Throws (abort, no partial import) when a field has no honest default:
 //   - profile_title missing/empty — nothing to call the profile.
-//   - advanced_shot missing, unparsable, or contains zero steps — no shot to run.
+//   - advanced_shot missing/empty *and* the profile is not a simple
+//     (settings_2a/settings_2b) one we can expand — no shot to run.
 //   - a step's `pump` is not exactly "pressure" or "flow" — can't tell which
 //     target field (pressure/flow) applies.
 //   - the target field implied by that pump (`pressure` or `flow`) is
@@ -85,6 +91,13 @@ const PROFILE_TYPE_MAP = {
     settings_2a: 'pressure',
     settings_2b: 'flow',
     settings_2c: 'advanced',
+};
+
+// Pre-v2 spellings de1app still accepts (profile.tcl's fix_profile_type).
+const LEGACY_TYPE_ALIASES = {
+    settings_2: 'settings_2a',
+    settings_profile_pressure: 'settings_2a',
+    settings_profile_flow: 'settings_2b',
 };
 
 // ─── Tokenizer ──────────────────────────────────────────────────────────────
@@ -201,7 +214,10 @@ function parseLimiter(step, pump) {
 }
 
 function parseStep(rawStepStr, index) {
-    const step = parseTclDict(rawStepStr);
+    return parseStepDict(parseTclDict(rawStepStr), index);
+}
+
+function parseStepDict(step, index) {
     const ctx = `step ${index + 1}`;
 
     const pump = (step.pump || '').trim().toLowerCase();
@@ -237,6 +253,116 @@ function parseStep(rawStepStr, index) {
     return out;
 }
 
+// ─── Simple-profile expansion ───────────────────────────────────────────────
+// Mirrors de1app profile.tcl's pressure_to_advanced_list (settings_2a) and
+// flow_to_advanced_list (settings_2b): the frames de1app itself builds from
+// the simple-mode knobs when it loads such a profile. Returns
+// { steps, countStart } of step dicts in parseStepDict()'s input shape.
+//
+// Deliberate deviation: de1app guards its flow-profile decline frame on
+// espresso_hold_time (a copy/paste slip — every other branch guards on its
+// own duration), which both drops the decline of a hold-less flow profile and
+// appends a 0-second decline when decline_time is 0. We guard on
+// espresso_decline_time, so what you see is the shot the knobs describe.
+function expandSimpleShot(top, kind) {
+    const steps = [];
+    let countStart = 0;
+
+    const tempSteps = getNum(top.espresso_temperature_steps_enabled, 0) === 1;
+    const baseTemp = getNum(top.espresso_temperature, 90);
+    const temp = (n) => (tempSteps ? getNum(top[`espresso_temperature_${n}`], baseTemp) : baseTemp);
+
+    const preinfusionTime = getNum(top.preinfusion_time, 0);
+    const bump = tempSteps ? getNum(top.temp_bump_time_seconds, 2) : 0;
+    const boostLen = bump;
+    const preinfusionLen = Math.max(0, preinfusionTime - bump);
+
+    // The limiter knob flips axis with the pump: a flow cap on pressure
+    // frames, a pressure cap on flow frames. 0/absent means "no limit".
+    const limitValue = kind === 'pressure' ? getNum(top.maximum_flow, 0) : getNum(top.maximum_pressure, 0);
+    const limitRange = kind === 'pressure'
+        ? getNum(top.maximum_flow_range_default, DEFAULT_LIMITER_RANGE)
+        : getNum(top.maximum_pressure_range_default, DEFAULT_LIMITER_RANGE);
+    const limited = (step) => (limitValue > 0
+        ? { ...step, max_flow_or_pressure: limitValue, max_flow_or_pressure_range: limitRange }
+        : step);
+
+    const preinfusion = (name, seconds, temperature) => ({
+        name, temperature, sensor: 'coffee', pump: 'flow', transition: 'fast',
+        flow: getNum(top.preinfusion_flow_rate, 0), seconds, volume: 0, weight: 0,
+        exit_if: 1, exit_type: 'pressure_over',
+        exit_pressure_over: getNum(top.preinfusion_stop_pressure, 0),
+    });
+
+    if (boostLen > 0) {
+        steps.push(preinfusion(kind === 'pressure' ? 'preinfusion temp boost' : 'preinfusion boost', boostLen, temp(0)));
+        countStart++;
+    }
+    if (preinfusionLen > 0) {
+        steps.push(preinfusion('preinfusion', preinfusionLen, temp(1)));
+        countStart++;
+    }
+
+    let holdTime = getNum(top.espresso_hold_time, 0);
+    let declineTime = getNum(top.espresso_decline_time, 0);
+
+    if (kind === 'pressure') {
+        const rise = (temperature) => limited({
+            name: 'forced rise', temperature, sensor: 'coffee', pump: 'pressure', transition: 'fast',
+            pressure: getNum(top.espresso_pressure, 0), seconds: 3, volume: 0, weight: 0, exit_if: 0,
+        });
+        if (holdTime > 0) {
+            if (holdTime > 3) {
+                // Pressurising the headspace, not pouring: counts as preinfusion
+                // so stop-at-volume does not start counting during the rise.
+                steps.push(rise(temp(2)));
+                countStart++;
+                holdTime -= 3;
+            }
+            steps.push(limited({
+                name: 'rise and hold', temperature: temp(2), sensor: 'coffee', pump: 'pressure', transition: 'fast',
+                pressure: getNum(top.espresso_pressure, 0), seconds: holdTime, volume: 0, weight: 0, exit_if: 0,
+            }));
+        }
+        if (declineTime > 0) {
+            if (holdTime < 3 && declineTime > 3) { // decline-first profile: it still has to get up to pressure
+                steps.push(rise(temp(3)));
+                countStart++;
+                declineTime -= 3;
+            }
+            steps.push(limited({
+                name: 'decline', temperature: temp(3), sensor: 'coffee', pump: 'pressure', transition: 'smooth',
+                pressure: getNum(top.pressure_end, 0), seconds: declineTime, volume: 0, weight: 0, exit_if: 0,
+            }));
+        }
+    } else {
+        if (holdTime > 0) {
+            steps.push(limited({
+                name: 'hold', temperature: temp(2), sensor: 'coffee', pump: 'flow', transition: 'fast',
+                flow: getNum(top.flow_profile_hold, 0), seconds: holdTime, volume: 0, weight: 0, exit_if: 0,
+            }));
+        }
+        if (declineTime > 0) {
+            steps.push(limited({
+                name: 'decline', temperature: temp(3), sensor: 'coffee', pump: 'flow', transition: 'smooth',
+                flow: getNum(top.flow_profile_decline, 0), seconds: declineTime, volume: 0, weight: 0, exit_if: 0,
+            }));
+        }
+    }
+
+    if (steps.length === 0) {
+        // de1app's own placeholder for "every duration is zero" — an importable
+        // profile the user can edit, rather than a failed import.
+        steps.push({
+            name: 'empty', temperature: 90, sensor: 'coffee', pump: 'flow', transition: 'smooth',
+            flow: 0, seconds: 0, volume: 0, weight: 0, exit_if: 0,
+        });
+        countStart = 0;
+    }
+
+    return { steps, countStart };
+}
+
 /**
  * Parse a de1app/Visualizer-format `.tcl` profile's text into this app's JSON
  * profile shape. Throws with a descriptive message on any malformed or
@@ -257,18 +383,25 @@ export function parseTclProfile(text) {
         throw new Error('TCL profile is missing "profile_title".');
     }
 
-    const advancedShotRaw = top.advanced_shot;
-    if (advancedShotRaw === undefined) {
+    const rawType = (top.settings_profile_type || '').trim();
+    const settingsProfileType = LEGACY_TYPE_ALIASES[rawType] || rawType;
+    const type = PROFILE_TYPE_MAP[settingsProfileType] || 'advanced';
+
+    const stepStrings = top.advanced_shot === undefined ? [] : tokenizeTclList(top.advanced_shot);
+    let steps;
+    let countStart = Math.trunc(getNum(top.final_desired_shot_volume_advanced_count_start, 0));
+    if (stepStrings.length > 0) {
+        steps = stepStrings.map((s, i) => parseStep(s, i));
+    } else if (type === 'pressure' || type === 'flow') {
+        // Simple profile with no stored frames: build the ones de1app builds.
+        const expanded = expandSimpleShot(top, type);
+        steps = expanded.steps.map((s, i) => parseStepDict(s, i));
+        countStart = expanded.countStart;
+    } else if (top.advanced_shot === undefined) {
         throw new Error('TCL profile is missing "advanced_shot" (no steps found).');
-    }
-    const stepStrings = tokenizeTclList(advancedShotRaw);
-    if (stepStrings.length === 0) {
+    } else {
         throw new Error('TCL profile\'s "advanced_shot" contains no steps.');
     }
-    const steps = stepStrings.map((s, i) => parseStep(s, i));
-
-    const settingsProfileType = (top.settings_profile_type || '').trim();
-    const type = PROFILE_TYPE_MAP[settingsProfileType] || 'advanced';
 
     const profile = {
         title,
@@ -279,7 +412,7 @@ export function parseTclProfile(text) {
         version: '2',
         target_volume: getNum(top.final_desired_shot_volume, 0),
         target_weight: getNum(top.final_desired_shot_weight, 0),
-        target_volume_count_start: Math.trunc(getNum(top.final_desired_shot_volume_advanced_count_start, 0)),
+        target_volume_count_start: countStart,
         tank_temperature: getNum(top.tank_desired_water_temperature, 0),
     };
     if (settingsProfileType) profile.legacy_profile_type = settingsProfileType;

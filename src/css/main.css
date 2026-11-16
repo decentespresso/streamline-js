@@ -368,6 +368,18 @@ body {
     color: var(--status-red-color);
 }
 
+/* A toast that does something when tapped. The solid alert-info fill read as a
+   notice with nowhere to act, so a tappable one takes the skin's blue action
+   colour on the card surface instead -- the same invitation
+   .status-msg-clickable below gives the machine status line. Two classes, so it
+   wins over .alert-info whatever order the sheets load in. */
+.alert.toast-tappable {
+    background-color: var(--card-bg);
+    border: 1px solid var(--status-clickable-color);
+    color: var(--status-clickable-color);
+    cursor: pointer;
+}
+
 .status-msg-clickable {
     font-family: 'NotoSansMono', monospace;
     font-weight: 600;
@@ -856,19 +868,16 @@ textarea,
 }
 .led-tab:focus-visible { outline: 3px solid var(--mimoja-blue-v2); outline-offset: 2px; }
 
-/* Transport bar -- the one loud element on the Sequence tab. It carries the
-   play control, the loop switch, and the colours that are on the strip RIGHT
-   NOW, so the page shows what the machine is doing instead of only describing
-   it. The swatches are patched live by ledSeqPaintActiveStep. */
+/* Transport row, directly above the timeline it drives. No box: a card here
+   split the strip from its own play control. It carries the play control, the
+   loop switch, and the colours that are on the strip RIGHT NOW, so the page
+   shows what the machine is doing instead of only describing it. The swatches
+   are patched live by ledSeqPaintActiveStep. */
 .led-transport {
   display: flex;
   align-items: center;
   gap: 24px;
   flex-wrap: wrap;
-  padding: 18px 22px;
-  border-radius: 14px;
-  background-color: var(--box-color);
-  border: 1px solid var(--led-hairline);
 }
 .led-transport-btn {
   min-height: 64px;
@@ -895,61 +904,133 @@ textarea,
   border: 2px solid var(--led-hairline);
 }
 
-/* Step rows. The two colours of a step are the front and rear of ONE moment,
-   so they sit together in a single bordered cell split by a hairline rather
-   than floating as two unrelated inputs. */
-.led-step {
+/* The timeline. One segment per step, as wide as its step is long, split into
+   two lanes: front on top, rear below, named in the gutter at the left. */
+.led-timeline-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  width: 100%;
+}
+.led-lane-names {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: flex-end;
+  flex-shrink: 0;
+  width: 72px;
+  color: var(--led-muted);
+  font-size: 18px;
+  font-weight: 600;
+}
+.led-timeline {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 96px;
+  border: 2px solid var(--led-hairline);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.led-seg {
+  position: relative;
+  min-width: 0;
+  border: 0;
+  border-right: 2px solid var(--led-hairline);
+  cursor: pointer;
+}
+.led-seg:last-child { border-right: 0; }
+/* Both markers have to stay legible on a colour the user chose, which rules
+   out a single accent stroke -- a blue ring vanishes on a blue step. Each is
+   drawn as a light/dark pair, so whichever half matches the step underneath,
+   the other half still reads. */
+.led-seg[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 3px #fff, inset 0 0 0 6px var(--mimoja-blue-v2);
+}
+/* Where the strip actually is right now, written by ledSeqPaintActiveStep.
+   Told by contrast rather than by an accent stroke: everything that is not
+   playing drops back, so the live step stands out whatever colour it is. */
+.led-timeline.is-playing .led-seg { opacity: 0.35; }
+.led-timeline.is-playing .led-seg.led-seq-playing { opacity: 1; }
+.led-seg.led-seq-playing .led-seg-no {
+  background-color: var(--mimoja-blue-v2);
+  color: #fff;
+}
+.led-seg { transition: opacity 0.12s linear; }
+/* The number sits on whatever colour the step happens to be, so it rides in a
+   neutral badge instead of trusting the contrast of a user-picked colour. */
+.led-seg-no {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 7px;
+  background-color: var(--box-color);
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 26px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.led-seg:focus-visible { outline: 3px solid var(--mimoja-blue-v2); outline-offset: -3px; }
+
+/* The editor for the one selected step. */
+.led-step-editor {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 18px;
   flex-wrap: wrap;
-  padding: 12px 16px;
-  border: 2px solid var(--led-hairline);
-  border-left: 6px solid var(--led-hairline);
+  width: 100%;
+  padding: 16px 20px;
+  border: 2px solid var(--mimoja-blue-v2);
   border-radius: 12px;
-  transition: border-color 0.15s ease-out, background-color 0.15s ease-out;
-}
-/* Toggled by the runner directly (ledSeqPaintActiveStep), not a re-render --
-   the playback tick must never rebuild the page under the user's fingers. */
-.led-step.led-seq-step-active {
-  border-color: var(--mimoja-blue-v2);
-  border-left-color: var(--mimoja-blue-v2);
   background-color: var(--led-tint);
 }
 .led-step-index {
   width: 32px;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--led-muted);
   font-variant-numeric: tabular-nums;
 }
+/* Same swatch-as-button as the Static Colours cards, opening the same wheel --
+   shorter here because it sits in a one-line step row, not a card. */
 .led-step-colors {
   display: flex;
-  border: 2px solid var(--led-hairline);
-  border-radius: 10px;
-  overflow: hidden;
+  gap: 14px;
 }
-.led-step-colors input[type='color'] {
-  width: 56px;
-  height: 44px;
-  border: 0;
-  padding: 0;
-  background: none;
-  cursor: pointer;
+.led-step-colors .led-pick-wrap {
+  flex: 0 0 auto;
+  gap: 4px;
 }
-.led-step-colors input[type='color'] + input[type='color'] {
-  border-left: 2px solid var(--led-hairline);
-}
-.led-step-duration {
-  width: 108px;
-  height: 44px;
-  padding: 0 10px;
-  font-size: 18px;
+.led-step-colors .led-pick {
+  width: 84px;
+  height: 46px;
   border-radius: 8px;
-  border: 2px solid var(--led-hairline);
-  background-color: var(--profile-button-background-color);
-  color: var(--text-primary);
 }
+/* Seconds, not milliseconds, and nudged rather than typed -- nobody wants a
+   number pad for "a bit longer" on a machine they are standing at. */
+.led-dur {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.led-dur-val {
+  min-width: 76px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-seg { transition: none; }
+}
+
 .led-icon-btn {
   width: 44px;
   height: 44px;
@@ -962,12 +1043,146 @@ textarea,
   cursor: pointer;
 }
 .led-icon-btn:disabled { opacity: 0.3; cursor: default; }
+/* The preset row sits against 48px chips and the name field, so its + and x
+   match those rather than the 44px controls inside a step row. */
+.led-icon-btn[data-size='lg'] { width: 48px; height: 48px; font-size: 22px; }
 .led-icon-btn[data-variant='remove'] {
   border-color: var(--status-red-color);
   color: var(--status-red-color);
 }
 
-/* Auto-run state chips. */
+/* One card per physical strip. The card is the unit the owner thinks in, so
+   it owns everything that strip can do: its two colours and its brightness. */
+.led-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  width: 100%;
+}
+.led-card {
+  flex: 1 1 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 24px;
+  border-radius: 14px;
+  background-color: var(--box-color);
+  border: 1px solid var(--led-hairline);
+}
+.led-card-title {
+  color: var(--left-label-text);
+  font-size: 26px;
+  font-weight: 700;
+}
+.led-card-swatches {
+  display: flex;
+  gap: 18px;
+}
+.led-pick-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+.led-pick-cap {
+  color: var(--led-muted);
+  font-size: 18px;
+  font-weight: 600;
+}
+/* The colour IS the button: tapping one opens the wheel on it. Sized to be a
+   comfortable touch target rather than a readout. */
+.led-pick {
+  height: 76px;
+  border-radius: 12px;
+  border: 2px solid var(--led-hairline);
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+.led-pick[aria-pressed='true'] {
+  border-color: var(--mimoja-blue-v2);
+  box-shadow: 0 0 0 3px var(--led-tint);
+}
+/* A black swatch and an empty slot look identical, so an off strip gets a
+   diagonal rule through it. */
+.led-pick-off {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    to bottom right, transparent calc(50% - 1px), var(--led-muted) 50%, transparent calc(50% + 1px));
+}
+.led-bright {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.led-bright-icon { color: var(--led-muted); font-size: 24px; }
+.led-bright-slider { flex: 1; width: auto; }
+.led-bright-val {
+  width: 72px;
+  text-align: right;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The wheel, summoned by a tap on a colour and dismissed the same way. Three
+   columns that each hold something -- presets, wheel, readout -- so the tall
+   wheel does not leave a dead corner beside a short stack of controls. */
+.led-picker-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+  width: 100%;
+  padding: 22px 24px;
+  border-radius: 14px;
+  background-color: var(--box-color);
+  border: 2px solid var(--mimoja-blue-v2);
+}
+/* Three columns of presets reads as a block beside the wheel; nine in a row
+   stretched the panel and left the space under them empty. */
+.led-swatches {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 16px;
+}
+.led-swatch {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 2px solid var(--led-hairline);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease-out;
+}
+.led-swatch[aria-pressed='true'] {
+  box-shadow: 0 0 0 3px var(--button-primary-bg);
+}
+.led-picker-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  align-self: stretch;
+}
+/* Close sits at the top of its column, the readout rides the middle. */
+.led-picker-side > :nth-child(2) { margin-top: auto; }
+.led-picker-side > :last-child { margin-bottom: auto; }
+.led-picker-current {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 2px solid var(--led-hairline);
+}
+.led-pick:focus-visible,
+.led-swatch:focus-visible { outline: 3px solid var(--mimoja-blue-v2); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .led-pick, .led-swatch { transition: none; }
+}
+
+/* Auto-run state chips. *//* Auto-run state chips. */
 .led-chip {
   min-height: 48px;
   padding: 0 22px;
@@ -984,6 +1199,25 @@ textarea,
   background-color: var(--button-primary-bg);
   border-color: var(--button-primary-bg);
   color: #fff;
+}
+
+.led-chip[data-variant='remove'] {
+  border-color: var(--status-red-color);
+  color: var(--status-red-color);
+}
+
+/* Name of the saved sequence being edited. */
+.led-seq-name {
+  flex: 1;
+  min-width: 260px;
+  max-width: 520px;
+  height: 48px;
+  padding: 0 14px;
+  font-size: 20px;
+  border-radius: 8px;
+  border: 2px solid var(--led-hairline);
+  background-color: var(--profile-button-background-color);
+  color: var(--text-primary);
 }
 
 @media (prefers-reduced-motion: reduce) {

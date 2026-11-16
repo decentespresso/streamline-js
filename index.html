@@ -17,8 +17,16 @@
             // 'light' recorded here is indistinguishable from a deliberate choice,
             // and settingsSync.hydrate() would seed it into Decaid's KV, where it
             // then wins over the dark theme the user really picked.
+            //
+            // 'theme' is the user's own choice and outranks everything.
+            // 'theme-decaid' is the paint cache for Decaid's themeMode, which
+            // ui.js only learns a REST round-trip later — without it a Decaid
+            // set to dark flashes light on every boot. See theme-policy.js.
             document.documentElement.setAttribute(
-                'data-theme', localStorage.getItem('theme') || 'light');
+                'data-theme',
+                localStorage.getItem('theme')
+                    || localStorage.getItem('theme-decaid')
+                    || 'light');
         })();
     </script>
     <script>

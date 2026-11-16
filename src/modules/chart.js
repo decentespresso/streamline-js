@@ -6,6 +6,7 @@ import { createLatestTaskRunner } from './latest-task-runner.js';
 import { loadECharts } from './echarts-loader.js';
 import { createChartCadence, DEFAULT_CHART_INTERVAL_MS } from './chart-live-policy.js';
 import { destroyChart, hasChart, renderChart, resizeChart } from './echarts-renderer.js';
+import { measure } from './perf-probe.js';
 import { startZoomDialIn, stopZoomDialIn } from './zoom-dialin.js';
 
 // Maps internal trace key → i18n key used for the chart label.
@@ -32,7 +33,12 @@ const renderQueues = new WeakMap();
 const renderGenerations = new WeakMap();
 let latestMainRender = null;
 let mainRenderDirty = false;
-let currentTheme = localStorage.getItem('theme') || 'light';
+// The painted theme, not the stored one: index.html sets data-theme before the
+// first frame, and it may come from Decaid's themeMode rather than a stored
+// choice (see theme-policy.js). setTheme() keeps this in step afterwards.
+// Optional chaining: the node tests stub a bare `document` with no
+// documentElement, and this runs at module load.
+let currentTheme = document.documentElement?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
 
 async function drawECharts({ element, traces, layout, mode, generation }) {
     if (!element.isConnected || renderGenerations.get(element) !== generation) return;
@@ -410,10 +416,14 @@ let isLiveShot = false;
 
 // Call when a shot finishes to reveal the trace-end labels on the chart that
 // was just live.
-export function finalizeLiveChart() {
+// `redraw: false` ends the live shot without painting: the user is reviewing a
+// past shot, so chartData holds THAT shot and a render here would relabel it as
+// the one that just finished.
+export function finalizeLiveChart(redraw = true) {
     cancelChartFlush();
     liveRenderDirty = false;
     isLiveShot = false;
+    if (!redraw) return;
     const theme = currentTheme;
     const layout = theme === 'dark' ? darkLayout : lightLayout;
     applyLabelLayout(layout);
@@ -508,9 +518,23 @@ function flushChart() {
         autorange: false,
         dtick: dtickValue
     };
-    renderMain(chartTraces, layout, 'live');
-    if (expandedOpen) renderExpandedCharts('live');
+    measure('chartFlush', () => renderMain(chartTraces, layout, 'live'));
+    if (expandedOpen) measure('chartFlushExpanded', () => renderExpandedCharts('live'));
     liveRenderDirty = false;
+}
+
+// scheduleChartFlush() asks this on EVERY frame, and one part of the answer --
+// the offsetParent read -- forces a layout, on a document whose chart data was
+// just mutated. Measured 2026-11-11: 0.74 ms of updateChart's 0.82 ms in Chrome,
+// and updateChart is 62% of the frame on a BLE tablet.
+//
+// So only that part is cached. visibilityState and the main-page display are
+// plain property reads that force nothing, and leaving them live is what keeps
+// the subpage trap below honest even if an invalidation is ever missed.
+let visibleChartCache = null;
+
+export function invalidateVisibleChart() {
+    visibleChartCache = null;
 }
 
 function hasVisibleChart() {
@@ -521,8 +545,11 @@ function hasVisibleChart() {
     // not the main page's live chart -- without this, a live shot update
     // would paint over whatever that subpage is currently showing.
     if (!isMainChartActive()) return false;
-    const element = getChartElement();
-    return Boolean(element && element.offsetParent !== null);
+    if (visibleChartCache === null) {
+        const element = getChartElement();
+        visibleChartCache = Boolean(element && element.offsetParent !== null);
+    }
+    return visibleChartCache;
 }
 
 function cancelChartFlush() {
@@ -713,6 +740,7 @@ export function openExpandedChart() {
     const page = mainPageEl();
     if (!page || expandedOpen) return;
     expandedOpen = true;
+    invalidateVisibleChart();
     page.classList.add('chart-zoomed');
     // The zoomed layout hides the dial-in sidebar to win the chart's width; mirror
     // its values into the strip above the chart, as the TCL zoomed page does.
@@ -730,6 +758,7 @@ export function openExpandedChart() {
 
 function leaveExpandedLayout() {
     expandedOpen = false;
+    invalidateVisibleChart();
     mainPageEl()?.classList.remove('chart-zoomed');
     stopZoomDialIn();
     const element = document.getElementById('expanded-chart');
@@ -748,6 +777,10 @@ export function closeExpandedChart() {
 // layout without repainting the main chart into a foreign page. The repaint
 // happens on streamline:mainpagevisible via the dirty flag.
 function handleMainPageHidden() {
+    // Before the early return: the cached answer has to drop whether or not the
+    // expanded chart was open, or a live flush would paint over the subpage that
+    // just replaced the main page.
+    invalidateVisibleChart();
     if (!expandedOpen) return;
     leaveExpandedLayout();
     mainRenderDirty = true;
@@ -887,7 +920,11 @@ export function updateChart(shotStartTime, data, weight, weightFlow = null, filt
     isLiveShot = true;
     // Mirror this frame into the expanded (full-screen) charts, in real units.
     pushExpandedFrame(time, data);
-    scheduleChartFlush();
+    // Its own label: scheduling reads offsetParent, which forces a layout on a
+    // document whose chart was just mutated -- the cost fork#6 is about, and it
+    // lands here rather than in the flush. Measured apart from the pushes above
+    // so a tablet says which of the two the frame is spent in.
+    measure('chSchedule', () => scheduleChartFlush());
 }
 
 // Reset all chart data/tracking/layout state without touching the renderer. Callers
@@ -1480,11 +1517,13 @@ function resizeChartElement(element) {
 }
 
 function handleChartWindowResize() {
+    invalidateVisibleChart();
     clearTimeout(chartWindowResizeTimeout);
     chartWindowResizeTimeout = setTimeout(() => resizeChartElement(getChartElement()), 100);
 }
 
 function handleChartElementResize(entries) {
+    invalidateVisibleChart();
     const size = entries[0]?.contentRect;
     if (size) observedChartSize = { width: size.width, height: size.height };
     clearTimeout(chartElementResizeTimeout);
@@ -1510,10 +1549,12 @@ function handleChartLineWidthChange() {
 }
 
 function handleChartVisibilityChange() {
+    invalidateVisibleChart();
     if (document.visibilityState === 'visible') flushDeferredChart();
 }
 
 function handleMainPageVisible() {
+    invalidateVisibleChart();
     const element = getChartElement();
     if (element) observeChartElement(element);
     flushDeferredChart();
@@ -1550,7 +1591,7 @@ export function initChart() {
         return;
     }
 
-    currentTheme = localStorage.getItem('theme') || 'light';
+    currentTheme = document.documentElement?.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
     const theme = currentTheme;
     updateChartColors(theme); // Apply theme-specific colors
 

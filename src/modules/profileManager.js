@@ -1,4 +1,5 @@
 import { logger } from './logger.js';
+import { timeNav } from './perf-probe.js';
 import { updateWorkflow,sendProfile, getWorkflow, getValueFromStore, setValueInStore, getProfiles, deleteProfile, updateProfileVisibility, uploadProfile, uploadProfileWithParent, updateProfile, updateProfileMetadata, getShots, getKVKeys, getKVValue, DYE2_KV_NAMESPACE, deleteKVValue, setTargetSteamDuration, setTargetSteamFlow } from './api.js';
 import { updateProfileName, updateTemperatureDisplay, updateDrinkOut, updateDrinkRatio, updateDoseInDisplay, updateGrindDisplay, updateSteamDisplay, updateHotWaterDisplay, updateFlushDisplay, showToast, setupPressAndHold} from './ui.js';
 import { openContextMenu } from './context-menu.js';
@@ -130,19 +131,23 @@ const KV_MIGRATED_FLAG = 'kv-profiles-migrated';
 // them. Idempotent — guarded by a persisted flag; only flips the flag once all
 // records moved, so a partial failure retries on next load. KV records are
 // deleted only after a successful POST, so nothing is lost on error.
+/** @returns {Promise<boolean>} whether anything actually moved into /profiles. */
 async function migrateKvProfilesToRest() {
-    if (await getSetting(KV_MIGRATED_FLAG)) return;
+    // An unreadable flag counts as migrated: the legacy KV move is a one-off
+    // for a handful of installs, and it must not take the profile list down
+    // with it when IndexedDB is unavailable. It gets another chance next boot.
+    if (await getSetting(KV_MIGRATED_FLAG).catch(() => true)) return false;
 
     let kvKeys = [];
     try {
         kvKeys = await getKVKeys('streamline');
     } catch (e) {
         // No KV namespace or server unreachable — nothing to migrate now.
-        return;
+        return false;
     }
     if (!kvKeys || kvKeys.length === 0) {
         await setSetting(KV_MIGRATED_FLAG, true);
-        return;
+        return false;
     }
 
     let migrated = 0;
@@ -164,6 +169,7 @@ async function migrateKvProfilesToRest() {
     }
     logger.info(`Migrated ${migrated}/${kvKeys.length} legacy KV profile(s) to /profiles.`);
     if (migrated === kvKeys.length) await setSetting(KV_MIGRATED_FLAG, true);
+    return migrated > 0;
 }
 
 // Repoint any favorite slot holding oldId to newId. Called after an edit whose
@@ -190,13 +196,46 @@ function forgetWakeProfile(profileId) {
     } catch (_) { /* storage unavailable */ }
 }
 
-export async function loadAvailableProfiles() {
-    try {
-        // Move legacy KV profiles into /profiles first so getProfiles() returns them.
-        await migrateKvProfilesToRest();
+// requestIdleCallback is absent on iOS/older Safari WebViews (dual target), so
+// fall back to a plain timer well clear of the navigation it is getting out of.
+function whenIdle(fn) {
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(fn, { timeout: 5000 });
+    else setTimeout(fn, 2000);
+}
 
+export async function loadAvailableProfiles() {
+    // Split from profile_manager:init so the tablet says which half of it is
+    // slow: waiting on the reads, or the per-record work after they land.
+    const nav = timeNav('profiles:load');
+    try {
         logger.info('Attempting to load profiles from API...');
-        const profilesFromApi = await getProfiles(); // This is an array of ProfileRecords
+        // All three reads go out before anything here touches IndexedDB, and
+        // before the migration check below, which does. An IndexedDB request
+        // cannot complete while the main thread is busy, and the profile
+        // selector runs its chart init and first paint -- about 130 ms on the
+        // tablet -- immediately after calling us: measured there, that delayed
+        // these requests by 240 ms, longer than the reads themselves take.
+        // Neither KV read needs the profiles array to fetch, only to merge.
+        const profilesFetch = getProfiles(); // This is an array of ProfileRecords
+        const draftsFetch = fetchProfileDrafts();
+        const overridesLoaded = loadProfileOverrides();
+
+        // Now that the requests are out, the IndexedDB handle the migration
+        // check and the fallback cache need. Memoized, and already open on a
+        // warm page -- init() deliberately no longer awaits it ahead of us. A
+        // failure to open must not throw away a perfectly good /profiles
+        // response, so it is swallowed here and handled where IDB is read.
+        await openDB().catch(() => {});
+
+        // Legacy KV profiles move into /profiles once per device, ever. The
+        // fetch above predates that move, so on the one visit that migrates
+        // anything, take a fresh one.
+        const migrated = await migrateKvProfilesToRest();
+        // The first fetch is then orphaned; keep its rejection from surfacing
+        // as an unhandled one, since nothing awaits it any more.
+        if (migrated) profilesFetch.catch(() => {});
+        const profilesFromApi = migrated ? await getProfiles() : await profilesFetch;
+        nav.mark('fetched');
 
         // Process and populate in-memory cache
         availableProfiles = {};
@@ -220,18 +259,31 @@ export async function loadAvailableProfiles() {
         // Local-only duplicates, merged in before overrides are folded on — a
         // draft's saved tile edits are keyed to its draft id, so the record
         // has to already be in availableProfiles or applyOverridesToRecords
-        // below has nothing to attach them to.
-        await loadProfileDrafts();
+        // below has nothing to attach them to. The read was started above; only
+        // the merge is ordered here.
+        nav.mark('records');
+        mergeProfileDrafts(await draftsFetch);
 
         // The user's tile edits live in KV, not on the record — fold them on so
         // every `record.metadata.targetDoseWeight` read below sees them.
-        await loadProfileOverrides();
+        await overridesLoaded;
         applyOverridesToRecords(availableProfiles);
+        nav.mark('merged');
 
-        // Sync to IndexedDB as a fallback
-        await setSetting(PROFILES_CACHE_KEY, availableProfiles);
-        logger.info('Successfully synced profiles to IndexedDB cache.');
+        // The IndexedDB copy is read only by a cold start that cannot reach
+        // Decaid, so nothing on screen waits for it. Not awaiting it was not
+        // enough: handing ~100 full profile records to IndexedDB
+        // structured-clones them synchronously on the main thread, and on the
+        // tablet that showed up as a 167 ms gap with no network traffic in it,
+        // between the overrides read and the favorites reads. So it waits for
+        // idle, by which time the list has been on screen for a while.
+        whenIdle(() => {
+            setSetting(PROFILES_CACHE_KEY, availableProfiles)
+                .then(() => logger.info('Successfully synced profiles to IndexedDB cache.'))
+                .catch(e => logger.warn('Could not sync profiles to the IndexedDB cache:', e));
+        });
 
+        nav.done();
         return { profilesFrom: 'API' };
 
     } catch (apiError) {
@@ -276,17 +328,31 @@ async function persistDrafts() {
     await setValueInStore(SETTINGS_NAMESPACE, DRAFTS_KEY, profileDrafts);
 }
 
-export async function loadProfileDrafts() {
+/**
+ * The KV read alone. Split out from the merge so the request can be in flight
+ * while getProfiles() is still running: the fetch needs nothing from
+ * availableProfiles, but the merge below overwrites entries in it and so has to
+ * land after loadAvailableProfiles() has rebuilt it.
+ */
+async function fetchProfileDrafts() {
     try {
         const stored = await getValueFromStore(SETTINGS_NAMESPACE, DRAFTS_KEY);
-        profileDrafts = (stored && typeof stored === 'object') ? stored : {};
+        return (stored && typeof stored === 'object') ? stored : {};
     } catch (e) {
         logger.warn('Could not load profile drafts from KV:', e);
-        profileDrafts = {};
+        return {};
     }
+}
+
+function mergeProfileDrafts(stored) {
+    profileDrafts = stored;
     for (const [id, record] of Object.entries(profileDrafts)) {
         availableProfiles[id] = record;
     }
+}
+
+export async function loadProfileDrafts() {
+    mergeProfileDrafts(await fetchProfileDrafts());
 }
 
 // Suffix `baseTitle` with " (n)" until it no longer collides with any known
@@ -379,6 +445,11 @@ async function getFavoritesInitializedFlag() {
         logger.warn('Could not read favorites-initialized flag from REA store:', e);
     }
     try {
+        // This now runs concurrently with loadAvailableProfiles() rather than
+        // after it, so the handle it used to be able to assume may still be
+        // opening. Reading "not initialized" because the DB was not ready yet
+        // is what triggers auto-populate over the user's own empty slots.
+        await openDB();
         const idbFlag = await getSetting(FAVORITES_INITIALIZED_KEY);
         if (idbFlag === true) return true;
     } catch (e) {
@@ -1494,6 +1565,11 @@ export function applyWorkflowToMainPageUI(workflow, { updateName = true } = {}) 
 
 export async function init() {
     logger.info('Profile Manager init started.');
+    // Decaid answers every read here within ~150 ms of the tap, yet init() took
+    // ~290 ms more to resolve -- all of it main-thread work after the data
+    // landed. Marked rather than guessed at: the last two rounds each cost a
+    // wrong theory about which part of this file was slow.
+    const nav = timeNav('profile_manager:init');
     let profileLoadStatus = {};
 
     try {
@@ -1509,15 +1585,30 @@ export async function init() {
             }
         }
 
-        await openDB(); // Still needed for the backup functionality
-
-        profileLoadStatus = await loadAvailableProfiles();
-        // Independent REA reads — no data dependency between them, so run
-        // concurrently instead of paying two sequential round trips.
-        const [, userInitialized] = await Promise.all([
+        // openDB() is NOT awaited here: it resolves in a microtask, and a
+        // microtask only runs once this call stack unwinds -- by which time the
+        // profile selector has done its chart init and first paint, ~150 ms on
+        // the tablet. Awaiting it here is what still delayed the three reads
+        // below by 132 ms after they were moved to the top of
+        // loadAvailableProfiles(). It awaits openDB() itself, once the requests
+        // are out; openDB is memoized, so this is the same single open.
+        // Invoked, not awaited: this issues the profile reads (and starts
+        // openDB) synchronously, so the two favorites reads below can go out in
+        // the same tick instead of waiting for the profile list to be built.
+        // Neither of them looks at availableProfiles -- validateButtonIndices
+        // only range-checks slot numbers -- so there is no ordering to keep.
+        // Measured on the tablet, they were the last 30-50 ms of a chain that
+        // had nothing left to wait for.
+        const profilesLoading = loadAvailableProfiles();
+        const favoritesLoading = Promise.all([
             loadAssignments(),
             getFavoritesInitializedFlag(),
         ]);
+
+        profileLoadStatus = await profilesLoading;
+        nav.mark('profiles');
+        const [, userInitialized] = await favoritesLoading;
+        nav.mark('favorites');
 
         const allEmpty = Object.values(favoriteAssignments).every(v => v === null || v === undefined);
         // If user has previously saved assignments (even all-empty via clearing slots),
@@ -1530,6 +1621,7 @@ export async function init() {
             updateButtonUI();
         }
 
+        nav.mark('buttonUI');
         document.addEventListener('streamline:languagechange', () => updateButtonUI());
 
         // Only attach event listeners to buttons that were found in the DOM
@@ -1577,5 +1669,6 @@ export async function init() {
     }
 
     logger.info('Profile Manager initialized.');
+    nav.done();
     return profileLoadStatus;
 }

@@ -3,7 +3,7 @@ import { logger } from './logger.js';
 import { openDB, getLatestShotSummaries, getLatestCachedShotSummaries, getLatestCachedShot, getShot, addShot, addShots, deleteShot as idbDeleteShot, pruneShotsInRange, clearShots } from './idb.js';
 import { API_BASE_URL, getPlugins, getPluginSettings, callPluginEndpoint } from './api.js';
 import { createHistoryPager, isShotAlreadyDeleted } from './history-pager.js';
-import { renderPastShot, clearShotData } from './shotData.js';
+import { renderPastShot, clearShotData, setPaintSuspended } from './shotData.js';
 import { getTranslation } from './i18n.js';
 import { translateProfileTitle } from './profileManager.js';
 import { generateShotSummary } from './shotSummary.js';
@@ -17,6 +17,7 @@ import { VISUALIZER_PLUGIN_ID, visualizerAccountConfigured } from './visualizer-
 // Gate only -- the 90K dyeStrip.js that owns openPluginOverlay is imported at
 // tap time below, so it stays off the boot graph.
 import { isDye2Enabled } from './dye2-enabled.js';
+import { historyNavBlocked } from './history-nav-gate.js';
 
 const PAGE_SIZE = 20;
 let shots = [];
@@ -96,7 +97,12 @@ const historyPager = createHistoryPager({
 });
 
 function applyHistoryPage(page) {
-    const selectedId = shots[currentShotIndex]?.id;
+    // Index 0 is a position -- "newest" -- not a particular shot. Following it
+    // by id shifted a user sitting on NEWEST to index 1 the moment a shot
+    // landed, which made isReviewingHistory() true for good: the panel never
+    // returned to 0 and app.js silently held the live chart back for the next
+    // shot until the user stepped through history and back.
+    const selectedId = currentShotIndex > 0 ? shots[currentShotIndex]?.id : null;
     shots = page.shots;
     if (selectedId) {
         const index = shots.findIndex(shot => shot.id === selectedId);
@@ -151,6 +157,10 @@ async function displayShot(index) {
     }
 
     currentShotIndex = index;
+    // Anything but the newest shot means the user asked to look at a past one:
+    // stop the live shot repainting the chart and the data panel over it
+    // (a cleaning profile runs as espresso frames, so this bites mid-cycle).
+    setPaintSuspended(index > 0);
     const shot = shots[currentShotIndex];
 
     // Update footer text
@@ -367,6 +377,14 @@ async function copyMd(md) {
     showToast(getTranslation(ok ? 'Summary copied to clipboard' : 'Could not copy summary'), 2400, ok ? 'success' : 'error');
 }
 
+// The Derek chat's way out of the webview: the whole conversation as markdown,
+// ready to paste into notes, a mail or Derek's own web page.
+async function copyConversation(text) {
+    if (!text) { showToast(getTranslation('Nothing to copy yet'), 2400, 'warning'); return; }
+    const ok = await copyText(text);
+    showToast(getTranslation(ok ? 'Conversation copied to clipboard' : 'Could not copy conversation'), 2400, ok ? 'success' : 'error');
+}
+
 // Long-press the shot history panel -> options menu. Reuses the shared
 // setupPressAndHold helper (same one profile cards use). The nav arrows stop
 // their own press from bubbling so navigation taps still work.
@@ -432,6 +450,11 @@ function setupHistoryLongPress() {
     refreshDialInAvailability();
     refreshVisualizerAvailability();
     setupPressAndHold(panel, (event) => {
+        // Not while the machine is pulling espresso: DYE2 owns the whole screen,
+        // and closing it runs refreshShotAfterDye2Edit() -> displayShot(), which
+        // repaints the chart the running shot is drawing on. Same reason the
+        // arrows are locked (see updateHistoryNavLock).
+        if (navLocked) return;
         // Only the four info lines open DYE2: an arrow tap bubbles here too, and the
         // block's own padding is not a control. A long press is swallowed by
         // setupPressAndHold.
@@ -440,6 +463,10 @@ function setupHistoryLongPress() {
         // surfaces as an unhandled rejection instead of a log line.
         openShotInDye2().catch(error => logger.warn('Could not open the shot in DYE2:', error));
     }, () => {
+        // Locked during espresso too: half the menu (DYE2 analysis, dial-in,
+        // Visualizer upload, plugin entries) acts on the shot on screen, and
+        // several of those paths repaint the chart mid-shot.
+        if (navLocked) return;
         // Dial-in entries only appear when the plugin is installed and loaded, so
         // nobody taps one just to get a "not installed" toast. Uses the cached
         // answer so the menu opens instantly; the refresh catches installs for next time.
@@ -452,7 +479,7 @@ function setupHistoryLongPress() {
                 label: getTranslation('Discuss with Derek'),
                 onSelect: async () => {
                     const md = await buildCurrentShotSummary();
-                    if (md != null) import('./derek-modal.js').then((m) => m.openDerekModal(md, { onOpenExternal: () => copyMd(md) }));
+                    if (md != null) import('./derek-modal.js').then((m) => m.openDerekModal(md, { onCopyText: copyConversation }));
                 },
             },
             {
@@ -518,6 +545,51 @@ async function uploadCurrentShotToVisualizer() {
     }
 }
 
+// Live-shot navigation lock. While the machine is pulling espresso the panel
+// and the chart belong to the running shot, so the arrows are dimmed and inert
+// (matching how ui.js dims the sidebar groups for the running state). The flag
+// is the authority; the DOM is only its paint, so it survives displayShot()
+// re-toggling the arrows' own `invisible` class.
+let navLocked = false;
+
+function paintNavLock() {
+    for (const id of ['history-prev-btn', 'history-next-btn']) {
+        const btn = document.getElementById(id);
+        if (!btn) continue;
+        // `disabled` rather than pointer-events:none: the arrows' own
+        // stopPropagation listeners must keep running, or a touch over a
+        // locked arrow reaches the panel and opens its press-and-hold menu.
+        btn.disabled = navLocked;
+        btn.style.opacity = navLocked ? '0.25' : '';
+    }
+}
+
+// Called from app.js on every machine-state change.
+export function updateHistoryNavLock(state) {
+    const next = historyNavBlocked(state);
+    if (next === navLocked) return;
+    navLocked = next;
+    // Locking while the user is pages deep would strand them on a past shot
+    // with no way back and no live chart (app.js holds the live feed while
+    // isReviewingHistory()), so end the review here.
+    //
+    // Synchronous, and it does not touch the chart: displayShot(0) would plot
+    // the past shot's curves, and because this runs from handleData() the live
+    // frames of the shot now starting append straight onto those arrays. Ending
+    // the review inline instead lets the same frame's shot-start branch clear
+    // the chart and draw the running shot from empty. The footer keeps the old
+    // shot's date and profile until the shot ends and refreshToNewestShot()
+    // repaints -- the same one-shot staleness a user who never reviewed sees.
+    if (navLocked && isReviewingHistory()) {
+        currentShotIndex = 0;
+        setPaintSuspended(false);
+        paintedShotId = null;
+        const historyLabelEl = document.getElementById('shot-history-label');
+        if (historyLabelEl) historyLabelEl.textContent = getTranslation('NEWEST');
+    }
+    paintNavLock();
+}
+
 export async function initHistory() {
     try {
         await openDB();
@@ -532,6 +604,7 @@ export async function initHistory() {
     const nextBtn = document.getElementById('history-next-btn');
 
     prevBtn.onclick = async () => {
+        if (navLocked) return;
         if (currentShotIndex < shots.length - 1) {
             displayShot(currentShotIndex + 1);
         } else if (historyHasMore) {
@@ -543,10 +616,13 @@ export async function initHistory() {
     };
 
     nextBtn.onclick = () => {
+        if (navLocked) return;
         if (currentShotIndex > 0) {
             displayShot(currentShotIndex - 1);
         }
     };
+
+    paintNavLock();
 
     // Paint instantly from whatever's cached locally, then confirm/correct it
     // against the network in parallel with the slower list+IDB sync below --
@@ -576,6 +652,13 @@ export function getNewestShotId() {
     return shots[0]?.id ?? null;
 }
 
+// The user has stepped back off the newest shot, so the panel and the chart
+// belong to that shot, not to whatever the machine is doing. app.js stops
+// feeding the live chart while this is true; tapping -> back to NEWEST ends it.
+export function isReviewingHistory() {
+    return currentShotIndex > 0;
+}
+
 // After a shot finishes, REA can take several seconds to persist it to /shots.
 // A single fixed-delay reload races that write and silently shows the previous
 // shot. Poll the list until a shot newer than `knownNewestId` appears, then
@@ -595,13 +678,17 @@ async function runRefreshToNewestShot(knownNewestId, tries, intervalMs, expected
         // Success = the expected shot id is on top (exact, from the shotState
         // feed) — or, without one, any id newer than what we knew before.
         if (shots.length > 0 && (expectedId ? shots[0].id === expectedId : shots[0].id !== knownNewestId)) {
-            await displayShot(0); // labels itself NEWEST
+            // The list is refreshed either way; the jump is not. A cleaning
+            // profile finishes five times, and each one would drag the user off
+            // the shot they are reading. applyHistoryPage keeps their selection
+            // by id, so the new shot just shifts it along.
+            if (!isReviewingHistory()) await displayShot(0); // labels itself NEWEST
             return;
         }
         await new Promise(r => setTimeout(r, intervalMs));
     }
     // Gave up waiting — show whatever is newest so the panel isn't left stale.
-    if (shots.length > 0) displayShot(0);
+    if (shots.length > 0 && !isReviewingHistory()) displayShot(0);
 }
 
 export async function clearShotHistory() {

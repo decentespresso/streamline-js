@@ -2,6 +2,7 @@ import { logger } from './logger.js';
 import { getTempUnit, celsiusToFahrenheit } from './units.js';
 import { fitTextToWidth } from './i18n.js';
 import { fitShapeKey } from './text-fit.js';
+import { measure } from './perf-probe.js';
 
 // Holds the raw data for the current shot
 let currentShot = {};
@@ -60,7 +61,9 @@ function updateRangeText(element, value) {
     const shape = fitShapeKey(value);
     if (fittedShapes.get(element) !== shape) {
         element.innerHTML = withLiftedArrows(shape);
-        fitTextToWidth(element);
+        // Its own label: this is the rare frame, and a mean that averages it in
+        // with the frames that only write text says nothing useful.
+        measure('sdFit', () => fitTextToWidth(element));
         fittedShapes.set(element, shape);
     }
     element.innerHTML = withLiftedArrows(value);
@@ -141,12 +144,23 @@ export function clearShotData() {
 // Re-render the shot-data table's temperature column in the newly chosen
 // unit, without waiting for the next sample.
 document.addEventListener('streamline:unitchange', () => {
+    // Reviewing a past shot: the panel is not showing currentShot, so repainting
+    // it here would drop the running shot's numbers on top of the reviewed one.
+    if (paintSuspended) return updateTempHeader();
     if (currentShot.timestamps && currentShot.timestamps.length > 0) {
         calculateAndRender(currentShot);
     } else {
         updateTempHeader();
     }
 });
+
+// Set while the user reviews a past shot (history.js owns it). Live frames keep
+// accumulating into currentShot -- the stop toast and totals still read true --
+// but the panel stays on the shot they picked instead of the running one.
+// Gated at the two LIVE paint calls, not inside calculateAndRender: that one is
+// also how renderPastShot() draws the reviewed shot itself.
+let paintSuspended = false;
+export function setPaintSuspended(on) { paintSuspended = !!on; }
 
 function calculateAndRender(shotData) {
     try {
@@ -188,25 +202,30 @@ function calculateAndRender(shotData) {
         const exVolume = totalVolume - piVolume;
 
         // --- Rendering ---
-        updateText(elements.pi.time, `${Math.round(piTime)}`);
-        updateText(elements.pi.weight, piWeight !== null ? `${piWeight.toFixed(1)}g` : '0.0');
-        updateText(elements.pi.volume, `${piVolume.toFixed(0)}`);
-        updateRangeText(elements.pi.temp, `${formatRange(toDisplayTemps(piTemps), 0)}`);
-        updateRangeText(elements.pi.flow, `${formatStartPeakEnd(piFlows, 1)} `);
-        updateRangeText(elements.pi.pressure, `${formatStartPeakEnd(piPressures, 1)}`);
+        // Labelled separately from the arithmetic above: the slicing scales with
+        // the shot and the writing does not, and only a device can say which one
+        // the frame is actually spent in.
+        measure('sdWrite', () => {
+            updateText(elements.pi.time, `${Math.round(piTime)}`);
+            updateText(elements.pi.weight, piWeight !== null ? `${piWeight.toFixed(1)}g` : '0.0');
+            updateText(elements.pi.volume, `${piVolume.toFixed(0)}`);
+            updateRangeText(elements.pi.temp, `${formatRange(toDisplayTemps(piTemps), 0)}`);
+            updateRangeText(elements.pi.flow, `${formatStartPeakEnd(piFlows, 1)} `);
+            updateRangeText(elements.pi.pressure, `${formatStartPeakEnd(piPressures, 1)}`);
 
-        if (exTime > 0) {
-            updateText(elements.ex.time, `${Math.round(exTime)}`);
-            updateText(elements.ex.weight, exWeight !== null ? `${exWeight.toFixed(1)}g` : '0.0');
-            updateText(elements.ex.volume, `${exVolume.toFixed(0)}`);
-            updateRangeText(elements.ex.temp, `${formatRange(toDisplayTemps(exTemps), 0)}`);
-            updateRangeText(elements.ex.flow, `${formatStartPeakEnd(exFlows, 1)} `);
-            updateRangeText(elements.ex.pressure, `${formatStartPeakEnd(exPressures, 1)}`);
-        }
+            if (exTime > 0) {
+                updateText(elements.ex.time, `${Math.round(exTime)}`);
+                updateText(elements.ex.weight, exWeight !== null ? `${exWeight.toFixed(1)}g` : '0.0');
+                updateText(elements.ex.volume, `${exVolume.toFixed(0)}`);
+                updateRangeText(elements.ex.temp, `${formatRange(toDisplayTemps(exTemps), 0)}`);
+                updateRangeText(elements.ex.flow, `${formatStartPeakEnd(exFlows, 1)} `);
+                updateRangeText(elements.ex.pressure, `${formatStartPeakEnd(exPressures, 1)}`);
+            }
 
-        updateText(elements.total.time, `${Math.round(totalTime)}`);
-        updateText(elements.total.weight, displayTotal !== null && displayTotal !== undefined ? `${displayTotal.toFixed(1)}g` : '0.0');
-        updateText(elements.total.volume, `${totalVolume.toFixed(0)}`);
+            updateText(elements.total.time, `${Math.round(totalTime)}`);
+            updateText(elements.total.weight, displayTotal !== null && displayTotal !== undefined ? `${displayTotal.toFixed(1)}g` : '0.0');
+            updateText(elements.total.volume, `${totalVolume.toFixed(0)}`);
+        });
     } catch (error) {
         logger.error('Error in calculateAndRender:', error);
     }
@@ -317,7 +336,7 @@ export function updateShotData(de1Data, scaleWeight) {
         }
     }
 
-    calculateAndRender(currentShot);
+    if (!paintSuspended) calculateAndRender(currentShot);
 }
 
 export function getCurrentShot() {
@@ -329,9 +348,14 @@ export function getCurrentShot() {
 export function setFinalWeight(weight) {
     if (!currentShot.timestamps) return;
     if (weight === null || weight === undefined) return;
+    // Scale frames arrive on their own stream, so this runs between machine
+    // frames as well as on them: measured on a tablet, the table rendered 370
+    // times during a 247-frame shot. A weight that has not moved renders the
+    // same numbers, so it is not worth a pass over the table.
+    if (weight === currentShot.finalWeight) return;
     currentShot.finalWeight = weight;
     // Only re-render once the shot has at least one sample, otherwise calculateAndRender bails.
-    if (currentShot.timestamps.length > 0) calculateAndRender(currentShot);
+    if (currentShot.timestamps.length > 0 && !paintSuspended) calculateAndRender(currentShot);
 }
 
 export function getTotalTime() {

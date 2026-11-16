@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { decideResync } from '../src/modules/resync-policy.js';
 import { profileAtBrewTemp } from '../src/modules/brew-temp.js';
 import { selectedRecipeSteam } from '../src/modules/dye-selection.js';
+import { DECAID_THEME_KEY, resolveTheme } from '../src/modules/theme-policy.js';
 import { isSteamOff, steamOffPatch, steamOnPatch, steamDurationWrite, steamDurationResyncable, MIN_STEAM_DURATION_S } from '../src/modules/steam-mode.js';
 
 // Persistence of the user's main-page settings: the shared KV record that
@@ -752,4 +753,39 @@ test('the late-restore handled keys cover every preset ui.js repaints', () => {
         ui.match(new RegExp(`const ${m[1]} = '([^']+)';`))?.[1]);
     assert.ok(presetKeys.length >= 8 && presetKeys.every(Boolean));
     for (const key of presetKeys) assert.match(handled, new RegExp(`'${key}'`), `${key} missing`);
+});
+
+// Where the painted theme comes from: Decaid's themeMode is the default for a
+// skin the user has never told otherwise, and the skin's own toggle outranks it
+// for good. The paint cache key must never be synced -- it describes the
+// machine, not the user.
+test('a stored theme outranks whatever Decaid says', () => {
+    assert.equal(resolveTheme({ stored: 'dark', decaidMode: 'light' }), 'dark');
+    assert.equal(resolveTheme({ stored: 'light', decaidMode: 'dark' }), 'light');
+    assert.equal(resolveTheme({ stored: 'light', decaidMode: 'system', systemDark: true }), 'light');
+});
+
+test('Decaid decides while the skin has no stored choice', () => {
+    assert.equal(resolveTheme({ decaidMode: 'light' }), 'light');
+    assert.equal(resolveTheme({ decaidMode: 'dark' }), 'dark');
+    assert.equal(resolveTheme({ stored: null, decaidMode: 'dark' }), 'dark');
+});
+
+test("Decaid's 'system' falls through to the OS preference", () => {
+    assert.equal(resolveTheme({ decaidMode: 'system', systemDark: true }), 'dark');
+    assert.equal(resolveTheme({ decaidMode: 'system', systemDark: false }), 'light');
+    assert.equal(resolveTheme({ decaidMode: 'system' }), 'light');
+});
+
+test('nothing to go on leaves the painted theme alone', () => {
+    assert.equal(resolveTheme({}), null, 'no caller input');
+    assert.equal(resolveTheme({ decaidMode: null }), null, 'Decaid unreachable or older build');
+    assert.equal(resolveTheme({ stored: 'nonsense', decaidMode: 'nonsense' }), null);
+});
+
+test('the Decaid paint cache is not a synced preference', () => {
+    const sync = readFileSync(new URL('../src/modules/settingsSync.js', import.meta.url), 'utf8');
+    const synced = sync.match(/export const SYNCED_KEYS = \[[\s\S]*?\];/)?.[0];
+    assert.ok(synced, 'SYNCED_KEYS declaration not found');
+    assert.ok(!synced.includes(DECAID_THEME_KEY), `${DECAID_THEME_KEY} must stay per-device`);
 });

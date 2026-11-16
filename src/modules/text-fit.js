@@ -43,3 +43,30 @@ export function largestFittingSize(min, start, fits) {
     }
     return lo;
 }
+
+/**
+ * The largest size in [min, start] whose text fits `avail`, found by prediction
+ * rather than search: text width scales with font size, so the width at `start`
+ * says where the answer is in one step. The prediction is probed once, because a
+ * face whose advance does not scale cleanly can land a pixel over.
+ *
+ * Two measurements instead of the ~4 a halving search needs and the up-to-18 of
+ * a 1px walk. That matters where a measurement is expensive -- through the DOM
+ * each one forces a layout of the whole document (see i18n.js's fitTextToWidth,
+ * ~3.4 ms a probe on a tablet mid-shot).
+ *
+ * @param {number} start the CSS font size, in px
+ * @param {number} avail the width to fit into, in px
+ * @param {number} min the floor
+ * @param {(size: number) => number} widthAt renders `size` and returns its width
+ * @returns {number} the size to use; `start` when it already fits
+ */
+export function predictFittingSize(start, avail, min, widthAt) {
+    // A width of 0 -- empty text, or a face that measured as nothing -- is not a
+    // division waiting to happen: it fits, so it keeps the size its CSS gives it.
+    const width = widthAt(start);
+    if (width <= avail) return start;
+    let size = Math.max(min, Math.floor(start * avail / width));
+    if (size > min && widthAt(size) > avail) size -= 1;
+    return size;
+}

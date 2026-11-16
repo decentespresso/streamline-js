@@ -2660,7 +2660,7 @@ function renderScriptGraph() {
     const graphDiv = document.getElementById('script-graph');
     if (!graphDiv) return;
 
-    const isDark = (localStorage.getItem('theme') || 'light') === 'dark';
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     const stepMarkerColor = isDark ? '#7f8bbb' : '#7c7c7c';
     const tempLineColor = isDark ? '#653F43' : '#ff97a1';
 

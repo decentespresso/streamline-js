@@ -119,3 +119,30 @@ export const ledPreviewPayload = (palette, editedZoneKeys, editedBank) => {
     }
     return Object.keys(payload).length ? payload : null;
 };
+
+// ── Brightness ───────────────────────────────────────────────────────────
+// Ambient lighting gets its brightness changed far more often than its hue,
+// so the Lighting page gives brightness its own slider instead of burying it
+// in the colour wheel's value track. These are the two pure conversions that
+// slider needs: HSV value in and out of a '#RRGGBB' string.
+
+/** How bright a '#RRGGBB' is, 0-100 (HSV value). Black is 0. */
+export const ledValueOf = (hex) => {
+    const { r, g, b } = ledHexToRgb(hex);
+    return Math.round((Math.max(r, g, b) / 255) * 100);
+};
+
+/**
+ * `hex` rescaled to a 0-100 brightness, hue and saturation kept.
+ * Black has no hue to scale, so it stays black -- the caller supplies a base
+ * colour (the last lit one) when it wants to bring a dark strip back up.
+ */
+export const ledWithValue = (hex, value) => {
+    const { r, g, b } = ledHexToRgb(hex);
+    const max = Math.max(r, g, b);
+    const v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    if (!max) return '#000000';
+    const f = (v / 100) * 255 / max;
+    const scale = (c) => Math.max(0, Math.min(255, Math.round(c * f)));
+    return '#' + [scale(r), scale(g), scale(b)].map((c) => c.toString(16).padStart(2, '0')).join('').toUpperCase();
+};

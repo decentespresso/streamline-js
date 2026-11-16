@@ -15,6 +15,7 @@ import { loadPage, initRouter, isSubPage, prefetchSettingsPage, prefetchSubpages
 import { writeSettingsLocation } from '../settings/settings-location.js';
 import { initWaterTankSocket } from './waterTank.js';
 import { logger } from './logger.js';
+import { endPerfShot, initPerfProbe, measure, startPerfShot } from './perf-probe.js';
 import { workflowGrindStep, workflowGrindRange } from './grinder-sync.js';
 import { isDye2Enabled } from './dye2-enabled.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
@@ -37,6 +38,8 @@ import { initHelpLauncher } from './help-launcher.js';
 import { noteClearContext } from './workflow-note.js';
 import { sleepProfileMark, shouldApplyWakeProfile, createSleepMarkStore } from './wake-profile.js';
 import { legacyKeysToPurge, LEGACY_VISUALIZER_PURGED_FLAG } from './legacy-credentials-purge.js';
+import { shouldPromptReload } from './skin-version.js';
+import { APP_VERSION, SKIN_ID } from '../version.js';
 
 window.app = { api, ui, chart };
 
@@ -70,6 +73,54 @@ function initClockTicker() {
         tick();
         setInterval(tick, 60_000);
     }, msToNextMinute);
+}
+
+// ── "New version available" prompt (streamline-js #196) ──────────────────────
+// Decaid updates the skin's files on disk in the background, on its own timer.
+// The page running in the WebView keeps the OLD modules in memory, so a user who
+// never opens Settings stays on the old build indefinitely -- today the manual
+// "Check for skin updates" button is the only thing that ever reloads.
+//
+// Costs nothing on GitHub's quota: this only reads what Decaid already has on
+// disk (GET /webui/skins), never api.github.com. See skin-version.js.
+const SKIN_UPDATE_FIRST_CHECK_MS = 30_000;          // let boot traffic settle first
+const SKIN_UPDATE_POLL_MS = 12 * 60 * 60 * 1000;    // matches Decaid's own check interval
+const SKIN_UPDATE_TOAST_MS = 20_000;
+
+let skinUpdateWatchStarted = false;
+
+async function checkSkinUpdate() {
+    try {
+        const skins = await api.getAllSkins();
+        const disk = skins?.find(s => s.id === SKIN_ID)?.version;
+        if (!shouldPromptReload({ running: APP_VERSION, disk })) return;
+        logger.info(`Skin update on disk: running v${APP_VERSION}, disk v${disk}`);
+        ui.showToast(getTranslation('New version available — tap to reload'), SKIN_UPDATE_TOAST_MS, 'info', {
+            onClick: () => {
+                // Changed query string so the document is re-requested rather
+                // than served from the WebView's cache; keeps ?page= so a reload
+                // from a sub-page comes back to that sub-page.
+                // ponytail: module URLs are unversioned, so a stubborn cache can
+                // still hand back old modules -- same exposure as the existing
+                // Settings reload path. Hash the module URLs if that shows up.
+                const url = new URL(window.location.href);
+                url.searchParams.set('v', String(Date.now()));
+                window.location.replace(url.toString());
+            },
+        });
+    } catch (error) {
+        // Decaid unreachable or the skin not registered: ask again next tick.
+        logger.info(`Skin update check skipped: ${error.message || error}`);
+    }
+}
+
+function initSkinUpdateWatch() {
+    if (skinUpdateWatchStarted) return;
+    skinUpdateWatchStarted = true;
+    setTimeout(() => {
+        void checkSkinUpdate();
+        setInterval(() => { void checkSkinUpdate(); }, SKIN_UPDATE_POLL_MS);
+    }, SKIN_UPDATE_FIRST_CHECK_MS);
 }
 
 function initMobileValueInputs({ openModal, shouldUseNumpad }) {
@@ -598,6 +649,11 @@ let devicesProbeInFlight = false;
 function markMachineDisconnected() {
     ui.updateMachineStatus({ status: "disconnected" });
     isDe1Connected = false;
+    // handleData() has stopped running, so the machine state is frozen at
+    // whatever arrived last. Left alone, a socket that falls silent mid-shot
+    // would strand the history arrows locked until frames resume. Release
+    // them; the per-frame call above re-locks if the shot is in fact still on.
+    history.updateHistoryNavLock(null);
 }
 
 async function probeMachineOnSilentSocket() {
@@ -982,6 +1038,14 @@ function handleData(data) {
         else ledStripOnMachineStateChange(state);
     }
 
+    // Shot-history arrows: inert while the machine is pulling espresso, so a
+    // step back cannot repaint the chart the running shot is drawing on. Every
+    // frame, not just the state-change edge: markMachineDisconnected() releases
+    // the lock while frames are absent, and a resumed shot arrives on frames
+    // that do not change `state`, so an edge-only call would leave it unlocked.
+    // The lock returns early when nothing changed, so this costs one comparison.
+    history.updateHistoryNavLock(state);
+
     previousState = data.state; // Update previous state
 
     // Update GHC stop button opacity: active (not idle/sleeping/error) = fully opaque
@@ -1004,7 +1068,7 @@ function handleData(data) {
 
     // Update UI elements
     // Pass detailed status information to match the enhanced updateMachineStatus function
-    ui.updateMachineStatus({
+    measure('status', () => ui.updateMachineStatus({
         status: statusString,
         state: state,
         substate: substate,
@@ -1016,10 +1080,10 @@ function handleData(data) {
         isHeating: isHeating, // Pass heating state to UI
         isHeatingFromTimeToReady: heatingSeconds > 0, // countdown available -> render the two-colour form
         steamTemperature: data.steamTemperature // Steam boiler temp — gates the steam "Heating" message
-    });
-    if (mainPageShown) paintMainPageStrip(lastMainPageFrame);
-    ui.updateSleepButton(state);
-    if (mainPageShown) ui.updateTemperatures({ mix: data.mixTemperature, group: data.groupTemperature, steam: data.steamTemperature });
+    }));
+    if (mainPageShown) measure('strip', () => paintMainPageStrip(lastMainPageFrame));
+    measure('sleepButton', () => ui.updateSleepButton(state));
+    if (mainPageShown) measure('temps', () => ui.updateTemperatures({ mix: data.mixTemperature, group: data.groupTemperature, steam: data.steamTemperature }));
     updateMilkProbeFromSnapshot(currentMilkProbeReading());
 
     // Update Chart and Shot Data Table
@@ -1037,12 +1101,19 @@ function handleData(data) {
                 // gateway mode so the fallback heuristics run at shot end.
                 seqTrackedShot = false;
                 seqStopToastShown = false;
-                chart.clearChart();
-                shotData.clearShotData();
-                const historyLabelEl = document.getElementById('shot-history-label');
-                if (historyLabelEl) {
-                    historyLabelEl.textContent = getTranslation('NEWEST');
+                // Not while the user is reading a past shot: these three wipe
+                // the chart, the data panel and the label they are looking at.
+                // A cleaning profile starts five shots, so without this the
+                // review survives at most one flush.
+                if (!history.isReviewingHistory()) {
+                    chart.clearChart();
+                    shotData.clearShotData();
+                    const historyLabelEl = document.getElementById('shot-history-label');
+                    if (historyLabelEl) {
+                        historyLabelEl.textContent = getTranslation('NEWEST');
+                    }
                 }
+                startPerfShot();
             }
             // Bengle: use the machine's true gravimetric flow (GFlow) straight from
             // the snapshot — no local delta+EMA smoothing. Non-Bengle keeps the
@@ -1050,8 +1121,15 @@ function handleData(data) {
             // `?? null` (not || 0): 0 is a real GFlow value; only an ABSENT field
             // may fall through to the chart's local EMA.
             const chartWeightFlow = isBengleMachine() ? (data.weightFlow ?? null) : latestScaleWeightFlow;
-            chart.updateChart(shotStartTime, data, latestScaleWeight, chartWeightFlow);
-            shotData.updateShotData(data, latestScaleWeight);
+            // The live chart renders from the same arrays plotHistoricalShot()
+            // empties, so feeding it while the user reviews a past shot repaints
+            // over that shot ~10x a second — the reported "prev does nothing".
+            // shotData keeps accumulating (totals and the stop toast stay true);
+            // only its paint is held, inside the module.
+            if (!history.isReviewingHistory()) {
+                measure('chart', () => chart.updateChart(shotStartTime, data, latestScaleWeight, chartWeightFlow));
+            }
+            measure('shotData', () => shotData.updateShotData(data, latestScaleWeight));
         }
     } else {
         if (shotStartTime) {
@@ -1067,8 +1145,14 @@ function handleData(data) {
             // the WebView console as "Error parsing WebSocket message", which
             // points at the JSON parser rather than the chart.
             shotStartTime = null;
+            // Before finalize: the line describes the frames of the shot, and a
+            // throw in finalize must not take the measurement down with it.
+            endPerfShot(shotData.getTotalTime());
             try {
-                chart.finalizeLiveChart();
+                // Reviewing: end the live shot but do not paint. The labels
+                // belong to the shot that finished, chartData holds the one the
+                // user is reading.
+                chart.finalizeLiveChart(!history.isReviewingHistory());
             } catch (error) {
                 logger.error('finalizeLiveChart failed; shot ended without final labels:', error);
             }
@@ -2425,6 +2509,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // them — WebView storage does not survive an app update.
         await settingsReady;
 
+        // After settingsReady, so a 'theme' restored from KV wins; not awaited,
+        // because a slow or absent Decaid must not hold up boot. Repaints only
+        // when Decaid's themeMode disagrees with what index.html painted.
+        ui.followDecaidTheme().catch(error => logger.warn('Decaid theme follow failed:', error));
+
         initScaling();
         if (!isSubPage()) requestAnimationFrame(() => loadECharts().catch(error => logger.error('ECharts load failed:', error)));
         requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -2449,6 +2538,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 initMobileValueInputs(numpad);
             }).catch(error => logger.warn('Deferred input controls failed to load:', error));
         }));
+        // Before the first frame can arrive, so a profiling session covers the
+        // whole shot rather than starting mid-pour.
+        initPerfProbe();
         const i18nReady = initI18n();
         const unitsReady = initUnits();
         chart.initChart();
@@ -2475,6 +2567,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         // first tap on Settings / Profiles / Edit doesn't pay for it. Boot is
         // finished by here; the call schedules itself on idle from there.
         prefetchSubpages();
+
+        // Boot, not the main-page mount: a tablet left on a sub-page must still
+        // learn that Decaid downloaded a newer build.
+        initSkinUpdateWatch();
 
         logger.info('App initialization finished successfully.');
 

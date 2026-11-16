@@ -60,13 +60,15 @@ test('the shot-end finalize cannot strand shot state', () => {
     const app = readFileSync(new URL('../src/modules/app.js', import.meta.url), 'utf8');
     const branch = app.slice(app.indexOf('shotEndedAt = Date.now();'));
     const cleared = branch.indexOf('shotStartTime = null;');
-    const finalized = branch.indexOf('chart.finalizeLiveChart();');
+    // Matches the call whatever it is passed: finalizeLiveChart takes a redraw
+    // flag now (false while the user reviews a past shot).
+    const finalized = branch.indexOf('chart.finalizeLiveChart(');
     assert.ok(cleared !== -1 && finalized !== -1, 'shot-end branch not found; update this test');
 
     // The guarantee: a throw out of the render is caught, so the shot-end
     // branch always completes. The ordering below is the second line of
     // defence if that catch is ever removed.
-    const guarded = /try\s*\{[^}]*chart\.finalizeLiveChart\(\);[^}]*\}\s*catch/s.test(branch);
+    const guarded = /try\s*\{[^}]*chart\.finalizeLiveChart\([^;]*\);[^}]*\}\s*catch/s.test(branch);
     assert.ok(guarded, 'finalizeLiveChart() must be wrapped in try/catch');
     assert.ok(cleared < finalized,
         'shotStartTime must be cleared before finalizeLiveChart(), so a render throw cannot strand it');
