@@ -9869,6 +9869,26 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
 
     window.setActiveSkin = async function(skinId) {
         if (!skinId) return;
+        // Decaid's own switch hook, when the host has one: a nonce-signed
+        // navigation that makes Decaid serve the new skin and persist the default
+        // in-process (SkinSwitchCoordinator). No REST, so no token, and no port
+        // restart to chase afterwards.
+        //
+        // It must be tried first, because the REST path below cannot work on a
+        // current Decaid at all: PUT /webui/skins/default and the two
+        // /webui/server/* calls are gated on an `extensions:manage` bearer token
+        // (decaid extension_management_auth.dart), the skin holds only an
+        // `account:proxy` one, and the refusal reaches the user as a bare 401.
+        // The hook predates that gate, so any host that refuses the REST calls
+        // has the hook.
+        //
+        // switchSkin returns false when it is not usable (no host, no nonce), so
+        // the call is the feature probe as well: a plain browser and a host older
+        // than the hook both fall through to the REST path unchanged.
+        if (window.decentApp?.switchSkin?.(skinId) === true) {
+            ui.showToast('Switching skin...', 0, 'info');
+            return;
+        }
         try {
             ui.showToast('Switching skin...', 0, 'info');
             await setDefaultSkin(skinId);
