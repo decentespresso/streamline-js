@@ -31,28 +31,38 @@ function extract(pattern, label) {
 const paintSource = extract(/function paintNavLock\(\)[\s\S]*?\n\}/, 'paintNavLock');
 const updateSource = extract(/export function updateHistoryNavLock\([\s\S]*?\n\}/, 'updateHistoryNavLock');
 
-function harness({ reviewing = false } = {}) {
+function harness({ index = 0 } = {}) {
     const buttons = {
         'history-prev-btn': { disabled: false, style: {} },
         'history-next-btn': { disabled: false, style: {} },
     };
-    const shown = [];
-    const document = { getElementById: (id) => buttons[id] ?? null };
+    const label = { textContent: 'HISTORY' };
+    const suspended = [];
+    const elements = { ...buttons, 'shot-history-label': label };
+    const document = { getElementById: (id) => elements[id] ?? null };
     const factory = new Function(
-        'document', 'historyNavBlocked', 'isReviewingHistory', 'displayShot', 'logger',
+        'document', 'historyNavBlocked', 'setPaintSuspended', 'getTranslation', 'startIndex',
         `let navLocked = false;
+         let currentShotIndex = startIndex;
+         let paintedShotId = 'drawn';
+         function isReviewingHistory() { return currentShotIndex > 0; }
          ${paintSource}
          ${updateSource}
-         return { updateHistoryNavLock, locked: () => navLocked };`
+         return {
+             updateHistoryNavLock,
+             locked: () => navLocked,
+             index: () => currentShotIndex,
+             painted: () => paintedShotId,
+         };`
     );
     const api = factory(
         document,
         historyNavBlocked,
-        () => reviewing,
-        async (index) => { shown.push(index); },
-        { warn() {} },
+        (on) => { suspended.push(on); },
+        (key) => key,
+        index,
     );
-    return { ...api, buttons, shown };
+    return { ...api, buttons, label, suspended };
 }
 
 test('entering espresso disables and dims both arrows; leaving it restores them', () => {
@@ -74,30 +84,39 @@ test('entering espresso disables and dims both arrows; leaving it restores them'
     }
 });
 
-test('locking while a past shot is on screen returns to the newest shot', () => {
-    const reviewing = harness({ reviewing: true });
+test('locking while a past shot is on screen ends the review without plotting', () => {
+    const reviewing = harness({ index: 4 });
     reviewing.updateHistoryNavLock('espresso');
-    assert.deepEqual(reviewing.shown, [0], 'should step back to the newest shot');
+    assert.equal(reviewing.index(), 0, 'the review must end, or app.js holds the live chart back');
+    assert.deepEqual(reviewing.suspended, [false], 'the data panel paints the running shot again');
+    assert.equal(reviewing.label.textContent, 'NEWEST');
+    // No displayShot/plotHistoricalShot: this runs from handleData(), so the
+    // past shot's curves would still be on the chart when the live frames of
+    // the shot now starting append to them.
+    assert.equal(reviewing.painted(), null, 'the drawn-shot guard must not hold a stale id');
 
-    // Already on the newest shot: nothing to repaint.
-    const newest = harness({ reviewing: false });
+    // Already on the newest shot: nothing to reset.
+    const newest = harness({ index: 0 });
     newest.updateHistoryNavLock('espresso');
-    assert.deepEqual(newest.shown, []);
+    assert.equal(newest.index(), 0);
+    assert.deepEqual(newest.suspended, []);
+    assert.equal(newest.label.textContent, 'HISTORY', 'app.js owns the label when no review was open');
 });
 
 test('repeated frames of the same state do no work', () => {
-    const h = harness({ reviewing: true });
+    const h = harness({ index: 4 });
     h.updateHistoryNavLock('espresso');
+    h.suspended.length = 0;
     h.updateHistoryNavLock('espresso');
     h.updateHistoryNavLock('espresso');
     // ~10 snapshot frames a second arrive during a shot; only the edge acts.
-    assert.deepEqual(h.shown, [0]);
+    assert.deepEqual(h.suspended, []);
 });
 
 test('a socket that falls silent mid-shot releases the lock, and a resumed shot re-takes it', () => {
     // markMachineDisconnected() passes null while frames are absent, because
     // handleData() has stopped running and the state is frozen at `espresso`.
-    const h = harness({ reviewing: false });
+    const h = harness({ index: 0 });
     h.updateHistoryNavLock('espresso');
     assert.equal(h.locked(), true);
     h.updateHistoryNavLock(null);
@@ -112,9 +131,9 @@ test('a socket that falls silent mid-shot releases the lock, and a resumed shot 
 });
 
 test('unlocking never drags the user off the shot they are reading', () => {
-    const h = harness({ reviewing: true });
+    const h = harness({ index: 4 });
     h.updateHistoryNavLock('espresso');
-    h.shown.length = 0;
+    h.suspended.length = 0;
     h.updateHistoryNavLock('idle');
-    assert.deepEqual(h.shown, []);
+    assert.deepEqual(h.suspended, [], 'releasing the lock touches no shot selection');
 });

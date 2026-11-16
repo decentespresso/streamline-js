@@ -48,7 +48,14 @@ The main-page history arrows are locked while the machine state is `espresso`:
 `src/modules/history-nav-gate.js` owns the state list, `history.updateHistoryNavLock()`
 paints it, and `app.js` calls that on each machine-state change. Locking also returns
 the panel to the newest shot, because `app.js` holds the live chart and data panel back
-for as long as `isReviewingHistory()` is true.
+for as long as `isReviewingHistory()` is true. It ends the review inline rather than
+calling `displayShot(0)`: it runs from `handleData()`, and plotting a past shot there
+leaves the live frames of the shot now starting appending to that shot's arrays.
+
+Shot index 0 is a position -- "newest" -- not a particular shot, so `applyHistoryPage()`
+only follows the selection by id above index 0. Following it at 0 shifted a user sitting
+on NEWEST to index 1 whenever a shot landed, which left `isReviewingHistory()` true for
+good and silently killed the live chart for every later shot.
 
 ## Durable Preferences
 

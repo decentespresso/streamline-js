@@ -97,7 +97,12 @@ const historyPager = createHistoryPager({
 });
 
 function applyHistoryPage(page) {
-    const selectedId = shots[currentShotIndex]?.id;
+    // Index 0 is a position -- "newest" -- not a particular shot. Following it
+    // by id shifted a user sitting on NEWEST to index 1 the moment a shot
+    // landed, which made isReviewingHistory() true for good: the panel never
+    // returned to 0 and app.js silently held the live chart back for the next
+    // shot until the user stepped through history and back.
+    const selectedId = currentShotIndex > 0 ? shots[currentShotIndex]?.id : null;
     shots = page.shots;
     if (selectedId) {
         const index = shots.findIndex(shot => shot.id === selectedId);
@@ -557,9 +562,21 @@ export function updateHistoryNavLock(state) {
     navLocked = next;
     // Locking while the user is pages deep would strand them on a past shot
     // with no way back and no live chart (app.js holds the live feed while
-    // isReviewingHistory()), so bring them to the newest shot first.
+    // isReviewingHistory()), so end the review here.
+    //
+    // Synchronous, and it does not touch the chart: displayShot(0) would plot
+    // the past shot's curves, and because this runs from handleData() the live
+    // frames of the shot now starting append straight onto those arrays. Ending
+    // the review inline instead lets the same frame's shot-start branch clear
+    // the chart and draw the running shot from empty. The footer keeps the old
+    // shot's date and profile until the shot ends and refreshToNewestShot()
+    // repaints -- the same one-shot staleness a user who never reviewed sees.
     if (navLocked && isReviewingHistory()) {
-        displayShot(0).catch(error => logger.warn('Could not return to the newest shot:', error));
+        currentShotIndex = 0;
+        setPaintSuspended(false);
+        paintedShotId = null;
+        const historyLabelEl = document.getElementById('shot-history-label');
+        if (historyLabelEl) historyLabelEl.textContent = getTranslation('NEWEST');
     }
     paintNavLock();
 }
