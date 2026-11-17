@@ -3872,7 +3872,11 @@ export function showToast(message, duration = 2400, type = 'info', { onClick = n
     if (toastEl && messageEl) {
         clearTimeout(toastHideTimer);
         toastHideTimer = null;
-        messageEl.textContent = message;
+        // Translate here rather than at 260-odd call sites. getTranslation
+        // returns the key untouched when the sheet has no row for it, so an
+        // already-translated message, a machine error relayed verbatim, or a
+        // string carrying an interpolated value all pass through unchanged.
+        messageEl.textContent = getTranslation(message);
 
         toastClickFn = typeof onClick === 'function' ? onClick : null;
         toastEl.style.cursor = toastClickFn ? 'pointer' : '';

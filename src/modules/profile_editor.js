@@ -3566,7 +3566,7 @@ async function openVersionHistory() {
         const { getProfileLineage } = await import('./api.js');
         lineage = await getProfileLineage(id);
     } catch (err) {
-        showToast('Could not load version history', 3000, 'error');
+        showToast('Could not load version history.', 3000, 'error');
         return;
     }
 
@@ -3575,7 +3575,7 @@ async function openVersionHistory() {
         .filter(r => r.id !== id && r.profile)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     if (!versions.length) {
-        showToast('No previous versions yet', 2500, 'info');
+        showToast('No previous versions yet.', 2500, 'info');
         return;
     }
 
@@ -3605,7 +3605,7 @@ async function openVersionHistory() {
     // Baseline deliberately not reset: a restored version is unsaved work, so
     // Cancel must still warn before throwing it away.
     setActiveTab(editorState.activeTab || 0);
-    showToast('Restored — Save to keep this version', 3000, 'success');
+    showToast('Restored - Save to keep this version.', 3000, 'success');
 }
 
 // ─── Init ───────────────────────────────────────────────────────────────────

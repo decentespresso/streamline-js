@@ -1,6 +1,6 @@
 import { logger } from './logger.js';
 import { openDB, getSetting, setSetting } from './idb.js';
-import { SUPPORTED_LANGUAGES, parseTranslationColumn, matchLanguage, resolveLanguage } from './i18n-parser.js';
+import { SUPPORTED_LANGUAGES, parseTranslationColumn, matchLanguage, resolveLanguage, preferredLanguage } from './i18n-parser.js';
 import { APP_VERSION } from '../version.js';
 import { largestFittingSize, predictFittingSize } from './text-fit.js';
 
@@ -402,7 +402,11 @@ export function getCurrentLanguage() {
  * Sets the current language and translates the page.
  * @param {string} lang The language code (e.g., 'en', 'fr').
  */
-export async function setLanguage(lang) {
+// Set once the user picks a language themselves. Without it, a stored language
+// is just the last thing boot resolved -- see preferredLanguage.
+const LANGUAGE_SOURCE_KEY = 'languageSource';
+
+export async function setLanguage(lang, { chosen = true } = {}) {
     const requestedLanguage = findSupportedLanguage(lang);
     if (!requestedLanguage) {
         console.warn(`Language '${lang}' not supported. Defaulting to 'en'.`);
@@ -418,6 +422,7 @@ export async function setLanguage(lang) {
     currentLanguage = nextLanguage;
     if (nextLanguage === (requestedLanguage || 'en')) {
         localStorage.setItem('language', nextLanguage);
+        if (chosen) localStorage.setItem(LANGUAGE_SOURCE_KEY, 'user');
         setSetting('language', nextLanguage).catch(() => {});
     }
     logger.info(`Language set to: ${currentLanguage}`);
@@ -432,13 +437,17 @@ export async function setLanguage(lang) {
  * Initializes the internationalization module.
  */
 export async function initI18n() {
-    // A choice the user made wins. With none stored, read the device: every
-    // preferred language in order, not just the first, so a tablet set to
-    // "Catalan, then Spanish" gets Spanish rather than English when we are
-    // short of Catalan.
-    const localLanguage = findSupportedLanguage(localStorage.getItem('language'));
+    // A choice the user made wins. Otherwise read the device: every preferred
+    // language in order, not just the first, so a tablet set to "Catalan, then
+    // Spanish" gets Spanish rather than English when we are short of Catalan.
+    const chosen = localStorage.getItem(LANGUAGE_SOURCE_KEY) === 'user';
     const deviceLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
-    const initialLanguage = localLanguage || resolveLanguage(deviceLanguages) || 'en';
+    const deviceLanguage = resolveLanguage(deviceLanguages);
+    // Logged because this is the one input we cannot see from here: a WebView
+    // that reports the wrong locale looks exactly like a matcher bug.
+    logger.info(`Device languages: ${[...deviceLanguages].join(', ')} -> ${deviceLanguage || 'no match'}${chosen ? ' (user has chosen one)' : ''}`);
+    const pick = (stored) => preferredLanguage({ stored, device: deviceLanguage, chosen });
+    const initialLanguage = pick(findSupportedLanguage(localStorage.getItem('language')));
     currentLanguage = initialLanguage;
     localStorage.setItem('language', initialLanguage);
     translatePage();
@@ -448,5 +457,5 @@ export async function initI18n() {
         await openDB();
         savedLanguage = findSupportedLanguage(await getSetting('language'));
     } catch (_) {}
-    await setLanguage(savedLanguage || initialLanguage);
+    await setLanguage(savedLanguage ? pick(savedLanguage) : initialLanguage, { chosen: false });
 }

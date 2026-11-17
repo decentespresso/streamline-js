@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, globSync } from 'node:fs';
 import { test } from 'node:test';
-import { SUPPORTED_LANGUAGES, parseTranslationColumn, matchLanguage, resolveLanguage } from '../src/modules/i18n-parser.js';
+import { SUPPORTED_LANGUAGES, parseTranslationColumn, matchLanguage, resolveLanguage, preferredLanguage } from '../src/modules/i18n-parser.js';
 
 test('the cheap language list matches the translation sheet header', () => {
     const csv = readFileSync(new URL('../src/ui/de1 gui translation - Sheet1.csv', import.meta.url), 'utf8');
@@ -106,5 +106,76 @@ test('initI18n reads the whole preference list and lets a stored choice win', ()
     const source = readFileSync(new URL('../src/modules/i18n.js', import.meta.url), 'utf8');
     const body = source.slice(source.indexOf('export async function initI18n'));
     assert.match(body, /navigator\.languages\?\.length \? navigator\.languages : \[navigator\.language\]/);
-    assert.match(body, /localLanguage \|\| resolveLanguage\(deviceLanguages\) \|\| 'en'/);
+    assert.match(body, /preferredLanguage\(\{ stored, device: deviceLanguage, chosen \}\)/);
+});
+
+// ── toast coverage ──────────────────────────────────────────────────────────
+// showToast translates its message, so a toast with no CSV row shows English in
+// every language. This is the guard: a new toast either reuses an existing key
+// or brings its own row.
+test('every fixed toast message is a translation key', () => {
+    const files = globSync('src/**/*.js').filter(f => !f.includes('.min.') && !f.includes('vendor/'));
+    const csv = readFileSync(new URL('../src/ui/de1 gui translation - Sheet1.csv', import.meta.url), 'utf8');
+    const keys = new Set(csv.split(/\r?\n/).map(line => (line.startsWith('"')
+        ? (line.match(/^"((?:[^"]|"")*)"/) || [])[1]?.replace(/""/g, '"')
+        : line.split(',')[0])).filter(Boolean));
+
+    const missing = [];
+    for (const file of files) {
+        const src = readFileSync(file, 'utf8');
+        for (const m of src.matchAll(/showToast\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+            const text = m[2];
+            // Interpolated messages carry a runtime value, so they cannot be keys.
+            if (text.includes('${') || !text.trim()) continue;
+            if (!keys.has(text)) missing.push(`${file}: ${text}`);
+        }
+    }
+    assert.deepEqual(missing, [], `toast strings with no CSV row:\n${missing.join('\n')}`);
+});
+
+test('showToast is the single place that translates toast text', () => {
+    const ui = readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8');
+    const body = ui.slice(ui.indexOf('export function showToast'));
+    assert.match(body, /messageEl\.textContent = getTranslation\(message\)/);
+});
+
+// ── stale stored language ───────────────────────────────────────────────────
+// Boot persists whatever it resolved, so every install that ran a build with
+// the old matcher has `en` stored as if it were a choice. Without this, the
+// alias table ships and nothing changes on the tablets that needed it.
+test('a language the user picked always wins', () => {
+    assert.equal(preferredLanguage({ stored: 'en', device: 'zh-hant', chosen: true }), 'en');
+    assert.equal(preferredLanguage({ stored: 'de', device: 'zh-hant', chosen: true }), 'de');
+});
+
+test('a stored English that nobody chose is re-detected', () => {
+    assert.equal(preferredLanguage({ stored: 'en', device: 'zh-hant', chosen: false }), 'zh-hant');
+    // Still English when the device gives us nothing to switch to.
+    assert.equal(preferredLanguage({ stored: 'en', device: null, chosen: false }), 'en');
+});
+
+test('a stored language that is not English is kept, chosen or not', () => {
+    // It matched a device once, so re-detecting could only undo a good answer.
+    assert.equal(preferredLanguage({ stored: 'kr', device: 'zh-hant', chosen: false }), 'kr');
+});
+
+test('with nothing stored the device decides, and English is the last resort', () => {
+    assert.equal(preferredLanguage({ stored: null, device: 'zh-hant', chosen: false }), 'zh-hant');
+    assert.equal(preferredLanguage({ stored: null, device: null, chosen: false }), 'en');
+    assert.equal(preferredLanguage(), 'en');
+});
+
+test('boot does not mark the language as chosen, and the picker does', () => {
+    const i18n = readFileSync(new URL('../src/modules/i18n.js', import.meta.url), 'utf8');
+    const init = i18n.slice(i18n.indexOf('export async function initI18n'));
+    assert.match(init, /setLanguage\([\s\S]*?\{ chosen: false \}\)/);
+    // The default is a real choice, so every picker call site marks it without
+    // having to say so.
+    assert.match(i18n, /export async function setLanguage\(lang, \{ chosen = true \} = \{\}\)/);
+    assert.match(i18n, /if \(chosen\) localStorage\.setItem\(LANGUAGE_SOURCE_KEY, 'user'\)/);
+
+    // A language arriving from KV is a stored value, not a fresh pick: marking
+    // it chosen would re-pin the `en` an older build wrote as a boot default.
+    const sync = readFileSync(new URL('../src/modules/settingsSync.js', import.meta.url), 'utf8');
+    assert.match(sync, /setLanguage\(applied\.language, \{ chosen: false \}\)/);
 });

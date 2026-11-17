@@ -84,6 +84,23 @@ export function resolveLanguage(tags) {
     return null;
 }
 
+/**
+ * Which language to start in: the stored one, or the device's.
+ *
+ * `stored` is only evidence of a preference when the user actually picked it
+ * (`chosen`). Boot persists whatever it resolved, so an install that ran a
+ * build whose matcher could not read its locale -- every zh-TW, ko-KR, nb-NO
+ * and iw-IL tablet before the alias table -- has `en` written in as if it were
+ * a choice, and would keep starting in English forever. A stored `en` that
+ * nobody chose is therefore re-asked; any other stored language is kept, since
+ * that one did match a device once.
+ */
+export function preferredLanguage({ stored = null, device = null, chosen = false } = {}) {
+    if (chosen && stored) return stored;
+    if (!chosen && stored && stored !== 'en') return stored;
+    return device || stored || 'en';
+}
+
 function selectedValues(line, targetColumn) {
     let column = 0;
     let quoted = false;

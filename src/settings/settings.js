@@ -7956,8 +7956,9 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         if (mainButton) activateMainCategory(mainButton, category);
     });
 
-    // Apply translations to the settings page
-    await setLanguage(getCurrentLanguage());
+    // Apply translations to the settings page. Not a choice -- it re-applies
+    // whatever is already current, so it must not mark the language as picked.
+    await setLanguage(getCurrentLanguage(), { chosen: false });
 
     // Re-translate settings content whenever language changes
     if (!settingsLanguageListenerInstalled) {
@@ -10101,7 +10102,7 @@ function renderDeviceListFromCache() {
 // Function to scan for available devices and populate the dropdowns
 window.scanAndConnectEspresso = async function() {
     try {
-        ui.showToast('Scanning for espresso machines...', 2000, 'info');
+        ui.showToast('Scanning for machines...', 2000, 'info');
 
         // Use WebSocket to trigger scan
         sendDeviceCommand({ command: 'scan', connect: false });
@@ -10116,7 +10117,7 @@ window.scanAndConnectEspresso = async function() {
 // Function to scan for scales and connect
 window.scanAndConnectScale = async function() {
     try {
-        ui.showToast('Scanning for weighing scales...', 2000, 'info');
+        ui.showToast('Scanning for scales...', 2000, 'info');
 
         // Use WebSocket to trigger scan
         sendDeviceCommand({ command: 'scan', connect: false });

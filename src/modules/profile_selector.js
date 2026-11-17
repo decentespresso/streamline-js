@@ -1802,7 +1802,7 @@ export async function initializeProfileSelector() {
             try {
                 lineage = await getProfileLineage(selectedProfileKey);
             } catch (e) {
-                showToast('Could not load version history', 3000, 'error');
+                showToast('Could not load version history.', 3000, 'error');
                 return;
             }
             // /lineage returns the whole chain -- parents AND children -- so
