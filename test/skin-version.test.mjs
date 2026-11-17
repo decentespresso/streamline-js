@@ -1,27 +1,24 @@
 import {
-    compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure,
-    recordRateLimit, getTag, isRateLimited, limitRemainingMs, shouldPromptReload,
-    SUCCESS_TTL_MS, FAILURE_TTL_MS, DEFAULT_LIMIT_MS, MAX_LIMIT_MS, MAX_REPOS,
-    skinUpdateFailureText, SKIN_UPDATE_TOKEN_REFUSED, switchSkinNatively,
+    compareVersions, shouldPromptReload, skinUpdateFailureText, SKIN_UPDATE_TOKEN_REFUSED,
+    switchSkinNatively, skinUpdateOutcome, appUpdateAvailability,
 } from '../src/modules/skin-version.js';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-// decaid #1118: a 2026-11-06 log shows the tablet's unauthenticated GitHub quota
-// (60/h, shared with Decaid's own app/skin/plugin checks) exhausted, after which
-// the settings page cached every refused lookup as "no tag" and rendered
-// "Up to date" anyway, and POST /webui/skins/update's 500 reached the user as
-// "500 Internal Server Error" instead of Decaid's cooldown message.
+// streamline-js #199: Decaid owns remote update discovery. This skin shows the
+// versions Decaid reports as installed and never asks api.github.com anything,
+// so the browser-side release-tag cache that used to be tested here is gone --
+// with it went the "Up to date" badge it fed, which decaid #1118 showed could be
+// rendered off a refused lookup.
 // streamline-js #196: Decaid updates skin files on disk in the background, and
 // the running WebView keeps the old modules until something reloads the page.
 // What is checked here:
-//   - a check is never retried through an active cooldown, and a 403/429 stops
-//     every repo (the quota is per-IP), honouring the reset header;
-//   - an unknown or failed answer never reads as a known tag, so no caller can
-//     turn it into "Up to date";
-//   - the cache survives a round trip through storage, tolerates junk, and stays
-//     bounded;
+//   - version ordering across releases, prereleases and v-prefixes;
+//   - what a "Check for updates" run changed, read off the installed versions
+//     because POST /webui/skins/update reports no per-skin outcome;
+//   - the app-update badge claims "available" only on Decaid's own evidence and
+//     never claims "up to date", which its payload cannot support;
 //   - updateSkins surfaces Decaid's JSON `error` and falls back to the HTTP
 //     status for a non-JSON body;
 //   - the reload prompt fires only when the disk build is strictly newer.
@@ -38,129 +35,98 @@ test('compareVersions orders releases, prereleases and v-prefixes', () => {
     assert.equal(compareVersions('0.2.9', '0.2.10'), -1);
 });
 
-// ── cooldown policy ─────────────────────────────────────────────────────────
-test('a never-checked repo is checkable; a fresh success is not', () => {
-    const state = fresh();
-    assert.equal(shouldCheck(state, 'owner/repo', T0), true);
+// ── what an update run changed ──────────────────────────────────────────────
+// POST /webui/skins/update answers "Skin update check completed" and nothing
+// per-skin, so the installed versions before and after are the only evidence.
 
-    recordSuccess(state, 'owner/repo', 'v1.2.3', T0);
-    assert.equal(shouldCheck(state, 'owner/repo', T0 + 60_000), false);
-    assert.equal(shouldCheck(state, 'owner/repo', T0 + SUCCESS_TTL_MS), true);
+test('an update run reports the skins whose installed version moved', () => {
+    const before = [
+        { id: 'streamline', name: 'Streamline', version: '0.1.33' },
+        { id: 'overdose', name: 'OverDose', version: '0.0.13' },
+        { id: 'decal', name: 'Decal', version: '0.1.0' },
+    ];
+    const after = [
+        { id: 'streamline', name: 'Streamline', version: '0.1.34' },
+        { id: 'overdose', name: 'OverDose', version: '0.0.13' },
+        { id: 'decal', name: 'Decal', version: '0.1.0' },
+    ];
+    assert.deepEqual(skinUpdateOutcome(before, after),
+        [{ id: 'streamline', name: 'Streamline', to: '0.1.34' }]);
 });
 
-test('a failed check retries sooner than a successful one, and keeps the old tag', () => {
-    const state = fresh();
-    recordSuccess(state, 'owner/repo', 'v1.2.3', T0);
-    recordFailure(state, 'owner/repo', T0 + SUCCESS_TTL_MS);
-
-    assert.equal(shouldCheck(state, 'owner/repo', T0 + SUCCESS_TTL_MS + 60_000), false);
-    assert.equal(shouldCheck(state, 'owner/repo', T0 + SUCCESS_TTL_MS + FAILURE_TTL_MS), true);
-    // A network blip must not throw away an answer GitHub already gave.
-    assert.deepEqual(getTag(state, 'owner/repo'), { tag: 'v1.2.3', known: true });
+test('a run that changed nothing reports nothing', () => {
+    const skins = [{ id: 'overdose', name: 'OverDose', version: '0.0.13' }];
+    assert.deepEqual(skinUpdateOutcome(skins, skins), []);
+    assert.deepEqual(skinUpdateOutcome([], []), []);
+    assert.deepEqual(skinUpdateOutcome(null, undefined), []);
 });
 
-test('403/429 stops every repo until GitHub\'s reset time', () => {
-    const state = fresh();
-    const reset = Math.floor((T0 + 25 * 60_000) / 1000); // x-ratelimit-reset, epoch seconds
-    recordRateLimit(state, { reset }, T0);
-
-    assert.equal(isRateLimited(state, T0), true);
-    assert.equal(shouldCheck(state, 'owner/repo', T0), false);
-    assert.equal(shouldCheck(state, 'other/repo', T0), false);
-    assert.equal(limitRemainingMs(state, T0), 25 * 60_000);
-    // Past the reset, checks resume.
-    assert.equal(shouldCheck(state, 'owner/repo', T0 + 25 * 60_000 + 1), true);
-    assert.equal(limitRemainingMs(state, T0 + 25 * 60_000 + 1), 0);
+test('a skin absent before the run is a first read, not an update', () => {
+    // That call only updates skins already installed, so an id we have never
+    // seen must not be announced as "Updated".
+    assert.deepEqual(skinUpdateOutcome([], [{ id: 'new', name: 'New', version: '1.0.0' }]), []);
 });
 
-test('rate limit falls back to Retry-After, then to an hour, and never trusts a wild reset', () => {
-    const retry = fresh();
-    recordRateLimit(retry, { retryAfter: '120' }, T0);
-    assert.equal(limitRemainingMs(retry, T0), 120_000);
-
-    const bare = fresh();
-    recordRateLimit(bare, {}, T0);
-    assert.equal(limitRemainingMs(bare, T0), DEFAULT_LIMIT_MS);
-
-    const stale = fresh();
-    recordRateLimit(stale, { reset: Math.floor((T0 - 60_000) / 1000) }, T0); // already past
-    assert.equal(limitRemainingMs(stale, T0), DEFAULT_LIMIT_MS);
-
-    const wild = fresh();
-    recordRateLimit(wild, { reset: Math.floor((T0 + 40 * 24 * 3600_000) / 1000) }, T0);
-    assert.equal(limitRemainingMs(wild, T0), MAX_LIMIT_MS);
+test('a skin that lost or gained a reported version still counts as changed', () => {
+    // Decaid reporting no version is itself a change worth repainting for; the
+    // card falls back to showing none rather than a stale number.
+    assert.deepEqual(
+        skinUpdateOutcome([{ id: 'x', name: 'X', version: '1.0.0' }], [{ id: 'x', name: 'X' }]),
+        [{ id: 'x', name: 'X', to: '' }]);
+    assert.deepEqual(
+        skinUpdateOutcome([{ id: 'x', name: 'X' }], [{ id: 'x', name: 'X', version: '1.0.0' }]),
+        [{ id: 'x', name: 'X', to: '1.0.0' }]);
 });
 
-test('a longer cooldown is never shortened by a later refusal', () => {
-    const state = fresh();
-    recordRateLimit(state, { retryAfter: '3600' }, T0);
-    recordRateLimit(state, { retryAfter: '60' }, T0);
-    assert.equal(limitRemainingMs(state, T0), 3600_000);
+test('an update run falls back to the skin id when Decaid reports no name', () => {
+    assert.deepEqual(
+        skinUpdateOutcome([{ id: 'x', version: '1' }], [{ id: 'x', version: '2' }]),
+        [{ id: 'x', name: 'x', to: '2' }]);
 });
 
-// ── no false "Up to date" ───────────────────────────────────────────────────
-test('unknown answers never read as a known tag', () => {
-    const state = fresh();
-    // Never checked.
-    assert.deepEqual(getTag(state, 'owner/repo'), { tag: null, known: false });
-    // No slug at all (skin not installed from a GitHub release).
-    assert.deepEqual(getTag(state, null), { tag: null, known: false });
-    // Checked and refused.
-    recordFailure(state, 'owner/repo', T0);
-    assert.equal(getTag(state, 'owner/repo').known, false);
-    // 200 with no release on the repo.
-    recordSuccess(state, 'empty/repo', null, T0);
-    assert.equal(getTag(state, 'empty/repo').known, false);
-    // Rate-limited with nothing cached stays unknown rather than reassuring.
-    recordRateLimit(state, {}, T0);
-    assert.equal(getTag(state, 'never/asked').known, false);
+// ── the Decaid app-update badge ─────────────────────────────────────────────
+// Decaid sets latestVersion only while an update is available and unskipped, so
+// its presence is the whole signal. There is no "up to date" answer to give: an
+// idle phase with no latestVersion is "checked, nothing new" OR "never checked"
+// (every run on macOS, and every externally managed install).
+
+test('app update: a named latest version newer than the running build is available', () => {
+    const got = appUpdateAvailability({ phase: 'available', currentVersion: '0.9.2', latestVersion: '0.9.3' });
+    assert.equal(got.available, true);
+    assert.equal(got.latest, '0.9.3');
 });
 
-// This is the badge decision the settings page makes, lifted to its policy: an
-// unknown tag must produce neither "Update available" nor "Up to date".
-test('badge state is three-way: newer, same, or nothing to say', () => {
-    const state = fresh();
-    recordSuccess(state, 'a/one', 'v0.3.0', T0);
-    recordSuccess(state, 'a/two', 'v0.2.20', T0);
-
-    const badge = (slug, installed) => {
-        const { tag, known } = getTag(state, slug);
-        if (!known || !installed) return '';
-        return compareVersions(installed, tag) < 0 ? 'Update available' : 'Up to date';
-    };
-
-    assert.equal(badge('a/one', '0.2.20'), 'Update available');
-    assert.equal(badge('a/two', '0.2.20'), 'Up to date');
-    assert.equal(badge('a/three', '0.2.20'), '');   // never checked
-    assert.equal(badge('a/one', null), '');         // no installed version reported
+test('app update: the running build wins over the snapshot\'s own currentVersion', () => {
+    // settingsCache.appInfo is the app this page is talking to; the snapshot may
+    // be older than the running build after an in-place install.
+    assert.equal(appUpdateAvailability({ currentVersion: '0.9.0', latestVersion: '0.9.1' }, '0.9.2').available, false);
+    assert.equal(appUpdateAvailability({ currentVersion: '0.9.2', latestVersion: '0.9.3' }, '0.9.1').available, true);
 });
 
-// ── storage round trip and bounds ───────────────────────────────────────────
-test('state survives a JSON round trip and tolerates junk', () => {
-    const state = fresh();
-    recordSuccess(state, 'owner/repo', 'v1.0.0', T0);
-    recordRateLimit(state, { retryAfter: '600' }, T0);
-
-    const back = normalizeReleaseState(JSON.parse(JSON.stringify(state)));
-    assert.deepEqual(getTag(back, 'owner/repo'), { tag: 'v1.0.0', known: true });
-    assert.equal(limitRemainingMs(back, T0), 600_000);
-
-    for (const junk of [null, undefined, 'nope', 42, [], { repos: 'x' }, { repos: { 'a/b': null } },
-                        { repos: { 'a/b': { tag: 'v1', checkedAt: 'soon' } }, limitedUntil: 'never' }]) {
-        const safe = normalizeReleaseState(junk);
-        assert.deepEqual(safe.repos, {});
-        assert.equal(safe.limitedUntil, 0);
-        assert.equal(shouldCheck(safe, 'a/b', T0), true);
+test('app update: no latest version is never an update, whatever the phase', () => {
+    // idle on a tablet that just checked, idle on macOS where Decaid never
+    // checks, and mid-check all look the same from here -- so: nothing claimed.
+    for (const phase of ['idle', 'checking', 'error', undefined]) {
+        const got = appUpdateAvailability({ phase, currentVersion: '0.9.2', latestVersion: null });
+        assert.equal(got.available, false, `phase=${phase}`);
+        assert.equal(got.latest, '');
     }
+    assert.equal(appUpdateAvailability(null, '0.9.2').available, false);
+    assert.equal(appUpdateAvailability(undefined, undefined).available, false);
 });
 
-test('the cache stays bounded, keeping the most recently checked repos', () => {
-    const state = fresh();
-    for (let i = 0; i < MAX_REPOS + 5; i++) recordSuccess(state, `owner/repo${i}`, `v1.0.${i}`, T0 + i * 1000);
+test('app update: an equal or older latest version is not an update', () => {
+    // A stale snapshot, or a release the running build has already caught up
+    // with, must not keep the badge lit.
+    assert.equal(appUpdateAvailability({ currentVersion: '0.9.3', latestVersion: '0.9.3' }).available, false);
+    assert.equal(appUpdateAvailability({ currentVersion: '0.9.4', latestVersion: '0.9.3' }).available, false);
+});
 
-    assert.equal(Object.keys(state.repos).length, MAX_REPOS);
-    assert.equal(getTag(state, 'owner/repo0').known, false);                 // oldest dropped
-    assert.equal(getTag(state, `owner/repo${MAX_REPOS + 4}`).known, true);   // newest kept
+test('app update: the offered version drops a tag prefix, and the release URL is passed through', () => {
+    const got = appUpdateAvailability({ currentVersion: '0.9.2', latestVersion: 'v0.9.3', releaseUrl: 'https://x/releases/tag/v0.9.3' });
+    assert.equal(got.latest, '0.9.3');
+    assert.equal(got.releaseUrl, 'https://x/releases/tag/v0.9.3');
+    assert.equal(appUpdateAvailability({ latestVersion: '1.0.0' }).releaseUrl, '');
 });
 
 // ── updateSkins error surfacing (api.js) ────────────────────────────────────

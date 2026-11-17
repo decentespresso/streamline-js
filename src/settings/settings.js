@@ -20,7 +20,7 @@ import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmM
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
-import { compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure, recordRateLimit, limitRemainingMs, getTag, skinUpdateFailureText, switchSkinNatively } from '../modules/skin-version.js';
+import { compareVersions, skinUpdateFailureText, switchSkinNatively, skinUpdateOutcome, appUpdateAvailability } from '../modules/skin-version.js';
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
 import { openModal, shouldUseNumpad, initializeNumpadModal } from '../modules/numpad-modal.js';
@@ -5757,98 +5757,31 @@ export function renderSensorCalSettings() {
 }
 
 
-// ── Skin update check ────────────────────────────────────────────────────────
-// For every bundled skin installed from a GitHub release, "Update available"
-// compares the installed version the bridge reports (GET /api/v1/webui/skins ->
-// s.version) against the latest release tag of that skin's own repo. Older
-// installed version => update available. A skin we have no release tag for --
-// not installed from a GitHub release, never checked, check failed, or GitHub's
-// quota gone -- gets NO badge: claiming "Up to date" off an unknown answer is
-// what decaid #1118 called out. APP_VERSION is NOT used here — it is a
-// hardcoded build marker shown only so dist/preview users know which build runs.
+// ── Skin update check ───────────────────────────────────────────────────────
+// Decaid owns remote update discovery (streamline-js#199). The cards show the
+// version Decaid reports as INSTALLED (GET /api/v1/webui/skins -> s.version) and
+// nothing about what might exist remotely: no "Update available", no "Up to
+// date", because this skin no longer asks GitHub and Decaid's installed-state
+// payload cannot answer either question. `reaMetadata.lastChecked` is a
+// timestamp, not proof of current remote state, so it is not rendered as one.
 //
-// The per-repo cooldown lives in src/modules/skin-version.js and is persisted,
-// so re-entering Settings or reloading the page cannot re-spend GitHub's 60/h
-// budget. See that file's header for why the budget matters.
+// Checking is explicit and mutating: the user presses the button, Decaid checks
+// the configured sources AND installs what is eligible, and the cards are
+// repainted from a fresh GET /skins afterwards (window.updateSkin below).
+//
+// APP_VERSION is NOT the installed version of anything else -- it is a
+// hardcoded build marker, used only as the fallback for our OWN card on a
+// dist/preview build where Decaid reports no version for it.
 
-// owner/repo for a skin from the bridge's install metadata, or null when it wasn't
-// installed from a GitHub release. Our own skin falls back to the canonical repo so
-// it stays checkable even if its metadata is missing.
-function skinRepoSlug(s) {
-    const m = (s?.reaMetadata?.sourceUrl || '').match(/github_release:([^@\s]+)/i);
-    if (m) return m[1];
-    if (s?.id === SKIN_ID) return 'decentespresso/streamline-js';
-    return null;
-}
+// One-time cleanup: the browser-side GitHub release cache this page used to
+// keep (decaid#1118) is gone, so its key is dead weight in localStorage.
+// Removing an absent key is a no-op, so this is safe to run on every load, and
+// it touches nothing else.
+try { localStorage.removeItem('githubReleaseChecks'); } catch (e) { /* private mode */ }
 
-// Cooldown + last-answer cache, read once per page and written back after every
-// check. localStorage, not settingsCache: the cache dies with the settings
-// module, and the whole point is that a reload or a second visit does not get a
-// fresh 60-request budget.
-const RELEASE_STATE_KEY = 'githubReleaseChecks';
-
-function releaseState() {
-    if (!settingsCache.releaseState) {
-        let saved = null;
-        try { saved = JSON.parse(localStorage.getItem(RELEASE_STATE_KEY) || 'null'); } catch (e) { /* private mode / bad JSON */ }
-        settingsCache.releaseState = normalizeReleaseState(saved);
-    }
-    return settingsCache.releaseState;
-}
-
-function saveReleaseState() {
-    try { localStorage.setItem(RELEASE_STATE_KEY, JSON.stringify(settingsCache.releaseState)); } catch (e) { /* non-fatal */ }
-}
-
-// Ask GitHub for a repo's latest release tag, at most once per TTL and never
-// through an active cooldown, then re-render. Non-fatal per repo: a failed or
-// refused check leaves that skin with no badge rather than a false "Up to date".
-function maybeCheckLatestRelease(slug, categories) {
-    const state = releaseState();
-    const inFlight = settingsCache.releaseInFlight || (settingsCache.releaseInFlight = new Set());
-    if (!slug || inFlight.has(slug) || !shouldCheck(state, slug)) return;
-    inFlight.add(slug);
-    fetch(`https://api.github.com/repos/${slug}/releases/latest`, {
-        headers: { Accept: 'application/vnd.github+json' },
-    })
-        .then(async (r) => {
-            if (r.ok) {
-                const data = await r.json().catch(() => null);
-                recordSuccess(state, slug, data?.tag_name?.trim() || null);
-                return;
-            }
-            // 403 with the quota gone, or 429: stop asking for every repo until
-            // GitHub's own reset time, and say so once in the log.
-            if (r.status === 403 || r.status === 429) {
-                recordRateLimit(state, {
-                    reset: r.headers?.get?.('x-ratelimit-reset'),
-                    retryAfter: r.headers?.get?.('retry-after'),
-                });
-                logger.info(`GitHub release check rate-limited (${r.status}); cooling down for ${Math.round(limitRemainingMs(state) / 60000)} min`);
-                return;
-            }
-            recordFailure(state, slug);
-        })
-        .catch(() => { recordFailure(state, slug); })
-        .finally(() => {
-            inFlight.delete(slug);
-            saveReleaseState();
-            // A page can be reached under more than one category id — re-render
-            // whichever is active so the freshly-fetched release tag is shown.
-            if (categories.includes(activeSettingsCategory)) {
-                updateSettingsContentArea(activeSettingsCategory);
-            }
-        });
-}
-
-function maybeCheckLatestReleases() {
-    const slugs = new Set((settingsCache.allSkins || []).map(skinRepoSlug).filter(Boolean));
-    for (const slug of slugs) maybeCheckLatestRelease(slug, ['skin', 'appearance']);
-}
-
-// Decaid's own repo. Its release tags ('v0.8.4') are compared against the running
-// build with the same compareVersions used for skins, which strips the leading 'v'.
-const DECAID_REPO = 'decentespresso/decaid';
+// Fallback for the Download link when Decaid's update state carries no release
+// URL of its own (it names the exact release while one is available, and its
+// releases page otherwise).
 const DECAID_RELEASES_URL = 'https://github.com/decentespresso/decaid/releases';
 
 // English gets the shorter, current phrasing directly; every other language
@@ -5893,26 +5826,6 @@ export function renderSkinSettings() {
     const allSkins = settingsCache.allSkins || [];
     const activeSkinId = activeSkin?.id || '';
 
-    maybeCheckLatestReleases();
-
-    // Per-skin update badge: each skin installed from a GitHub release is compared
-    // against the latest release tag of its own repo. No tag and no installed
-    // version means no answer, and no answer means no badge -- the same rule the
-    // Decaid app-update block below follows.
-    const state = releaseState();
-    const skinBadge = (s, isActive) => {
-        const { tag: latest, known } = getTag(state, skinRepoSlug(s));
-        if (!known || !s.version) return '';
-        const needsUpdate = compareVersions(s.version, latest) < 0;
-        const base = 'text-[16px] font-semibold px-[8px] py-[2px] rounded-full';
-        if (isActive) return needsUpdate
-            ? `<span class="${base} bg-white/20 text-white" data-i18n-key="Update available">Update available</span>`
-            : `<span class="${base} bg-white/20 text-white" data-i18n-key="Up to date">Up to date</span>`;
-        return needsUpdate
-            ? `<span class="${base} bg-[#da515e]/15 text-[#da515e]" data-i18n-key="Update available">Update available</span>`
-            : `<span class="${base} bg-[#0ca581]/15 text-[#0ca581]" data-i18n-key="Up to date">Up to date</span>`;
-    };
-
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
@@ -5926,10 +5839,11 @@ export function renderSkinSettings() {
                 <div class="grid grid-cols-2 gap-[14px] w-full">
                     ${(allSkins.length > 0 ? allSkins : (activeSkin ? [activeSkin] : [])).map(s => {
                         const isActive = s.id === activeSkinId;
-                        // Prefer the version the bridge reports (the actually-installed
-                        // release, which tracks GitHub) so the card matches the update
-                        // badge. Fall back to the hardcoded build marker only when the
-                        // bridge reports no version for our skin (dist/preview builds).
+                        // The version Decaid reports as installed. The hardcoded build
+                        // marker is the fallback for our OWN card only, on a dist or
+                        // preview build where Decaid reports no version for it; any
+                        // other skin with no reported version simply shows none, rather
+                        // than borrowing a number that is not about it.
                         const displayVersion = s.version || (s.id === SKIN_ID ? APP_VERSION : '');
                         return `
                         <button
@@ -5946,7 +5860,6 @@ export function renderSkinSettings() {
                             </div>
                             <div class="flex items-center gap-[10px]">
                                 ${displayVersion ? `<span class="text-[17px] font-['Inter:Regular',sans-serif] opacity-80">v${displayVersion}</span>` : ''}
-                                ${skinBadge(s, isActive)}
                                 <span class="text-[14px] font-['Inter:Regular',sans-serif] opacity-60 uppercase tracking-wider">${s.isBundled ? 'Bundled' : 'Installed'}</span>
                             </div>
                         </button>`;
@@ -7472,27 +7385,19 @@ export function renderFirmwareUpdateSettings() {
 // Render the app-update panel from an AppUpdateState snapshot (ws/v1/update).
 // Re-rendered in place on every state change by initAppUpdateSection().
 function renderAppUpdateBlock(state) {
-    // The badge answers one question -- is the running build older than the newest
-    // release in Decaid's repo -- and answers it the same way the skin cards do,
-    // with the same compareVersions. Asking GitHub directly is what makes it work
-    // everywhere: Decaid's own check never runs on macOS (UpdateCheckService
-    // returns at its `if (_isMacOS)` guard, Sparkle owns updates there), so a badge
-    // driven off its state machine was blank on exactly the platform being used.
-    maybeCheckLatestRelease(DECAID_REPO, ['rea']);
-
-    const current = settingsCache.appInfo?.version || state?.currentVersion || '';
-    // No tag yet (still fetching, offline, or rate-limited) is not "up to date" --
-    // say nothing rather than guess.
-    const { tag: latest, known: tagKnown } = getTag(releaseState(), DECAID_REPO);
-    const known = tagKnown && !!current;
-    const needsUpdate = known && compareVersions(current, latest) < 0;
-    const latestPlain = String(latest || '').replace(/^v/i, '');
+    // Decaid is the only source here (streamline-js#199): this reads the state it
+    // streams and asks api.github.com nothing. appUpdateAvailability explains why
+    // there is an "Update available" badge and no "Up to date" one -- an idle
+    // phase with no latestVersion cannot tell "checked, nothing new" apart from
+    // "never checked", which is every run on macOS and every externally managed
+    // install. No badge is the honest answer there.
+    const { available: needsUpdate, latest: latestPlain, releaseUrl } =
+        appUpdateAvailability(state, settingsCache.appInfo?.version);
 
     const base = 'text-[16px] font-semibold px-[8px] py-[2px] rounded-full';
-    const badge = !known ? ''
-        : needsUpdate
-            ? `<span class="${base} bg-[#da515e]/15 text-[#da515e]" data-i18n-key="Update available">Update available</span>`
-            : `<span class="${base} bg-[#0ca581]/15 text-[#0ca581]" data-i18n-key="Up to date">Up to date</span>`;
+    const badge = needsUpdate
+        ? `<span class="${base} bg-[#da515e]/15 text-[#da515e]" data-i18n-key="Update available">Update available</span>`
+        : '';
 
     const phase = state?.phase;
     const busy = phase === 'downloading' || phase === 'installing';
@@ -7510,7 +7415,7 @@ function renderAppUpdateBlock(state) {
     } else if (needsUpdate && state?.installable) {
         action = `<button onclick="window.installAppUpdate()" class="${btn} bg-[#2e7d32] text-white">${getTranslation('Update App')}</button>`;
     } else if (needsUpdate) {
-        action = `<a href="${DECAID_RELEASES_URL}" class="${btn} bg-[var(--button-primary-bg)] text-white no-underline">${getTranslation('Download')}</a>`;
+        action = `<a href="${releaseUrl || DECAID_RELEASES_URL}" class="${btn} bg-[var(--button-primary-bg)] text-white no-underline">${getTranslation('Download')}</a>`;
     }
 
     const progressBar = phase === 'downloading'
@@ -7531,11 +7436,10 @@ function renderAppUpdateBlock(state) {
 }
 
 // Connect ws/v1/update and keep #app-update-section in sync with AppUpdateState.
-// The badge no longer comes from here -- it compares the running build against
-// Decaid's newest GitHub release (renderAppUpdateBlock) -- so this exists only for
-// the Android in-app install: `installable`, and the download/install progress.
-// The check on open is what populates `installable` there; it is deliberately
-// silent, since on macOS Decaid answers it with nothing at all.
+// This is now the ONLY source for the whole panel -- badge, offered version,
+// install button and progress. The check on open is what populates them; it is
+// deliberately silent, since on macOS Decaid answers it with nothing at all
+// (Sparkle owns updates there) and the panel then simply shows no badge.
 function initAppUpdateSection() {
     const send = (command) => {
         try {
@@ -9482,14 +9386,30 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         const btn = document.getElementById('skinUpdateBtn');
         if (btn) { btn.disabled = true; btn.textContent = getTranslation('Updating'); }
         try {
-            await updateSkins(); // bridge checks sources & downloads newer skin files server-side
+            // Decaid checks the configured sources AND installs what is eligible.
+            // It reports no per-skin outcome (just "completed", or a 500 with a
+            // plain-language error), so what changed is read back off the
+            // installed versions -- see skinUpdateOutcome.
+            const before = settingsCache.allSkins || [];
+            await updateSkins();
             settingsCache.allSkins = await getAllSkins();
+            const changed = skinUpdateOutcome(before, settingsCache.allSkins);
             const diskVersion = settingsCache.allSkins.find(s => s.id === SKIN_ID)?.version;
+            // Our own skin moving is the one outcome that cannot just be painted:
+            // the new files are on disk but this page is still the old bundle.
             if (diskVersion && diskVersion !== APP_VERSION) {
                 ui.showToast(`New version v${diskVersion} downloaded. Reloading...`, 2000, 'success');
                 setTimeout(() => window.location.reload(), 2000);
+            } else if (changed.length) {
+                // Names and numbers stay outside the translated key.
+                const list = changed.map(c => `${getTranslation(c.name)} v${c.to}`).join(', ');
+                ui.showToast(`${getTranslation('Updated')}: ${list}`, 5000, 'success');
+                if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
             } else {
-                ui.showToast(`${getTranslation('Up to date')} (v${APP_VERSION}).`, 4000, 'info');
+                // Decaid ran the check and installed nothing. That is all it
+                // reports, so the toast says that and claims nothing about what
+                // the remote sources hold now.
+                ui.showToast(getTranslation('No update necessary'), 4000, 'info');
                 if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
             }
         } catch (error) {

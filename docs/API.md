@@ -357,6 +357,19 @@ A skin is identified by its `skin-manifest.json`:
 The normal upgrade path has two steps. Install a new version from a GitHub release, then set it as
 default. This is what Settings → Skin drives.
 
+Reading installed state and checking for updates are different verbs, and Decaid owns the remote
+side of both. `GET /webui/skins` is read-only: it reports the version each skin has **installed**,
+plus `reaMetadata.lastChecked`, a timestamp of Decaid's last look — not evidence of what the remote
+source holds now. `POST /webui/skins/update` is the mutating one: it checks every configured source
+**and installs** what is eligible, then answers `{"message": "Skin update check completed"}`, or HTTP
+500 with a plain-language error if anything failed, partial completion included. It reports no
+per-skin outcome, so what changed is read back from the installed versions afterwards. It is gated on
+an `extensions:manage` bearer token, which a skin does not hold, so a tokenless call can arrive as
+`401`.
+
+The skin itself never queries `api.github.com` for skin or app versions — Decaid holds the shared
+GitHub budget (decaid#1118). App-update state comes from `GET /api/v1/update` and `ws/v1/update`.
+
 ---
 ---
 

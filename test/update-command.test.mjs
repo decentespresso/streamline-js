@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { compareVersions, getTag, normalizeReleaseState, recordSuccess } from '../src/modules/skin-version.js';
+import { appUpdateAvailability, compareVersions } from '../src/modules/skin-version.js';
 
 const apiSource = readFileSync(new URL('../src/modules/api.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const apiStart = apiSource.indexOf('export function connectUpdateWebSocket');
@@ -122,39 +122,30 @@ test('a command-level error reply is surfaced with its url', () => {
 });
 
 // ─── Decaid update badge ─────────────────────────────────────────────────────
-// Same badge as the skin cards, same comparison: the running build against the
-// newest release tag in Decaid's repo. Driving it off Decaid's own state machine
-// left it blank on macOS, where UpdateCheckService returns at its `if (_isMacOS)`
-// guard and never looks.
+// Decaid is the only source (streamline-js#199): the panel reads the
+// AppUpdateState it streams and asks api.github.com nothing. Decaid names
+// latestVersion only while an update is available, so there is an "Update
+// available" badge and deliberately no "Up to date" one -- see
+// appUpdateAvailability for why its payload cannot support that claim.
 
 const blockStart = settingsSource.indexOf('function renderAppUpdateBlock(state) {');
 assert.notEqual(blockStart, -1, 'renderAppUpdateBlock not found in settings.js');
 const blockEnd = settingsSource.indexOf('\n}\n', blockStart) + 3;
 
-// compareVersions and the release-tag cache live in skin-version.js (decaid
-// #1118), so the badge reads a real cache here: a tag is known only after a
-// successful check recorded it.
 const RELEASES_URL = 'https://github.com/decentespresso/decaid/releases';
-const renderBadge = ({ current, latest, state = {} }) => {
-    const releases = normalizeReleaseState(null);
-    if (latest) recordSuccess(releases, 'decentespresso/decaid', latest);
-    return new Function(
-        'settingsCache', 'getTranslation', 'maybeCheckLatestRelease', 'DECAID_REPO', 'DECAID_RELEASES_URL',
-        'compareVersions', 'getTag', 'releaseState',
-        `${settingsSource.slice(blockStart, blockEnd)}\n    return renderAppUpdateBlock;`,
-    )(
-        { appInfo: current ? { version: current } : null },
-        (key) => key,
-        () => {},
-        'decentespresso/decaid',
-        RELEASES_URL,
-        compareVersions,
-        getTag,
-        () => releases,
-    )(state);
-};
+// `current` is what settingsCache.appInfo reports (the app this page is talking
+// to); everything else is the snapshot Decaid pushed.
+const renderBadge = ({ current, latest, state = {} }) => new Function(
+    'settingsCache', 'getTranslation', 'DECAID_RELEASES_URL', 'appUpdateAvailability',
+    `${settingsSource.slice(blockStart, blockEnd)}\n    return renderAppUpdateBlock;`,
+)(
+    { appInfo: current ? { version: current } : null },
+    (key) => key,
+    RELEASES_URL,
+    appUpdateAvailability,
+)({ currentVersion: current, latestVersion: latest ?? null, ...state });
 
-test('an older build than the newest release shows "Update available"', () => {
+test('a build older than the version Decaid offers shows "Update available"', () => {
     const html = renderBadge({ current: '0.8.3', latest: 'v0.8.4' });
     assert.ok(html.includes('Update available'));
     assert.ok(!html.includes('Up to date'));
@@ -166,33 +157,28 @@ test('the offered version is shown next to the badge, without its tag prefix', (
     assert.ok(!html.includes('>v0.8.4<'));
 });
 
-test('matching the newest release shows "Up to date"', () => {
-    const html = renderBadge({ current: '0.8.4', latest: 'v0.8.4' });
-    assert.ok(html.includes('Up to date'));
-    assert.ok(!html.includes('Update available'));
-});
-
-test('a build newer than the newest release is not an update', () => {
-    const html = renderBadge({ current: '0.9.0', latest: 'v0.8.4' });
-    assert.ok(html.includes('Up to date'));
-});
-
-test('no badge at all until the release tag is known', () => {
-    // Still fetching, offline, or rate-limited: saying "Up to date" there would be
-    // the guess this replaced.
+test('no badge at all when Decaid names no newer version', () => {
+    // Nothing offered covers three states this payload cannot tell apart --
+    // checked and current, never checked, and macOS where Decaid never checks --
+    // so the panel says nothing rather than guessing "Up to date".
     for (const latest of [null, undefined, '']) {
         const html = renderBadge({ current: '0.8.3', latest });
         assert.ok(!html.includes('Up to date'), `latest=${latest}`);
         assert.ok(!html.includes('Update available'), `latest=${latest}`);
     }
-    assert.ok(!renderBadge({ current: '', latest: 'v0.8.4' }).includes('Up to date'));
+});
+
+test('a build newer than the offered version is not an update', () => {
+    const html = renderBadge({ current: '0.9.0', latest: 'v0.8.4' });
+    assert.ok(!html.includes('Update available'));
+    assert.ok(!html.includes('Up to date'));
 });
 
 test('the install button appears only when Decaid says it can install', () => {
     const outdated = { current: '0.8.3', latest: 'v0.8.4' };
     assert.ok(!renderBadge({ ...outdated, state: { installable: false } }).includes('installAppUpdate'));
     assert.ok(renderBadge({ ...outdated, state: { installable: true } }).includes('installAppUpdate'));
-    // Nothing to install when already current.
+    // Nothing to install when nothing newer is offered.
     assert.ok(!renderBadge({ current: '0.8.4', latest: 'v0.8.4', state: { installable: true } }).includes('installAppUpdate'));
 });
 
@@ -207,22 +193,40 @@ test('a download in progress replaces the button with its progress', () => {
 
 // Only Android can install in place; everywhere else the release page is the way
 // through, so that is what the button offers.
-test('off Android an available update links to the release page', () => {
+test('off Android an available update links to the release Decaid named', () => {
+    const html = renderBadge({
+        current: '0.8.3', latest: 'v0.8.4',
+        state: { installable: false, releaseUrl: 'https://github.com/decentespresso/decaid/releases/tag/v0.8.4' },
+    });
+    assert.ok(html.includes('href="https://github.com/decentespresso/decaid/releases/tag/v0.8.4"'));
+    assert.ok(!html.includes('installAppUpdate'));
+});
+
+test('with no release URL in the snapshot the link falls back to the releases page', () => {
     const html = renderBadge({ current: '0.8.3', latest: 'v0.8.4', state: { installable: false } });
     assert.ok(html.includes(`href="${RELEASES_URL}"`));
-    assert.ok(!html.includes('installAppUpdate'));
 });
 
 test('Android keeps the in-app install instead of the link', () => {
     const html = renderBadge({ current: '0.8.3', latest: 'v0.8.4', state: { installable: true } });
     assert.ok(html.includes('installAppUpdate'));
-    assert.ok(!html.includes(`href="${RELEASES_URL}"`));
+    assert.ok(!html.includes('href="https://github.com'));
 });
 
-test('being current offers no action at all', () => {
+test('nothing offered means no action at all', () => {
     const html = renderBadge({ current: '0.8.4', latest: 'v0.8.4', state: { installable: false } });
     assert.ok(!html.includes(`href="${RELEASES_URL}"`));
     assert.ok(!html.includes('installAppUpdate'));
+});
+
+// The badge must not come back through a side door: the page that renders it
+// holds no api.github.com URL at all (prose about Decaid's own checks is fine),
+// and the cache key it used to keep is only ever removed.
+test('settings.js asks GitHub nothing about versions', () => {
+    assert.ok(!settingsSource.includes('https://api.github.com'));
+    // The dead cache key survives in exactly one place: the line that deletes it.
+    assert.deepEqual(settingsSource.match(/githubReleaseChecks/g), ['githubReleaseChecks']);
+    assert.ok(settingsSource.includes("removeItem('githubReleaseChecks')"));
 });
 
 // The card renders into #app-update-section, which already carries the box
