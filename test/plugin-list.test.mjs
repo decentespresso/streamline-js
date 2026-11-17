@@ -267,7 +267,7 @@ const descMatch = source.match(/^function pluginDescription\(plugin\) \{[\s\S]*?
 assert.ok(descMatch, 'pluginDescription not found in settings.js');
 const pluginDescription = new Function(`${descMatch[0]}\nreturn pluginDescription;`)();
 
-test('a card with only custom-UI settings keeps Open, enable and version controls without raw fields', () => {
+test('a card with only custom-UI settings keeps Open and version info, has no enable toggle, and no raw fields', () => {
     const match = source.match(/^function renderPluginCard\(pluginId, plugins, \{ asPage = false \} = \{\}\) \{[\s\S]*?\r?\n\}/m);
     assert.ok(match, 'renderPluginCard not found');
     const render = new Function('pluginCardOverride', 'pluginViewModel', 'getTranslation',
@@ -283,7 +283,11 @@ test('a card with only custom-UI settings keeps Open, enable and version control
     };
     const html = render(plugin.id, [plugin], { asPage: true });
     assert.match(html, /data-i18n-key="Open"/);
-    assert.match(html, /plugin-enable-toggle" checked/);
+    // Enabling needs an extensions:manage token a skin never gets, so the card
+    // points at Decaid instead; in a plain browser there is no exit button.
+    assert.doesNotMatch(html, /plugin-enable-toggle/);
+    assert.match(html, /data-i18n-key="Manage this plugin in the Decaid dashboard\."/);
+    assert.doesNotMatch(html, /data-role="plugin-manage"/);
     assert.match(html, /data-role="plugin-version-info"/);
     assert.doesNotMatch(html, /flowReadings|data-setting-key/);
     // Open is a button, not a link: a plugin whose skin answer declares

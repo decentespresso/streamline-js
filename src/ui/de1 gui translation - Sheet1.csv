@@ -1958,3 +1958,5 @@ The whole update takes at least 50 minutes. Do not power off the machine and lea
 The whole update takes up to 25 minutes. Do not power off the machine and leave this page until it finishes.,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 Volume Look-ahead,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 "Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Manage in Decaid,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+Manage this plugin in the Decaid dashboard.,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

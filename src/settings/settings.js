@@ -1,5 +1,5 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
-import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, approvePluginUpdate, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo, getDevices } from '../modules/api.js';
+import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo, getDevices } from '../modules/api.js';
 import { isCustomSaverBrightness, setCustomSaverBrightnessEnabled, getSaverBrightness, setSaverBrightness, SAVER_BRIGHTNESS_DEFAULT } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
@@ -24,7 +24,7 @@ import { compareVersions, skinUpdateFailureText, switchSkinNatively, skinUpdateO
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
 import { openModal, shouldUseNumpad, initializeNumpadModal } from '../modules/numpad-modal.js';
-import { ensureDye2PluginReady, getDye2VersionInfo, installDye2Plugin, offerDye2Update, checkDye2UpdatesIfDue, clearDye2ContextOnDisable } from '../modules/dyeStrip.js';
+import { ensureDye2PluginReady, getDye2VersionInfo, installDye2Plugin, offerDye2Update } from '../modules/dyeStrip.js';
 import { pluginKeywords, pluginListKeywords, subcategoryMatches, textFromHtml, tokenPattern, HIGHLIGHT_CLASS } from '../modules/settings-search.js';
 import { haYamlBlocks } from '../modules/home-assistant.js';
 import { loadIro } from '../modules/vendor-loader.js';
@@ -33,7 +33,7 @@ import { SETTINGS_TREE as settingsTree } from './settings-tree.js';
 import { adoptFromMachine, diffUserSettings, isOutOfRange, normalizeSettingValue, rejectedWrites, restorePatches, splitDifferences } from './settings-restore.js';
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
-         minutesSince, shouldCheckPluginUpdates, isPluginSettingVisible, pluginUiUrl,
+         minutesSince, isPluginSettingVisible, pluginUiUrl,
          AUTO_FLOW_CAL_PLUGIN_ID, isFlowCalPluginManaging } from './plugin-view.js';
 import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
@@ -6218,7 +6218,7 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
 // `ensureLoaded` is awaited before switching a setting ON, because a setting
 // means nothing while the plugin is unloaded.
 export function bindPluginSettingControls(rootEl, {
-    pluginId, idPrefix, schema, keys, settings, ensureLoaded = async () => {}, logLabel = pluginId,
+    pluginId, idPrefix, schema, keys, settings, ensureLoaded = async () => {}, logLabel = pluginId, readOnly = false,
 }) {
     if (!rootEl) return;
 
@@ -6240,6 +6240,14 @@ export function bindPluginSettingControls(rootEl, {
         if (el.dataset.settingType === 'secure') markSecure(el, pluginSecureIsSet(value));
         else if (el.type === 'checkbox') el.checked = value === true;
         else if (value !== undefined && value !== null) el.value = value;
+    }
+
+    // Saving a plugin setting needs an extensions:manage bearer token Decaid
+    // never gives a skin (POST /plugins/{id}/settings answers 401), so the
+    // generic plugin card shows the stored values and changes happen in Decaid.
+    if (readOnly) {
+        rootEl.querySelectorAll('[data-setting-key]').forEach(el => { el.disabled = true; });
+        return;
     }
 
     rootEl.querySelectorAll('[data-setting-key]').forEach(el => {
@@ -6528,15 +6536,6 @@ function renderDye2Extra() {
 }
 
 function setupDye2Extra(cardEl, refreshVersion) {
-    // Opening this card is the update check -- no button for it. The version
-    // block already painted from GET /plugins; checkDye2UpdatesIfDue installs
-    // anything that needs no new permission on its own (rate-limit aware) and
-    // what survives becomes a pendingUpdate the block repaints with its
-    // Approve button.
-    checkDye2UpdatesIfDue()
-        .then(() => refreshVersion())
-        .catch((e) => logger.error('DYE2 update check failed', e));
-
     const toggle = cardEl.querySelector('#dye2-enabled');
     if (!toggle) return;
     const KEY = 'streamline.dye2Enabled';
@@ -6580,10 +6579,8 @@ function setupDye2Extra(cardEl, refreshVersion) {
 // Unknowns stay "—" rather than being guessed at. Returns a refresh() so the
 // caller (and an override's own listeners, e.g. DYE2's master switch) can
 // repaint after an install/update/approve.
-function renderPluginVersionInfo(el, pluginId, info, override, { checking = false } = {}) {
+function renderPluginVersionInfo(el, pluginId, info, override) {
     if (!el) return null;
-    const button = (id, label) =>
-        `<button id="${id}" class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold self-start">${label}</button>`;
 
     // The pill states what Decaid currently thinks of this plugin, so it sits
     // on the version line it describes rather than on a row of its own.
@@ -6605,9 +6602,7 @@ function renderPluginVersionInfo(el, pluginId, info, override, { checking = fals
         'disabled': WARN, 'update-pending': WARN, 'check-failed': WARN,
         'never-checked': MUTED, 'enabled': 'bg-[var(--button-primary-tint)] text-[var(--mimoja-blue-v2)]',
     };
-    const status = checking
-        ? pill(`${getTranslation('Checking')}…`, MUTED)
-        : pill(getTranslation(pluginStatusLabel(state)), PILL_CLASS[state] || MUTED);
+    const status = pill(getTranslation(pluginStatusLabel(state)), PILL_CLASS[state] || MUTED);
 
     const row = (label, value) => `
         <div class="flex items-center justify-between gap-[24px] w-full">
@@ -6640,11 +6635,8 @@ function renderPluginVersionInfo(el, pluginId, info, override, { checking = fals
     else if (src?.kind === 'local_zip') sourceText = getTranslation('Local ZIP');
     else if (src?.kind === 'local_folder') sourceText = getTranslation('Local folder');
 
-    const idPrefix = `plugin-${pluginId}`;
-
-    // Approving is consent to these specific permissions, not to "an update",
-    // so the button lives inside the panel that names them -- not in a shared
-    // action row further down where the two could be read apart.
+    // Approving it needs an extensions:manage token, so the skin only names the
+    // new permissions; the approval itself happens in Decaid.
     const pendingBlock = info.pending ? `
         <div class="flex flex-col gap-[12px] w-full rounded-[16px] bg-amber-500/10 border border-amber-500/30 p-[24px]">
             <span class="text-[22px] text-[var(--text-primary)]">
@@ -6653,7 +6645,6 @@ function renderPluginVersionInfo(el, pluginId, info, override, { checking = fals
             <span class="text-[22px] font-bold text-[var(--text-primary)] break-words">
                 ${(info.pending.addedPermissions || []).map(escapeHtml).join(', ') || '—'}
             </span>
-            ${button(`${idPrefix}-approve-update`, getTranslation('Approve update'))}
         </div>` : '';
 
     const errorBlock = src?.lastError ? `
@@ -6675,44 +6666,9 @@ function renderPluginVersionInfo(el, pluginId, info, override, { checking = fals
             ${checkedText() ? row('Checked for updates', checkedText()) : ''}
             ${errorBlock}
             ${pendingBlock}
-            ${info.reachable && !info.installed && override?.onInstall
-                ? `<div class="pt-[4px]">${button(`${idPrefix}-install`, getTranslation('Install'))}</div>` : ''}
         </div>`;
 
     const refresh = async () => renderPluginVersionInfo(el, pluginId, await fetchPluginVersionInfo(pluginId, override), override);
-    const busy = (btn, label) => { btn.disabled = true; btn.textContent = label; };
-
-    el.querySelector(`[id="${idPrefix}-install"]`)?.addEventListener('click', async function () {
-        busy(this, `${getTranslation('Installing')}…`);
-        try {
-            await override.onInstall();
-            ui.showToast(getTranslation('Plugin installed'), 2000, 'success');
-        } catch (e) {
-            logger.error(`Plugin install failed (${pluginId})`, e);
-            ui.showToast(`${getTranslation('Install failed')}: ${e.message || e}`, 4000, 'error');
-        }
-        refresh();
-    });
-
-    el.querySelector(`[id="${idPrefix}-approve-update"]`)?.addEventListener('click', async function () {
-        busy(this, `${getTranslation('Updating')}…`);
-        try {
-            const result = await approvePluginUpdate(pluginId);
-            ui.showToast(`${getTranslation('Plugin updated to')} v${result?.version || '?'}`, 2500, 'success');
-        } catch (e) {
-            // 409: the release or branch moved after this permission delta was
-            // shown. Decaid has already recorded the new candidate, so
-            // re-reading shows the fresh delta to approve -- retrying this
-            // call would only 409 again.
-            if (e.status === 409) {
-                ui.showToast(getTranslation('The update changed since it was shown — review it again'), 5000, 'error');
-            } else {
-                logger.error(`Plugin update approval failed (${pluginId})`, e);
-                ui.showToast(`${getTranslation('Update failed')}: ${e.message || e}`, 4000, 'error');
-            }
-        }
-        refresh();
-    });
 
     return refresh;
 }
@@ -6738,8 +6694,8 @@ async function fetchPluginVersionInfo(pluginId, override) {
 // -- so N cards cost one network round trip, not N. Manifest text (name,
 // description) is untrusted and always goes through escapeHtml.
 // A plugin's settings, in three tiers: who it is (name, description), what
-// state it is in (enabled, version, source, the actions that change those), and
-// what it lets you configure (its manifest settings). Tiers are separated by
+// state it is in (enabled, version, source, and where to change that), and
+// what it is configured with (its manifest settings, read-only). Tiers are separated by
 // hairline rules rather than by headings -- a "Plugin Version" heading in the
 // same blue and weight as the plugin's own name made the two read as equals,
 // which is how the old page lost its hierarchy.
@@ -6769,8 +6725,8 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
            data-i18n-key="${escapeHtml(description)}">${escapeHtml(getTranslation(description))}</p>` : '';
 
     // Sits on the description's own line, right-aligned in the same column as
-    // the enable toggle and every other control -- the actions keep one edge,
-    // and the button does not cost a row of its own.
+    // every other control -- the actions keep one edge, and the button does not
+    // cost a row of its own.
     //
     // A button rather than a link: a plugin whose skin answer declares
     // `settingsOpen` as an overlay gets its page in a dialog over Settings
@@ -6782,17 +6738,17 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
            class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold inline-flex items-center justify-center flex-shrink-0"
            data-i18n-key="Open">Open</button>` : '';
 
-    // The generic on/off row. DYE2 replaces it with its own master switch
-    // (PLUGIN_CARD_OVERRIDES.replacesToggle), which gates the dashboard header
-    // rather than the plugin's loaded state.
-    const toggleRow = override.replacesToggle ? '' : `
+    // Turning a plugin on or off, installing, updating and saving its settings
+    // all need an extensions:manage bearer token Decaid never hands a skin, so
+    // this card only reports state and points at Decaid. The button needs the
+    // app's WebView exit bridge; a plain browser gets the note alone.
+    const canExit = !!window.__DECENT_HOST__ && typeof window.decentApp?.exitToDashboard === 'function';
+    const manageRow = `
         <div class="flex items-center justify-between gap-[24px] w-full">
-            <span class="font-['Inter:SemiBold',sans-serif] font-semibold text-[var(--text-primary)] text-[26px]" data-i18n-key="Enabled">${getTranslation('Enabled')}</span>
-            <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                <input type="checkbox" class="sr-only peer plugin-enable-toggle" ${vm.loaded ? 'checked' : ''}>
-                <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-            </label>
+            <span class="text-[22px] text-[var(--text-secondary)]" data-i18n-key="Manage this plugin in the Decaid dashboard.">${getTranslation('Manage this plugin in the Decaid dashboard.')}</span>
+            ${canExit ? `<button type="button" data-role="plugin-manage"
+                class="h-[56px] px-[28px] rounded-[64px] border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] text-[22px] font-bold flex-shrink-0"
+                data-i18n-key="Manage in Decaid">${getTranslation('Manage in Decaid')}</button>` : ''}
         </div>`;
 
     const schemaControls = vm.settingsKeys.map(key => {
@@ -6815,14 +6771,17 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
             ${rule}
 
             <div class="flex flex-col gap-[24px] w-full">
-                ${toggleRow}
-                ${override.renderExtra ? override.renderExtra() : ''}
                 <div data-role="plugin-version-info" class="w-full text-[22px] text-[var(--text-secondary)]">${getTranslation('Checking')}…</div>
+                ${manageRow}
             </div>
+
+            ${override.renderExtra ? `
+            ${rule}
+            ${override.renderExtra()}` : ''}
 
             ${schemaControls ? `
             ${rule}
-            <div class="flex flex-col gap-[30px] w-full">${schemaControls}</div>` : ''}
+            <div class="flex flex-col gap-[30px] w-full [&_:disabled]:opacity-50 [&_label:has(input:disabled)]:opacity-50">${schemaControls}</div>` : ''}
         </div>`;
 }
 
@@ -6878,23 +6837,18 @@ function bindPluginOpenButton(cardEl, plugin) {
     });
 }
 
-// Wire the listeners a freshly-rendered card needs: the version-info fetch
-// and its install/approve-update buttons, the generic enable toggle (unless
-// an override replaces it), and the manifest's own settings schema, using the
-// same read-once/cache-locally pattern Shot Uploader's controls use.
+// Wire the listeners a freshly-rendered card needs: the version-info fetch, the
+// Manage in Decaid button, and the manifest's own settings schema, filled
+// read-only from the stored values.
 function setupPluginCard(cardEl, pluginId, plugins) {
     const override = pluginCardOverride(pluginId);
     const vm = pluginViewModel(plugins, pluginId);
 
     const versionEl = cardEl.querySelector('[data-role="plugin-version-info"]');
-    // Set by the page loader when it is about to ask Decaid for a fresh answer
-    // (pluginUpdatesInFlight): the pill says "Checking…" rather than asserting
-    // a state that is about to be replaced a second later.
-    const checking = !!cardEl.closest('[data-plugin-checking="1"]');
     let refreshVersion = () => {};
     fetchPluginVersionInfo(pluginId, override).then(info => {
         if (!cardEl.isConnected) return;
-        const refresh = renderPluginVersionInfo(versionEl, pluginId, info, override, { checking });
+        const refresh = renderPluginVersionInfo(versionEl, pluginId, info, override);
         if (refresh) refreshVersion = refresh;
     }).catch(() => {
         if (cardEl.isConnected) {
@@ -6904,9 +6858,7 @@ function setupPluginCard(cardEl, pluginId, plugins) {
 
     if (override.setupExtra) override.setupExtra(cardEl, () => refreshVersion());
 
-    cardEl.querySelector('.plugin-enable-toggle')?.addEventListener('change', function () {
-        window.togglePlugin(pluginId, this.checked, this);
-    });
+    cardEl.querySelector('[data-role="plugin-manage"]')?.addEventListener('click', exitToDecentDashboard);
 
     bindPluginOpenButton(cardEl, vm.plugin);
 
@@ -6928,11 +6880,7 @@ function setupPluginCard(cardEl, pluginId, plugins) {
             pluginId,
             idPrefix: `plugin-${pluginId}`,
             schema, keys, settings,
-            ensureLoaded: async () => {
-                if (vm.loaded) return;
-                await enablePlugin(pluginId);
-                vm.loaded = true;
-            },
+            readOnly: true,
         });
     })();
 }
@@ -8207,44 +8155,9 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // only the container differs, so a plugin's controls behave identically
     // whether it is reached from its own nav row or (with none installed) from
     // the aggregate page.
-    // Decaid re-checks managed plugins on one 12-hourly timer (UpdateCheckService),
-    // so a card could sit on "Up to date" for half a day after a release. Opening
-    // Extensions asks for a fresh answer instead: the cards paint immediately from
-    // what the bridge already knows, the check runs in the background, and the page
-    // repaints with whatever it found. A non-escalating update is downloaded AND
-    // installed inside that call, so this is also how a plugin actually updates;
-    // one asking for new permissions lands as the pendingUpdate the card already
-    // renders for approval.
-    //
-    // Whether it runs at all is shouldCheckPluginUpdates (plugin-view.js, pure,
-    // node-tested): it costs an unauthenticated api.github.com request per managed
-    // plugin, out of 60/h shared with Decaid's own timer and with skin updates.
-    let lastPluginUpdateCheckAt = null;
-
-    function pluginUpdatesInFlight(container, plugins) {
-        const due = shouldCheckPluginUpdates(plugins, { lastRunAt: lastPluginUpdateCheckAt });
-        container.dataset.pluginChecking = due ? '1' : '';
-        return due;
-    }
-
-    // `repaint` re-runs the loader, which re-reads /plugins and rebuilds the
-    // cards. The cooldown stamp is taken before the call, so that repaint cannot
-    // start another check and loop.
-    async function runPluginUpdateCheck(container, repaint) {
-        lastPluginUpdateCheckAt = Date.now();
-        try {
-            const { checkPluginUpdates } = await import('../modules/api.js');
-            await checkPluginUpdates();
-        } catch (e) {
-            // Offline, GitHub down or rate-limited: Decaid records it on the
-            // source as lastError, which the repainted card then shows.
-            logger.info(`Plugin update check failed: ${e.message || e}`);
-        }
-        // Navigated away while GitHub was answering.
-        if (!container.isConnected) return;
-        container.dataset.pluginChecking = '';
-        repaint();
-    }
+    // No update check here: POST /plugins/update needs an extensions:manage
+    // token a skin does not get. Decaid's own 12-hourly UpdateCheckService
+    // still installs updates that ask for no new permissions.
 
     window.loadPluginPage = async function(pluginId) {
         const container = document.getElementById('plugin-page-container');
@@ -8261,13 +8174,11 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             pluginNavCache = plugins;
             const name = plugins.find(p => p?.id === pluginId)?.name
                 || pluginCardOverride(pluginId).fallbackTitle || pluginId;
-            const due = pluginUpdatesInFlight(container, plugins);
             container.innerHTML = renderPluginPageTitle(name) + renderPluginCard(pluginId, plugins, { asPage: true });
             translatePage();
             container.querySelectorAll('[data-plugin-card]').forEach(cardEl => {
                 setupPluginCard(cardEl, cardEl.dataset.pluginCard, plugins);
             });
-            if (due) runPluginUpdateCheck(container, () => window.loadPluginPage(pluginId));
         } catch (err) {
             logger.error(`Failed to load plugin ${pluginId}:`, err);
             container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugin: ${escapeHtml(err.message)}</p>`;
@@ -8297,7 +8208,6 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             // Manifest text is third-party content -- plugins install from arbitrary
             // GitHub repos -- so every field renderPluginCard shows is escaped
             // before it reaches innerHTML.
-            const due = pluginUpdatesInFlight(container, plugins);
             container.innerHTML = ids.map((id, i) => `
                 ${i > 0 ? '<div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>' : ''}
                 ${renderPluginCard(id, plugins)}
@@ -8307,59 +8217,9 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             container.querySelectorAll('[data-plugin-card]').forEach(cardEl => {
                 setupPluginCard(cardEl, cardEl.dataset.pluginCard, plugins);
             });
-            if (due) runPluginUpdateCheck(container, () => window.loadPluginList());
         } catch (err) {
             logger.error('Failed to load plugins:', err);
             container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugins: ${escapeHtml(err.message)}</p>`;
-        }
-    };
-
-    const DYE2_PLUGIN_ID = 'dye2.reaplugin';
-
-    // Bean/grinder identity lives in Decaid's workflow context, not inside DYE2,
-    // and every ShotRecord embeds a copy of the workflow at pull time. DYE2 cannot
-    // clear it on the way out: Decaid bumps the plugin generation *before* calling
-    // onUnload, so any fetch from onUnload is rejected as "plugin generation
-    // changed" and never leaves the tablet. Decaid has no native UI that clears
-    // these fields either (WorkflowContext.clearBeanBatch/clearGrinder have zero
-    // callers), so a disabled DYE2 would leave the last bean stamping every
-    // future shot indefinitely. Clear here, where switching the plugin off is the
-    // user's explicit intent -- unlike a reload, upgrade, removal, failed load,
-    // or app shutdown, which all also unload plugins but must keep the selection.
-    //
-    // The field list and the clear itself live in dyeStrip.js, which runs the same
-    // cleanup after every persisted shot and at boot when DYE2 is not running.
-    // grinderSetting goes too here and only here: turning the plugin off drops the
-    // whole grinder, not just its identity.
-
-    window.togglePlugin = async function(pluginId, enable, toggleEl) {
-        const toggle = toggleEl || null;
-        // The input sits inside the <label> that draws the switch; the status text
-        // is the label's sibling, not the input's (whose sibling is the track div).
-        const label  = toggle?.closest('label')?.nextElementSibling;
-        if (toggle) toggle.disabled = true;
-        try {
-            const { enablePlugin, disablePlugin } = await import('../modules/api.js');
-            if (enable) {
-                await enablePlugin(pluginId);
-            } else {
-                // Before the plugin loses its ability to do this itself.
-                // ponytail: covers the switch in this skin only -- disabling DYE2
-                // from Decaid's own settings page bypasses it. Move to
-                // PluginLoaderService.disablePlugin upstream if that path matters.
-                if (pluginId === DYE2_PLUGIN_ID) await clearDye2ContextOnDisable();
-                await disablePlugin(pluginId);
-            }
-            if (label) label.textContent = enable ? 'Enabled' : 'Disabled';
-            ui.showToast(`Plugin ${enable ? 'enabled' : 'disabled'}`, 2500, 'success');
-        } catch (err) {
-            logger.error('Failed to toggle plugin:', err);
-            ui.showToast(`Failed: ${err.message}`, 4000, 'error');
-            // Revert toggle on failure
-            if (toggle) toggle.checked = !enable;
-            if (label) label.textContent = enable ? 'Disabled' : 'Enabled';
-        } finally {
-            if (toggle) toggle.disabled = false;
         }
     };
 
