@@ -20,7 +20,7 @@ import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmM
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
-import { compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure, recordRateLimit, limitRemainingMs, getTag, skinUpdateFailureText } from '../modules/skin-version.js';
+import { compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure, recordRateLimit, limitRemainingMs, getTag, skinUpdateFailureText, switchSkinNatively } from '../modules/skin-version.js';
 import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
 import { openModal, shouldUseNumpad, initializeNumpadModal } from '../modules/numpad-modal.js';
@@ -9413,8 +9413,9 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         //
         // switchSkin returns false when it is not usable (no host, no nonce), so
         // the call is the feature probe as well: a plain browser and a host older
-        // than the hook both fall through to the REST path unchanged.
-        if (window.decentApp?.switchSkin?.(skinId) === true) {
+        // than the hook both fall through to the REST path unchanged. The
+        // accept/refuse rule is in skin-version.js (test/skin-version.test.mjs).
+        if (switchSkinNatively(window.decentApp, skinId)) {
             ui.showToast('Switching skin...', 0, 'info');
             return;
         }
@@ -9456,8 +9457,9 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             // port up. Too early and the navigation is treated as an external link
             // and opens in the system browser instead (#186). Nothing is exposed to
             // the page to say the SkinView is ready, so this is a guess: 5 s, as
-            // asked for in #186, because 1.2 s lost on a slow tablet. The real fix
-            // is a readiness signal from Decaid (decaid#1108).
+            // asked for in #186, because 1.2 s lost on a slow tablet. The fix for
+            // this whole branch is the hook above (decaid#1108); the branch only
+            // survives for hosts that predate it.
             await new Promise(r => setTimeout(r, 5000));
             const enterSkin = () => window.location.assign(
                 `${window.location.protocol}//${window.location.hostname}:3000/?_=${Date.now()}`);

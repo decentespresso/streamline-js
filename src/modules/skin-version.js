@@ -142,6 +142,24 @@ export function shouldPromptReload({ running, disk } = {}) {
     return compareVersions(running, disk) < 0;
 }
 
+// Ask Decaid's host to switch the active skin, and report whether it took it.
+//
+// `window.decentApp.switchSkin(skinId)` is synchronous and returns true only
+// when the host accepted the request: it checks host context, a native-issued
+// nonce and the trusted main-frame SkinView first, then drives the navigation
+// and persists the new default in-process (decaid#1108). So the call is its own
+// feature probe -- a plain browser, an iframe, and a host older than the hook
+// all answer falsy, and no token is involved either way.
+//
+// Anything other than a literal `true` is a refusal, including a truthy value
+// from some future host: the caller must not treat "maybe" as a switch in
+// flight, because nothing else will tell it the switch is not coming.
+//
+// Takes the host object rather than reading `window` so this file stays
+// DOM-free; settings.js passes `window.decentApp`.
+export const switchSkinNatively = (host, skinId) =>
+    !!skinId && typeof host?.switchSkin === 'function' && host.switchSkin(skinId) === true;
+
 // Decaid gates POST /webui/skins/update behind an `extensions:manage` bearer
 // token (decaid #1163). The skin holds no token, and the tokenless exception
 // made for the embedded skin admits only a same-device loopback caller, on a

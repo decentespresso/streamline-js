@@ -2,7 +2,7 @@ import {
     compareVersions, normalizeReleaseState, shouldCheck, recordSuccess, recordFailure,
     recordRateLimit, getTag, isRateLimited, limitRemainingMs, shouldPromptReload,
     SUCCESS_TTL_MS, FAILURE_TTL_MS, DEFAULT_LIMIT_MS, MAX_LIMIT_MS, MAX_REPOS,
-    skinUpdateFailureText, SKIN_UPDATE_TOKEN_REFUSED,
+    skinUpdateFailureText, SKIN_UPDATE_TOKEN_REFUSED, switchSkinNatively,
 } from '../src/modules/skin-version.js';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -277,4 +277,44 @@ test('updateSkins carries the status so the caller can tell a refusal from a fai
     const start = api.indexOf('export async function updateSkins()');
     const body = api.slice(start, api.indexOf('\n}\n', start));
     assert.match(body, /error\.status = response\.status/);
+});
+
+// ── native skin switching (decaid#1108, streamline-js#186) ────────────────
+// The hook is the only switch mechanism that works on a current Decaid: the
+// REST chain it replaced is gated on `extensions:manage`, which the skin's
+// account-proxy token does not carry. Since the call is also the feature probe,
+// these lock what counts as "the host took it".
+
+test('native switch: a host that accepts the request reports a switch in flight', () => {
+    const calls = [];
+    const host = { switchSkin: (id) => { calls.push(id); return true; } };
+    assert.equal(switchSkinNatively(host, 'decaid-skin-42'), true);
+    // Exactly once, with the skin ID -- not its name, URL or repo slug.
+    assert.deepEqual(calls, ['decaid-skin-42']);
+});
+
+test('native switch: a refusal is reported, so the caller can say so instead of waiting', () => {
+    // false = no host context, no nonce, not the trusted main-frame SkinView,
+    // or an unknown skin. Decaid navigates nothing, so nothing is in flight.
+    assert.equal(switchSkinNatively({ switchSkin: () => false }, 'skin-1'), false);
+    // Only a literal true is acceptance: a future host answering with some
+    // other truthy value must not be read as a switch that is under way.
+    assert.equal(switchSkinNatively({ switchSkin: () => 'accepted' }, 'skin-1'), false);
+    assert.equal(switchSkinNatively({ switchSkin: () => 1 }, 'skin-1'), false);
+});
+
+test('native switch: no hook at all is a refusal, not a crash', () => {
+    // A plain browser (no decentApp), and a host older than the hook.
+    assert.equal(switchSkinNatively(undefined, 'skin-1'), false);
+    assert.equal(switchSkinNatively(null, 'skin-1'), false);
+    assert.equal(switchSkinNatively({}, 'skin-1'), false);
+    assert.equal(switchSkinNatively({ switchSkin: 'not a function' }, 'skin-1'), false);
+});
+
+test('native switch: a missing skin ID never reaches the host', () => {
+    let called = false;
+    const host = { switchSkin: () => { called = true; return true; } };
+    assert.equal(switchSkinNatively(host, ''), false);
+    assert.equal(switchSkinNatively(host, undefined), false);
+    assert.equal(called, false, 'an empty ID is our bug, not something to ask the host about');
 });
