@@ -5,6 +5,85 @@ export const SUPPORTED_LANGUAGES = Object.freeze([
     'ca-unfinished', 'fi-unfinished',
 ]);
 
+// Device locale (BCP-47) -> the sheet's column name, where the two disagree.
+//
+// The columns are named after the sheet's own history, not after language
+// codes: Korean is `kr` (the region, not the language `ko`), Chinese is split
+// by script, and the partly-translated languages carry an `-unfinished`
+// suffix. Without this table a Korean, Chinese or Norwegian tablet matched
+// nothing and silently started in English.
+//
+// `nb`/`nn` are Bokmål and Nynorsk, which both read the `no` column; `iw` is
+// the legacy code for Hebrew that older Android still reports.
+//
+// de-AT is deliberately absent: it falls through to the complete `de` column
+// rather than the 45%-translated `de-oe unfinished` one.
+const LANGUAGE_ALIASES = Object.freeze({
+    ko: 'kr',
+    iw: 'he',
+    nb: 'no',
+    nn: 'no',
+    ja: 'jp-unfinished',
+    th: 'th-unfinished',
+    hu: 'hu-unfinished',
+    pl: 'pl-unfinished',
+    sk: 'sk-unfinished',
+    el: 'el-unfinished',
+    cs: 'cs-unfinished',
+    ro: 'ro-unfinished',
+    hi: 'hi-unfinished',
+    tr: 'tr-unfinished',
+    ru: 'ru-unfinished',
+    ca: 'ca-unfinished',
+    fi: 'fi-unfinished',
+});
+
+// Chinese needs the script, which the primary subtag does not carry: a bare
+// `zh-CN` is Simplified and `zh-TW` is Traditional, and only Taiwan, Hong Kong
+// and Macau default to Traditional.
+const TRADITIONAL_REGIONS = new Set(['tw', 'hk', 'mo']);
+
+function matchChinese(parts) {
+    if (parts.includes('hant')) return 'zh-hant';
+    if (parts.includes('hans')) return 'zh-hans';
+    return parts.some((part) => TRADITIONAL_REGIONS.has(part)) ? 'zh-hant' : 'zh-hans';
+}
+
+/**
+ * The column a single language tag should read, or null when none fits.
+ * Accepts a column name as well, so a stored preference round-trips.
+ */
+export function matchLanguage(tag) {
+    const normalized = String(tag || '').trim().toLowerCase();
+    if (!normalized) return null;
+    if (SUPPORTED_LANGUAGES.includes(normalized)) return normalized;
+
+    const parts = normalized.split(/[-_]/);
+    const primary = parts[0];
+    if (primary === 'zh') return matchChinese(parts);
+
+    // `de-CH` style: a region-specific column when the sheet has one.
+    const regional = `${primary}-${parts[1]}`;
+    if (parts.length > 1 && SUPPORTED_LANGUAGES.includes(regional)) return regional;
+
+    const alias = LANGUAGE_ALIASES[primary];
+    if (alias && SUPPORTED_LANGUAGES.includes(alias)) return alias;
+    return SUPPORTED_LANGUAGES.includes(primary) ? primary : null;
+}
+
+/**
+ * The first of the device's preferred languages we can actually show.
+ * `navigator.languages` is ordered by preference, so a user whose first choice
+ * we do not carry still gets their second rather than English.
+ */
+export function resolveLanguage(tags) {
+    for (const tag of [].concat(tags ?? [])) {
+        const match = matchLanguage(tag);
+        if (match) return match;
+    }
+    return null;
+}
+
 function selectedValues(line, targetColumn) {
     let column = 0;
     let quoted = false;

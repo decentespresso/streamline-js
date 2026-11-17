@@ -1,6 +1,6 @@
 import { logger } from './logger.js';
 import { openDB, getSetting, setSetting } from './idb.js';
-import { SUPPORTED_LANGUAGES, parseTranslationColumn } from './i18n-parser.js';
+import { SUPPORTED_LANGUAGES, parseTranslationColumn, matchLanguage, resolveLanguage } from './i18n-parser.js';
 import { APP_VERSION } from '../version.js';
 import { largestFittingSize, predictFittingSize } from './text-fit.js';
 
@@ -54,12 +54,10 @@ async function loadTranslations(language) {
     logger.info(`Translations loaded for language: ${language}`);
 }
 
-function findSupportedLanguage(language) {
-    const normalized = String(language || '').toLowerCase();
-    if (supportedLanguages.includes(normalized)) return normalized;
-    const base = normalized.split('-')[0];
-    return supportedLanguages.includes(base) ? base : null;
-}
+// A stored preference or a device tag -> a column we can show. The matching
+// (script-aware Chinese, the sheet's own column names) lives in i18n-parser.js
+// so node:test can cover it.
+const findSupportedLanguage = (language) => matchLanguage(language);
 
 /**
  * Translates all elements on the page with a `data-i18n-key` attribute.
@@ -434,8 +432,13 @@ export async function setLanguage(lang) {
  * Initializes the internationalization module.
  */
 export async function initI18n() {
+    // A choice the user made wins. With none stored, read the device: every
+    // preferred language in order, not just the first, so a tablet set to
+    // "Catalan, then Spanish" gets Spanish rather than English when we are
+    // short of Catalan.
     const localLanguage = findSupportedLanguage(localStorage.getItem('language'));
-    const initialLanguage = localLanguage || findSupportedLanguage(navigator.language) || 'en';
+    const deviceLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
+    const initialLanguage = localLanguage || resolveLanguage(deviceLanguages) || 'en';
     currentLanguage = initialLanguage;
     localStorage.setItem('language', initialLanguage);
     translatePage();
