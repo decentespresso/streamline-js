@@ -1143,8 +1143,8 @@ export function renderFlowMultiplierSettings(settings) {
 
                 <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px] mt-[30px]">
                     <div class="content-stretch flex items-center relative shrink-0">
-                        <p id="volume-flow-multiplier-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Volume Flow Multiplier (s)">
-                            Volume Flow Multiplier (s)
+                        <p id="volume-flow-multiplier-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Volume Look-ahead">
+                            Volume Look-ahead
                         </p>
                     </div>
                     <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
@@ -1160,7 +1160,6 @@ export function renderFlowMultiplierSettings(settings) {
                                    value="${settings.volumeFlowMultiplier !== undefined ? settings.volumeFlowMultiplier : 0.3}"
                                    step="0.05" min="0"
                                    onchange="window.updateReaSetting('volumeFlowMultiplier', parseFloat(this.value))">
-                            <span class="ml-2 text-nowrap" aria-hidden="true">s</span>
                         </div>
                         <button id="volume-flow-mult-plus" aria-label="Increase volume flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustVolumeFlowMultiplier(0.05);">
@@ -1169,8 +1168,8 @@ export function renderFlowMultiplierSettings(settings) {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center">
-                        Multiplier factor (in seconds) applied to machine flow for projected volume calculation when stopping shots by volume. Default is 0.3. This accounts for system lag between stop command and actual flow stop.
+                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.">
+                        Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.
                     </p>
                 </div>
             </div>

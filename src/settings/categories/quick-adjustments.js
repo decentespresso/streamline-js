@@ -22,7 +22,7 @@ function multiplierCard({ key, label, description, unit = '', step }) {
                 </div>
                 <button type="button" data-adjust="${key}" data-delta="${step}" aria-label="Increase ${label.toLowerCase()}" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center">${PLUS_ICON}</button>
             </div>
-            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full text-center">${description}</p>
+            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="${description}">${description}</p>
         </section>`;
 }
 
@@ -42,10 +42,9 @@ function render(container) {
                 })}
                 ${multiplierCard({
                     key: 'volumeFlowMultiplier',
-                    label: 'Volume Flow Multiplier (s)',
-                    unit: 's',
+                    label: 'Volume Look-ahead',
                     step: 0.05,
-                    description: 'Multiplier factor (in seconds) applied to machine flow for projected volume calculation when stopping shots by volume. Default is 0.3. This accounts for system lag between stop command and actual flow stop.'
+                    description: 'Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.'
                 })}
                 <p data-settings-error role="status" class="hidden text-red-500 text-[22px] text-center"></p>
             </div>
