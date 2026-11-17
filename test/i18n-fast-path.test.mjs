@@ -107,6 +107,9 @@ test('initI18n reads the whole preference list and lets a stored choice win', ()
     const body = source.slice(source.indexOf('export async function initI18n'));
     assert.match(body, /navigator\.languages\?\.length \? navigator\.languages : \[navigator\.language\]/);
     assert.match(body, /preferredLanguage\(\{ stored, device: deviceLanguage, chosen \}\)/);
+    // logger.info is a no-op unless debug is on, so the one line that explains a
+    // wrong language in a field log has to go through audit.
+    assert.match(body, /logger\.audit\(`i18n: device=/);
 });
 
 // ── toast coverage ──────────────────────────────────────────────────────────

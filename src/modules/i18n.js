@@ -443,11 +443,15 @@ export async function initI18n() {
     const chosen = localStorage.getItem(LANGUAGE_SOURCE_KEY) === 'user';
     const deviceLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
     const deviceLanguage = resolveLanguage(deviceLanguages);
-    // Logged because this is the one input we cannot see from here: a WebView
-    // that reports the wrong locale looks exactly like a matcher bug.
-    logger.info(`Device languages: ${[...deviceLanguages].join(', ')} -> ${deviceLanguage || 'no match'}${chosen ? ' (user has chosen one)' : ''}`);
     const pick = (stored) => preferredLanguage({ stored, device: deviceLanguage, chosen });
-    const initialLanguage = pick(findSupportedLanguage(localStorage.getItem('language')));
+    const storedLanguage = findSupportedLanguage(localStorage.getItem('language'));
+    const initialLanguage = pick(storedLanguage);
+    // audit, not info: info is a no-op unless debug is switched on, and this is
+    // exactly the trail a "it did not pick my language" report has to carry. The
+    // WebView's own locale is the one input that cannot be seen from here, and a
+    // WebView reporting the wrong one looks identical to a matcher bug.
+    logger.audit(`i18n: device=${[...deviceLanguages].join('|') || 'none'} match=${deviceLanguage || 'none'}`
+        + ` stored=${storedLanguage || 'none'} chosen=${chosen} -> ${initialLanguage}`);
     currentLanguage = initialLanguage;
     localStorage.setItem('language', initialLanguage);
     translatePage();
