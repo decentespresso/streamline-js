@@ -68,7 +68,6 @@ export const SYNCED_KEYS = [
     'streamline.dyeStripMode',
     'streamline.ecoSteam',
     'streamline.touchSound',
-    'streamline.ledSequences',
     'streamline.settings.location',
     'tempUnit',
     // Main-page quick presets. The values the buttons SET are Decaid's, but the

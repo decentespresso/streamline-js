@@ -16,8 +16,6 @@ import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensave
 import { wakeProfileChoices } from '../modules/wake-profile.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, resolveScreensaverDateFormat, resolveScreensaverClockFormat, resolveScreensaverClockPosition } from '../modules/screensaver-clock.js';
 import { ledRgbToColor16, ledColor16ToHex8, ledHexToRgb, ledPreviewPayload, ledValueOf, ledWithValue } from '../modules/led-color.js';
-import { LED_SEQUENCE_KEY, MAX_PRESET_NAME_LENGTH, sequenceTimeline, formatStepSeconds, nudgeStepDuration, LED_TRIGGER_STATES, parseLedLibrary, serializeLedLibrary, addPreset, removePreset, renamePreset, selectPreset, updateActivePreset, setSequencesEnabled, getActivePreset, addStep, removeStep, updateStep, moveStep, toggleTriggerState } from '../modules/led-sequence.js';
-import { setTriggerSuspended as ledRunSetTriggerSuspended, requestStart as ledRunRequestStart, requestStop as ledRunRequestStop, forceStop as ledRunForceStop, onRunChange as ledRunOnChange, getRunState as ledRunGetState, onMachineStateChange as ledRunOnMachineStateChange, noteStoredPalette as ledRunNoteStoredPalette } from '../modules/led-strip-runner.js';
 import { isCupWarmerOn, readCupWarmerTarget, clampCupWarmerTarget, clampPrewarmMinutes, resolvePrewarm, prewarmWarnings, prewarmShapeSignature, cupWarmerViewMode, formatCurrentMatTemp, getCupWarmerState, setCupWarmerState, patchCupWarmerState, onCupWarmerStateChange, CUP_WARMER_TARGET_KEY, PREWARM_MIN_MINUTES, PREWARM_MAX_MINUTES } from '../modules/cup-warmer.js';
 import { clampCalWeight, calActionState, CAL_WEIGHT_DEFAULT_G, CAL_WEIGHT_MIN_G, CAL_WEIGHT_MAX_G } from '../modules/loadcell-cal.js';
 import { SENSOR_CAL_TARGETS, sensorCalTarget, parseSensorCalInput, previewCalibration, absoluteSetCorrection, formatCalValue, snapshotReading, averageReadings, correctionBlocked, SENSOR_CAL_SAMPLE_WINDOW_MS, clampFlowMultiplier, FLOW_MULTIPLIER_STEP } from '../modules/sensor-cal.js';
@@ -542,11 +540,8 @@ function updateSettingsContentArea(category, nav = null) {
     maintenanceCleanup = null;
     // Leaving the Lighting page → stop previewing, so the strip shows the
     // stored palette again. An unsaved edit is NOT written here: only the
-    // page's Save and the header Save persist (ledSaveOnExit). Also release
-    // this page's 'manual' sequence-run ownership -- a state-triggered run
-    // (led-strip-runner.js, driven from app.js) is untouched by this and keeps
-    // running on whatever page the user goes to next.
-    if (category !== 'ledstrip') { ledRestoreStrip(); ledSeqReleaseManual(); }
+    // page's Save and the header Save persist (ledSaveOnExit).
+    if (category !== 'ledstrip') ledRestoreStrip();
     // Leaving the Load Cells page → hand the scale WS back to the main page.
     if (category !== 'calib_loadcell' && calWsClaimed) calReleaseScaleWs();
     if (category !== 'calib_sensors') {
@@ -3805,47 +3800,14 @@ let ledPutTimer = null;        // debounce handle for the wheel-driven flush/pre
 let ledError = false;
 let ledPreviewActive = false;  // a live colour is being previewed on the strip
 let ledLastLit = {};           // last lit colour per 'zoneKey:state', restored on power-on
-// Which tab of the Lighting page is showing. The page holds two things with
-// different commitment models -- a palette that persists to the machine
-// (Save/Reset) and a sequence that plays transiently and saves locally as you
-// type -- so they get separate tabs rather than one stacked column where
-// "Save" looks like it covers both.
-let ledActiveTab = 'colours';  // 'colours' | 'sequence'
 // The wheel is summoned, not docked: it costs a third of the page and most
 // visits only want a preset or a brightness nudge. Tapping a swatch opens it
 // on that swatch, so there is no separate "which target am I editing" mode --
 // ledSelectedZone/State are still the answer, the tap just sets them.
 let ledPickerOpen = false;
-// The Sequence tab borrows that same wheel rather than falling back to the
-// browser's native <input type="color">, which on the WebView build is an OS
-// dialog with none of the presets and none of this page's scaling fixes. When
-// it owns the picker this holds { index, field: 'frontColor'|'rearColor' } --
-// the step colour being edited -- and is null while the palette owns it.
-let ledPickSeq = null;
 // Front and rear as one control. Linked shows ONE card rather than a live card
 // and a ghost of it, so what you see is what the next edit writes.
 let ledLinked = false;
-// Colour step-sequence editor (REAL capability — see led-sequence.js header).
-// The ACTUAL playback timer/writes/ownership arbitration live in
-// led-strip-runner.js, shared with app.js's machine-state trigger -- this page
-// only edits the persisted sequence and drives the runner's 'manual' owner
-// slot. ledSeqSteps/Loop/TriggerStates are the persisted editor state, loaded
-// lazily on first render; ledSeqRunSnapshot mirrors the runner for painting.
-let ledSeqSteps = null;
-let ledSeqLoop = false;
-let ledSeqTriggerStates = [];
-let ledSeqLoaded = false;
-// The saved sequences and the auto-run switch. ledSeqSteps/Loop/TriggerStates
-// above stay the working copy of whichever preset is active, so every existing
-// step editor keeps writing to exactly one place; ledSeqPersist folds that copy
-// back into the library before storing it.
-let ledSeqLibrary = { enabled: true, activeId: '', presets: [] };
-let ledSeqRunUnsubscribe = null; // set once subscribed to led-strip-runner.js's onRunChange
-let ledSeqRunSnapshot = { owner: null, running: false, index: -1 };
-// Which step's editor is open, or -1. Same idea as ledPickerOpen on the other
-// tab: the thing you tapped is the thing you are editing, and only one editor
-// is on screen at a time.
-let ledSeqSelected = -1;
 let iroLoadPromise = null;
 let iroLoadFailed = false;
 const LED_DEFAULT_ON = 'FFFFAAAA5555'; // warm white — default colour when powering a zone on with no history
@@ -3862,32 +3824,15 @@ const ledZoneKeys = (zone) => zone === 'front' ? ['frontStrip']
     : zone === 'rear' ? ['backStrip']
     : zone === 'switch' ? ['frontSwitch']
     : ['frontStrip', 'backStrip']; // both
-// The palette bank the machine is currently rendering on the strips: 'sleeping'
-// only when the machine is actually asleep; every other (or unknown) state runs
-// the awake palette.
-const ledMachinePaletteState = () =>
-    currentMachineState === MachineState.SLEEPING ? 'sleeping' : 'awake';
 function ledCellColor16(zoneKey, stateKey) { return ledState?.[zoneKey]?.[stateKey] || '000000000000'; }
 function ledCurrentColor16() { return ledCellColor16(ledZoneKeys(ledSelectedZone)[0], ledSelectedState); }
-// What the wheel is pointed at — a sequence step's colour while the Sequence
-// tab owns it, otherwise the selected palette cell. Everything that reads the
-// picker's colour (its mount, the hex readout, the preset highlight) goes
-// through this so one wheel can serve both tabs.
-function ledPickColor16() {
-    if (!ledPickSeq) return ledCurrentColor16();
-    const step = (ledSeqLoad() || [])[ledPickSeq.index];
-    return step ? ledRgbToColor16(ledHexToRgb(step[ledPickSeq.field])) : '000000000000';
-}
-// Apply a picked colour to whatever the wheel points at. A palette edit lands
-// in ledState and previews on the strip; a sequence edit lands in the step and
-// does not preview -- the sequence has a Play button for that, and a preview
-// would fight a run already on the strip.
+// What the wheel is pointed at: the selected palette cell. Everything that
+// reads the picker's colour (its mount, the hex readout, the preset highlight)
+// goes through this.
+const ledPickColor16 = () => ledCurrentColor16();
+// Apply a picked colour to the palette cell the wheel points at: it lands in
+// ledState and previews on the strip.
 function ledPickWrite(hex8) {
-    if (ledPickSeq) {
-        ledSeqSteps = updateStep(ledSeqLoad(), ledPickSeq.index, { [ledPickSeq.field]: hex8 });
-        ledPaintSeqColorsDom();
-        return;
-    }
     if (!ledState) return;
     const c16 = ledRgbToColor16(ledHexToRgb(hex8));
     ledZoneKeys(ledSelectedZone).forEach((k) => {
@@ -3899,103 +3844,11 @@ function ledPickWrite(hex8) {
     ledUpdateSwatchesDom(hex8);
     ledSchedulePreview();
 }
-// End of a gesture. A sequence step persists to localStorage only here, not on
-// every wheel frame.
-function ledPickCommit() {
-    if (ledPickSeq) ledSeqPersist();
-    else ledCommitEdit();
-}
-// Hand the wheel back to the palette. Called wherever the step it points at
-// could move or vanish (a structural edit, a preset switch, closing the step
-// editor) -- retargeting silently would edit a different step than the one the
-// user opened.
-function ledSeqDropPicker() {
-    if (!ledPickSeq) return;
-    ledPickSeq = null;
-    ledPickerOpen = false;
-}
+// End of a gesture.
+function ledPickCommit() { ledCommitEdit(); }
 function ledNormalize(data) {
     const z = (o) => ({ awake: o?.awake || '000000000000', sleeping: o?.sleeping || '000000000000' });
     return { frontStrip: z(data?.frontStrip), backStrip: z(data?.backStrip), frontSwitch: z(data?.frontSwitch) };
-}
-
-// Lazy-load the persisted step sequence (steps + loop + trigger states).
-// Re-reads localStorage whenever the in-memory copy hasn't been loaded yet
-// so a settings re-open after a KV sync from another device picks up the
-// synced value.
-function ledSeqLoad() {
-    if (!ledSeqLoaded) {
-        let stored = null;
-        try { stored = localStorage.getItem(LED_SEQUENCE_KEY); } catch (e) { /* private mode */ }
-        ledSeqLibrary = parseLedLibrary(stored);
-        ledSeqAdoptActive();
-        ledSeqLoaded = true;
-    }
-    return ledSeqSteps;
-}
-
-// Point the working copy at the active preset (an empty library edits nothing).
-function ledSeqAdoptActive() {
-    const active = getActivePreset(ledSeqLibrary);
-    ledSeqSteps = active ? active.steps : [];
-    ledSeqLoop = active ? active.loop : false;
-    ledSeqTriggerStates = active ? active.triggerStates : [];
-}
-
-function ledSeqPersist() {
-    if (ledSeqLibrary.activeId) {
-        ledSeqLibrary = updateActivePreset(ledSeqLibrary, {
-            steps: ledSeqSteps || [], loop: ledSeqLoop, triggerStates: ledSeqTriggerStates,
-        });
-    }
-    try {
-        localStorage.setItem(LED_SEQUENCE_KEY, serializeLedLibrary(ledSeqLibrary));
-    } catch (e) { /* private mode — in-memory state still updates */ }
-}
-
-// A library edit (switch preset, add, delete, rename, auto-run switch): fold
-// the working copy back in first so unsaved step edits are not lost, apply the
-// change, then re-adopt whatever is active now.
-function ledSeqLibraryEdit(mutate) {
-    ledSeqDropPicker();
-    ledSeqLoad();
-    ledSeqPersist();
-    ledSeqLibrary = mutate(ledSeqLibrary);
-    ledSeqAdoptActive();
-    ledSeqPersist();
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
-}
-
-/** Chip/field label for a preset: its name, or "Sequence N" while unnamed. */
-function ledSeqPresetLabel(preset, index) {
-    return preset?.name || `${getTranslation('Sequence')} ${index + 1}`;
-}
-
-// Mirror led-strip-runner.js's shared run state (owner/index) into this page
-// so the active-step highlight and Start/Stop buttons reflect it, including a
-// trigger run that started while the user happens to be on this page. Wired
-// once per Settings visit; ledSeqReleaseManual() below tears it down at every
-// exit seam.
-function ledSeqEnsureSubscribed() {
-    if (ledSeqRunUnsubscribe) return;
-    // While this page is open only Play drives the strip -- see
-    // setTriggerSuspended in led-strip-runner.js.
-    ledRunSetTriggerSuspended(true);
-    ledSeqRunSnapshot = ledRunGetState();
-    ledSeqRunUnsubscribe = ledRunOnChange((snapshot) => {
-        ledSeqRunSnapshot = snapshot;
-        ledSeqPaintActiveStep();
-    });
-}
-
-// Release this page's 'manual' ownership (a no-op if 'manual' doesn't
-// currently own the strip -- e.g. only a trigger run, or nothing, is
-// active) and drop the run-state subscription. Stopping a manual run hands
-// control back to the state trigger -- see led-strip-runner.js.
-function ledSeqReleaseManual() {
-    ledRunRequestStop('manual');
-    ledRunSetTriggerSuspended(false); // hands the strip back to the state trigger
-    if (ledSeqRunUnsubscribe) { ledSeqRunUnsubscribe(); ledSeqRunUnsubscribe = null; }
 }
 
 export function renderLedSettings() {
@@ -4026,8 +3879,6 @@ export function renderLedSettings() {
     if (ledError || !ledState) {
         return renderErrorState(getTranslation('Lighting'), getTranslation('Failed to load lighting settings'));
     }
-    ledSeqEnsureSubscribed();
-
     const isOn = ledPickColor16() !== '000000000000';
     const currentHex = ledColor16ToHex8(ledPickColor16());
     const presetSwatches = LED_PRESETS.map(([name, hex]) =>
@@ -4036,20 +3887,12 @@ export function renderLedSettings() {
             onclick="window.ledApplyPreset('${hex}')" style="background-color: ${hex}"></button>`
     ).join('');
 
-    const seqSteps = ledSeqLoad();
-    const tab = (id, label) =>
-        `<button class="led-tab" role="tab" aria-selected="${ledActiveTab === id}"
-            onclick="window.ledSelectTab('${id}')" data-i18n-key="${label}">${getTranslation(label)}</button>`;
-
     // ── Static Colours ───────────────────────────────────────────────────
     // One card per physical strip, because that is what the owner is thinking
     // about ("the front light"), not a zone x state matrix. Each card carries
     // the two colours that strip can hold and a brightness slider, which is
     // the control people actually reach for and which used to be buried as the
     // wheel's value track. The wheel itself only appears once you tap a colour.
-    //
-    // Save/Reset live here and only here: the Sequence tab saves itself as you
-    // type, and one Save under both made it look like it covered the sequence.
     const stripCard = (zone, label) => {
         const keys = ledZoneKeys(zone);
         const swatch = (stateKey, stateLabel) => {
@@ -4124,152 +3967,7 @@ export function renderLedSettings() {
             </div>
         </div>
 
-        ${ledPickSeq ? '' : pickerPanel}`;
-
-    // ── Sequence & Triggers ──────────────────────────────────────────────
-    // A sequence is the one thing on this page that genuinely IS a sequence,
-    // so it is drawn as a timeline rather than a form: each segment is as wide
-    // as its step is long and carries that step's two colours, which makes the
-    // shape of the whole light show readable at a glance. Tapping a segment
-    // opens its editor underneath -- the same "the thing you tapped is the
-    // thing you are editing" model the Static Colours tab uses.
-    const seqPresets = ledSeqLibrary.presets;
-    const seqActiveIndex = seqPresets.findIndex((p) => p.id === ledSeqLibrary.activeId);
-    const seqChips = seqPresets.map((preset, index) => `
-        <button type="button" class="led-chip" aria-pressed="${preset.id === ledSeqLibrary.activeId}"
-            onclick="window.ledSeqSelectPreset('${preset.id}')">${escapeHtml(ledSeqPresetLabel(preset, index))}</button>`).join('');
-
-    const { segments } = sequenceTimeline(seqSteps);
-    const seqSelected = (ledSeqSelected >= 0 && ledSeqSelected < seqSteps.length) ? ledSeqSelected : -1;
-
-    // Two lanes, front above rear, named in a gutter outside the bar -- a
-    // colour on its own cannot say which strip it drives, and a legend would
-    // make you look away from the thing you are reading.
-    const timeline = !segments.length ? '' : `
-        <div class="led-timeline-wrap">
-            <div class="led-lane-names">
-                <span data-i18n-key="Front">${getTranslation('Front')}</span>
-                <span data-i18n-key="Rear">${getTranslation('Rear')}</span>
-            </div>
-            <div class="led-timeline" role="group" aria-label="${getTranslation('Sequence')}">
-                ${segments.map((seg) => `
-                    <button class="led-seg" style="width:${seg.percent}%; background-image: linear-gradient(180deg, ${seg.frontColor} 0 50%, ${seg.rearColor} 50% 100%)"
-                        data-led-seq-step="${seg.index}" aria-pressed="${seg.index === seqSelected}"
-                        aria-label="${seg.index + 1} · ${formatStepSeconds(seqSteps[seg.index].durationMs)}s"
-                        onclick="window.ledSeqSelectStep(${seg.index})"><span class="led-seg-no">${seg.index + 1}</span></button>`).join('')}
-            </div>
-        </div>`;
-
-    // The same swatch-as-button the Static Colours cards use, and tapping it
-    // opens the same wheel -- a native <input type="color"> here would be an OS
-    // dialog with no presets, and on the WebView build no dialog at all.
-    const seqColorPick = (field, label, hex) => `
-        <div class="led-pick-wrap">
-            <span class="led-pick-cap" data-i18n-key="${label}">${getTranslation(label)}</span>
-            <button class="led-pick" data-led-seq-pick="${seqSelected}:${field}"
-                aria-pressed="${!!ledPickSeq && ledPickSeq.index === seqSelected && ledPickSeq.field === field}"
-                aria-label="${getTranslation(label)}" style="background-color: ${hex}"
-                onclick="window.ledSeqOpenPicker(${seqSelected}, '${field}')"></button>
-        </div>`;
-
-    const stepEditor = seqSelected < 0 ? '' : (() => {
-        const step = seqSteps[seqSelected];
-        return `
-        <div class="led-step-editor">
-            <span class="led-step-index">${seqSelected + 1}</span>
-            <div class="led-step-colors">
-                ${seqColorPick('frontColor', 'Front', step.frontColor)}
-                ${seqColorPick('rearColor', 'Rear', step.rearColor)}
-            </div>
-            <div class="led-dur">
-                <button class="led-icon-btn" aria-label="${getTranslation('Duration (ms)')}"
-                    onclick="window.ledSeqNudgeDuration(${seqSelected}, -1)">&minus;</button>
-                <span class="led-dur-val">${formatStepSeconds(step.durationMs)}s</span>
-                <button class="led-icon-btn" aria-label="${getTranslation('Duration (ms)')}"
-                    onclick="window.ledSeqNudgeDuration(${seqSelected}, 1)">+</button>
-            </div>
-            <div class="flex gap-[8px] ml-auto">
-                <button class="led-icon-btn" aria-label="${getTranslation('Move step up')}" ${seqSelected === 0 ? 'disabled' : ''}
-                    onclick="window.ledSeqMoveStep(${seqSelected}, 'up')">&larr;</button>
-                <button class="led-icon-btn" aria-label="${getTranslation('Move step down')}" ${seqSelected === seqSteps.length - 1 ? 'disabled' : ''}
-                    onclick="window.ledSeqMoveStep(${seqSelected}, 'down')">&rarr;</button>
-                <button class="led-icon-btn" data-variant="remove" aria-label="${getTranslation('Remove step')}"
-                    onclick="window.ledSeqRemoveStep(${seqSelected})">&times;</button>
-            </div>
-        </div>`;
-    })();
-
-    // No "Sequence"/"Name" headings: the chips sit under a tab already called
-    // Sequence, and the field placeholder names the sequence it renames. New
-    // and Delete are the same + and x the step editor uses, so the row reads as
-    // controls rather than prose.
-    const presetPanel = `
-        <div class="flex flex-wrap items-center gap-[12px] w-full">
-            ${seqChips}
-            <button type="button" class="led-icon-btn" data-size="lg" aria-label="${getTranslation('New')}"
-                onclick="window.ledSeqNewPreset()">+</button>
-        </div>
-        ${seqActiveIndex < 0 ? '' : `
-        <div class="flex flex-wrap items-center gap-[12px] w-full">
-            <input id="led-seq-name" type="text" class="led-seq-name" maxlength="${MAX_PRESET_NAME_LENGTH}"
-                value="${escapeHtml(seqPresets[seqActiveIndex].name)}"
-                placeholder="${escapeHtml(ledSeqPresetLabel(null, seqActiveIndex))}"
-                aria-label="${getTranslation('Name')}"
-                onchange="window.ledSeqRenamePreset(this.value)" />
-            <button type="button" class="led-icon-btn" data-size="lg" data-variant="remove" aria-label="${getTranslation('Delete')}"
-                onclick="window.ledSeqDeletePreset()">&times;</button>
-        </div>`}`;
-
-    const sequencePanel = `
-        ${presetPanel}
-        <div class="led-transport w-full">
-            <button id="led-seq-transport" class="led-transport-btn" ${ledSeqTransportAttrs()}
-                onclick="window.ledSeqToggleRun()">${ledSeqTransportLabel()}</button>
-            <div class="led-now" aria-hidden="true">
-                <span id="led-now-front" class="led-now-swatch" style="background-color: ${ledNowColors().front}"></span>
-                <span id="led-now-back" class="led-now-swatch" style="background-color: ${ledNowColors().back}"></span>
-            </div>
-            <span id="led-seq-status" class="text-[20px] font-semibold">${ledSeqStatusHtml()}</span>
-            <label class="flex items-center gap-[12px] ml-auto cursor-pointer">
-                <span class="text-[var(--text-primary)] text-[20px] font-semibold" data-i18n-key="Loop">Loop</span>
-                <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
-                    <input type="checkbox" class="sr-only peer" ${ledSeqLoop ? 'checked' : ''} onchange="window.ledSeqSetLoop(this.checked)">
-                    <span class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></span>
-                    <span class="absolute top-1/2 left-[4px] -translate-y-1/2 peer-checked:translate-x-[34px] size-[30px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></span>
-                </span>
-            </label>
-        </div>
-        ${timeline}
-
-        ${stepEditor}
-        ${ledPickSeq ? pickerPanel : ''}
-
-        ${seqSteps.length ? '' : `<p class="led-muted text-[20px]" data-i18n-key="Add a step to start building a sequence.">Add a step to start building a sequence.</p>`}
-        <button class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[56px] px-[28px] rounded-[28px] text-[18px] font-bold self-start"
-            onclick="window.ledSeqAddStep()" data-i18n-key="Add step">Add step</button>
-
-        <div class="h-0 relative w-full"><hr class="border-t border-[var(--profile-button-outline-color)] w-full" /></div>
-        <div class="flex flex-col gap-[12px] w-full">
-            <div class="flex items-center gap-[20px] w-full">
-                <p class="led-label text-[26px]" data-i18n-key="Auto-run">Auto-run</p>
-                <label class="flex items-center gap-[12px] ml-auto cursor-pointer">
-                    <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
-                        <input type="checkbox" class="sr-only peer" aria-label="${getTranslation('Auto-run')}" ${ledSeqLibrary.enabled ? 'checked' : ''} onchange="window.ledSeqSetEnabled(this.checked)">
-                        <span class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></span>
-                        <span class="absolute top-1/2 left-[4px] -translate-y-1/2 peer-checked:translate-x-[34px] size-[30px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></span>
-                    </span>
-                </label>
-            </div>
-            <p class="led-muted text-[20px]" data-i18n-key="Play this sequence whenever the machine enters:">Play this sequence whenever the machine enters:</p>
-            <div class="flex flex-wrap gap-[10px]" style="${ledSeqLibrary.enabled ? '' : 'opacity:0.35;pointer-events:none;'}">
-                ${LED_TRIGGER_STATES.map((st) => {
-                    const active = ledSeqTriggerStates.includes(st.id);
-                    return `<button type="button" class="led-chip" aria-pressed="${active}"
-                        onclick="window.ledSeqToggleTriggerState('${st.id}', ${!active})"
-                        data-i18n-key="${st.label}">${getTranslation(st.label)}</button>`;
-                }).join('')}
-            </div>
-        </div>`;
+        ${pickerPanel}`;
 
     return `
         <div class="led-page content-stretch flex flex-col gap-[12px] items-start relative w-full">
@@ -4277,66 +3975,11 @@ export function renderLedSettings() {
                 <p class="leading-[1.2]" data-i18n-key="Lighting">Lighting</p>
             </div>
 
-            <div class="led-tabs w-full" role="tablist">
-                ${tab('colours', 'Static Colours')}
-                ${tab('sequence', 'Sequence')}
-            </div>
-
-            <div class="flex flex-col gap-[14px] items-start w-full" role="tabpanel">
-                ${ledActiveTab === 'sequence' ? sequencePanel : coloursPanel}
+            <div class="flex flex-col gap-[14px] items-start w-full">
+                ${coloursPanel}
             </div>
         </div>
     `;
-}
-
-// The colours ON THE STRIP right now, as '#RRGGBB'. While a sequence plays
-// that is the step the runner last wrote; otherwise it is the stored palette's
-// machine-state bank, which is what the firmware is rendering.
-function ledNowColors() {
-    const playing = ledSeqRunSnapshot.running ? ledSeqRunSnapshot.steps?.[ledSeqRunSnapshot.index] : null;
-    if (playing) return { front: playing.frontColor, back: playing.rearColor };
-    const bank = ledMachinePaletteState();
-    return {
-        front: ledColor16ToHex8(ledCellColor16('frontStrip', bank)),
-        back: ledColor16ToHex8(ledCellColor16('backStrip', bank)),
-    };
-}
-
-// Transport button: one control that reads the live run state, rather than a
-// Start/Stop pair where one half is always dead. Stop is offered only for a
-// run this page owns -- an auto-run belongs to the machine-state trigger, and
-// pressing play simply preempts it (see led-strip-runner.js).
-const ledSeqIsManualRun = () => ledSeqRunSnapshot.owner === 'manual';
-function ledSeqTransportLabel() {
-    return getTranslation(ledSeqIsManualRun() ? 'Stop' : 'Play');
-}
-function ledSeqTransportAttrs() {
-    const disabled = !ledSeqIsManualRun() && !(ledSeqSteps && ledSeqSteps.length);
-    return `data-mode="${ledSeqIsManualRun() ? 'stop' : 'play'}"` +
-        ` data-i18n-key="${ledSeqIsManualRun() ? 'Stop' : 'Play'}"${disabled ? ' disabled' : ''}`;
-}
-
-// Status line. Split so the translatable words and the live numbers are
-// separate nodes -- translatePage() replaces a node's text wholesale, so a
-// "Step 2 of 5" string baked into one key would lose its numbers.
-function ledSeqStatusHtml() {
-    const totalSecs = (steps) => formatStepSeconds((steps || []).reduce((ms, st) => ms + (st.durationMs || 0), 0));
-    // "step of total, step seconds of total seconds" -- the same reading for
-    // the step that is playing and for the step the user just tapped, so the
-    // line does not change shape when a run starts or ends.
-    const counts = (steps, index) =>
-        `<span class="led-muted"> ${index + 1}&thinsp;/&thinsp;${steps.length},</span>` +
-        `<span class="led-muted"> ${formatStepSeconds(steps[index]?.durationMs || 0)}s&thinsp;/&thinsp;${totalSecs(steps)}s</span>`;
-    if (!ledSeqRunSnapshot.running) {
-        // No "Stopped": the strip and the transport button already say so.
-        // Idle, the line reports the selected step, and nothing if none is.
-        const steps = ledSeqSteps || [];
-        return (ledSeqSelected >= 0 && ledSeqSelected < steps.length) ? counts(steps, ledSeqSelected) : '';
-    }
-    const label = ledSeqIsManualRun() ? 'Playing' : 'Auto-running';
-    const steps = ledSeqRunSnapshot.steps || [];
-    return `<span style="color: var(--mimoja-blue-v2);" data-i18n-key="${label}">${getTranslation(label)}</span>` +
-        counts(steps, ledSeqRunSnapshot.index);
 }
 
 function initLedPicker() {
@@ -4386,7 +4029,7 @@ function initLedPicker() {
     ledPicker.on('input:end', () => ledPickCommit());
 }
 
-// Repaint the Static Colours tab in place.
+// Repaint the Lighting page in place.
 //
 // Tapping a colour used to re-render the whole category, which throws the iro
 // wheel away and builds a new one -- mounted at natural size, measured, then
@@ -4446,23 +4089,6 @@ function ledPaintColoursDom() {
     }
     document.querySelectorAll('.led-swatch[data-hex]').forEach((sw) => {
         sw.setAttribute('aria-pressed', String(sw.dataset.hex === hex.toUpperCase()));
-    });
-}
-
-// The Sequence tab's equivalent of ledPaintColoursDom: patch the step colours
-// the wheel is changing -- the timeline segment and the step editor's swatch --
-// instead of re-rendering, which would rebuild the iro wheel mid-drag.
-function ledPaintSeqColorsDom() {
-    const steps = ledSeqLoad() || [];
-    document.querySelectorAll('.led-seg[data-led-seq-step]').forEach((el) => {
-        const step = steps[Number(el.dataset.ledSeqStep)];
-        if (step) el.style.backgroundImage = `linear-gradient(180deg, ${step.frontColor} 0 50%, ${step.rearColor} 50% 100%)`;
-    });
-    document.querySelectorAll('.led-pick[data-led-seq-pick]').forEach((el) => {
-        const [index, field] = el.dataset.ledSeqPick.split(':');
-        const step = steps[Number(index)];
-        if (step) el.style.backgroundColor = step[field];
-        el.setAttribute('aria-pressed', String(!!ledPickSeq && ledPickSeq.index === Number(index) && ledPickSeq.field === field));
     });
 }
 
@@ -4582,7 +4208,6 @@ function ledPutPalette() {
         if (!ledState) return;
         // The front-switch LED can't be set independently — it mirrors the front strip.
         ledState.frontSwitch = { awake: ledState.frontStrip.awake, sleeping: ledState.frontStrip.sleeping };
-        ledRunNoteStoredPalette(ledState);
         return setLedStrip(ledState).catch(() => { /* non-fatal */ });
     });
 }
@@ -4610,7 +4235,6 @@ function ledRestoreStrip() {
 // Module-level: registered once, not per initializeSettings call.
 window.addEventListener('popstate', () => {
     ledRestoreStrip();
-    ledSeqReleaseManual();
     activeSettingsCategory = null;
 });
 
@@ -4628,30 +4252,12 @@ window.ledSelectCell = function(zone, stateKey) {
 // the one already open closes it again, so the same control puts the page back
 // the way it was.
 window.ledOpenPicker = function(zone, stateKey) {
-    const same = ledPickerOpen && !ledPickSeq && ledSelectedZone === zone && ledSelectedState === stateKey;
-    ledPickSeq = null;
+    const same = ledPickerOpen && ledSelectedZone === zone && ledSelectedState === stateKey;
     ledPickerOpen = !same;
     window.ledSelectCell(zone, stateKey);
 };
-// The Sequence tab borrowing the wheel: point it at this step's colour, or
-// let go if it is already on that one (same tap-to-close as the cards).
-window.ledSeqOpenPicker = function(index, field) {
-    const same = ledPickerOpen && ledPickSeq && ledPickSeq.index === index && ledPickSeq.field === field;
-    // The strip is previewing a palette cell, not this step -- end that first.
-    ledRestoreStrip();
-    // Front <-> Rear on an open wheel changes no shape, only which colour the
-    // wheel edits, so patch it like the Static Colours cards do. Re-rendering
-    // here rebuilt the iro wheel -- mounted at natural size, measured, then
-    // counter-scaled -- which is the size flash the user sees.
-    const retarget = !same && !!ledPickSeq && ledPickerStaysPut();
-    ledPickerOpen = !same;
-    ledPickSeq = same ? null : { index, field };
-    if (retarget) { ledPaintSeqColorsDom(); ledPaintColoursDom(); ledSyncPickerColor(); return; }
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
-};
 window.ledClosePicker = function() {
     ledPickerOpen = false;
-    ledPickSeq = null;
     if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
 // Linked edits front and rear as one. Any open picker is retargeted rather
@@ -4682,8 +4288,7 @@ window.ledSetBrightness = function(zone, value) {
 };
 
 // Dragging the slider must not re-render the page under the finger, so the
-// readout and the swatch it describes are patched in place -- the same reason
-// ledSeqPaintActiveStep exists on the other tab.
+// readout and the swatch it describes are patched in place.
 function ledPaintBrightnessDom(zone, value) {
     const card = document.querySelector(`[data-led-cell="${zone}:awake"]`)?.closest('.led-card');
     const val = card?.querySelector('.led-bright-val');
@@ -4713,16 +4318,6 @@ window.ledApplyPreset = function(hex8) {
 // reach black on its own — power is derived from the colour (never stored), so
 // a slider dragged to zero reads as Off on the next full render.
 window.ledSetPower = function(on) {
-    if (ledPickSeq) {
-        const key = `seq:${ledPickSeq.index}:${ledPickSeq.field}`;
-        const cur = ledPickColor16();
-        if (!on && cur !== '000000000000') ledLastLit[key] = cur;
-        ledPickWrite(on ? ledColor16ToHex8(ledLastLit[key] || LED_DEFAULT_ON) : '#000000');
-        if (ledPickerStaysPut()) ledPaintColoursDom();
-        ledSyncPickerColor();
-        ledPickCommit();
-        return;
-    }
     if (!ledState) return;
     ledZoneKeys(ledSelectedZone).forEach((k) => {
         if (!ledState[k]) return;
@@ -4739,155 +4334,6 @@ window.ledSetPower = function(on) {
     else if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
     ledSyncPickerColor();
     ledCommitEdit();
-};
-// ── Colour step-sequence editor ──────────────────────────────────────────
-// A REAL capability (see led-sequence.js header). Editing is local to this
-// page: every edit persists to localStorage and re-renders the category, same
-// as every other control here. Playback itself -- the timer, the strip writes
-// (setLedStrip, with the baseline capture/restore that goes with them), and
-// arbitration against app.js's machine-state trigger -- lives entirely in
-// led-strip-runner.js, shared with app.js, so it can keep running on the main
-// page after the user leaves Settings. This page only drives that shared
-// runner's 'manual' owner slot (ledSeqEnsureSubscribed/ledSeqReleaseManual
-// above) and mirrors its state to paint the transport -- ledSeqPaintActiveStep.
-
-function ledSeqEdit(next) {
-    ledSeqDropPicker();
-    ledSeqSteps = next;
-    ledSeqPersist();
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
-}
-window.ledSeqAddStep = function() {
-    ledSeqLoad();
-    // Steps belong to a preset, so the first one on an empty library makes it.
-    if (!ledSeqLibrary.activeId) ledSeqLibraryEdit((lib) => addPreset(lib, {}));
-    const next = addStep(ledSeqLoad(), { frontColor: '#FFAA55', rearColor: '#FFAA55' });
-    // Open the step that was just added -- adding one is a statement of intent
-    // to set its colours, and the timeline alone cannot be typed into.
-    ledSeqSelected = next.length - 1;
-    ledSeqEdit(next);
-};
-window.ledSeqRemoveStep = function(index) {
-    ledSeqSelected = -1;
-    ledSeqEdit(removeStep(ledSeqLoad(), index));
-};
-window.ledSeqMoveStep = function(index, direction) {
-    const to = index + (direction === 'up' ? -1 : 1);
-    const steps = ledSeqLoad();
-    if (to >= 0 && to < steps.length) ledSeqSelected = to;
-    ledSeqEdit(moveStep(steps, index, to));
-};
-// Saved sequences. Only the active one plays and only its triggers fire, so
-// switching preset is also what arms a different set of states.
-window.ledSeqSelectPreset = function(id) {
-    ledSeqSelected = -1;
-    ledSeqLibraryEdit((lib) => selectPreset(lib, id));
-    ledRunOnMachineStateChange(currentMachineState);
-};
-window.ledSeqNewPreset = function() {
-    ledSeqLibraryEdit((lib) => addPreset(lib, {}));
-};
-window.ledSeqDeletePreset = function() {
-    const id = ledSeqLibrary.activeId;
-    if (!id) return;
-    ledSeqLibraryEdit((lib) => removePreset(lib, id));
-    ledRunOnMachineStateChange(currentMachineState);
-};
-window.ledSeqRenamePreset = function(name) {
-    const id = ledSeqLibrary.activeId;
-    if (!id) return;
-    ledSeqLibraryEdit((lib) => renamePreset(lib, id, name));
-};
-// The auto-run switch. Off stops a trigger run that is already playing (the
-// runner re-resolves and finds nothing armed) but leaves Play alone, so a
-// sequence can still be built and tested with auto-run off.
-window.ledSeqSetEnabled = function(checked) {
-    ledSeqLibraryEdit((lib) => setSequencesEnabled(lib, !!checked));
-    ledRunOnMachineStateChange(currentMachineState);
-};
-// Tapping a timeline segment opens its editor; tapping the open one closes it.
-window.ledSeqSelectStep = function(index) {
-    ledSeqDropPicker();
-    ledSeqSelected = (ledSeqSelected === index) ? -1 : index;
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
-};
-window.ledSeqNudgeDuration = function(index, direction) {
-    const steps = ledSeqLoad();
-    const step = steps[index];
-    if (!step) return;
-    ledSeqEdit(updateStep(steps, index, { durationMs: nudgeStepDuration(step.durationMs, direction) }));
-};
-window.ledSeqSetLoop = function(checked) {
-    ledSeqLoop = !!checked;
-    ledSeqPersist();
-};
-// Which machine states auto-run this sequence (app.js's trigger, via
-// led-strip-runner.js). Re-resolving immediately against the machine's
-// CURRENT state makes toggling feel live instead of waiting for the next
-// state change -- a no-op if 'manual' currently owns the strip (it always
-// wins) or the current state isn't the one just toggled.
-window.ledSeqToggleTriggerState = function(stateId, enabled) {
-    ledSeqLoad();
-    const next = toggleTriggerState({ steps: ledSeqSteps, loop: ledSeqLoop, triggerStates: ledSeqTriggerStates }, stateId, enabled);
-    ledSeqTriggerStates = next.triggerStates;
-    ledSeqPersist();
-    ledRunOnMachineStateChange(currentMachineState);
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
-};
-
-// Patch the active-step highlight, the transport button, the status line and
-// the now-playing swatches -- never a re-render, because the playback tick
-// must not rebuild the page while the user is editing a field in it.
-// ledSeqRunSnapshot reflects led-strip-runner.js's shared state, so this shows
-// whichever step is ACTUALLY on the strip, even if a trigger run put it there.
-function ledSeqPaintActiveStep() {
-    document.querySelectorAll('[data-led-seq-step]').forEach((el) => {
-        // The playhead: the segment the runner is actually on, patched rather
-        // than re-rendered so playback never rebuilds the page mid-edit.
-        el.classList.toggle('led-seq-playing', Number(el.dataset.ledSeqStep) === ledSeqRunSnapshot.index);
-    });
-    // Marking the playing step with an accent stroke fails on a step that IS
-    // that accent, so the bar says it by contrast instead: while something is
-    // playing the rest of the timeline drops back. Driven from a class on the
-    // bar rather than :has(), which older embedded WebViews do not support.
-    document.querySelector('.led-timeline')?.classList.toggle('is-playing', ledSeqRunSnapshot.index >= 0);
-    const transport = document.getElementById('led-seq-transport');
-    if (transport) {
-        const mode = ledSeqIsManualRun() ? 'stop' : 'play';
-        transport.dataset.mode = mode;
-        transport.dataset.i18nKey = ledSeqIsManualRun() ? 'Stop' : 'Play';
-        transport.textContent = ledSeqTransportLabel();
-        transport.disabled = !ledSeqIsManualRun() && !ledSeqSteps?.length;
-    }
-    const status = document.getElementById('led-seq-status');
-    if (status) status.innerHTML = ledSeqStatusHtml();
-    const now = ledNowColors();
-    const front = document.getElementById('led-now-front');
-    const back = document.getElementById('led-now-back');
-    if (front) front.style.backgroundColor = now.front;
-    if (back) back.style.backgroundColor = now.back;
-}
-
-// One transport control, resolved against the LIVE run state on each press so
-// the button never acts on a stale render. Playing takes over from whatever is
-// running, including a trigger run ('manual' always preempts). Stopping only
-// applies to a run this page owns, and hands control back to the trigger for
-// the machine's current state -- see led-strip-runner.js.
-window.ledSeqToggleRun = function() {
-    if (ledSeqIsManualRun()) { ledRunRequestStop('manual'); return; }
-    ledSeqLoad();
-    ledRunRequestStart(ledSeqSteps, ledSeqLoop, 'manual');
-};
-
-// Switching tabs ends any colour preview the wheel put on the strip -- the
-// user is no longer looking at the control that justified it -- and lands a
-// deferred cross-state edit at the same time.
-window.ledSelectTab = function(tabId) {
-    if (ledActiveTab === tabId) return;
-    ledRestoreStrip();
-    ledSeqDropPicker(); // the wheel belongs to a step that is no longer on screen
-    ledActiveTab = tabId;
-    if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
 };
 // Exiting Settings through the HEADER Save must persist an unsaved palette
 // too: that button is the page-level "save everything" affordance, and with
@@ -8513,10 +7959,8 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             resetPendingChanges();
             // Cancel discards: drop the preview so the strip shows the
             // palette the machine actually stores, and leave the unsaved edit
-            // unwritten. Also release this page's manual sequence run (a
-            // state-triggered run is untouched -- it belongs to app.js).
+            // unwritten.
             ledRestoreStrip();
-            ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
             calReleaseScaleWs();
@@ -8539,11 +7983,8 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             ui.showToast('Settings updated', 3000, 'success');
             // Exiting settings straight from the Lighting page: persist an
             // unsaved palette (this IS the save button) and drop the preview,
-            // so the strip shows what was stored. Also release this page's
-            // manual sequence run (a state-triggered run is untouched -- it
-            // belongs to app.js, not this page).
+            // so the strip shows what was stored.
             await ledSaveOnExit();
-            ledSeqReleaseManual();
             // …and exiting from the Load Cells verify step must hand the
             // scale WS back to the main page's live weight readout.
             calReleaseScaleWs();
@@ -10617,7 +10058,6 @@ export function cleanupSettings() {
     clearTimeout(ledPutTimer);
     ledPutTimer = null;
     ledRestoreStrip();
-    ledSeqReleaseManual();
     if (calWsClaimed) calReleaseScaleWs();
     sensorCalStopLive();
     // Same teardown as switching category: invalidate a pending import and
@@ -10658,10 +10098,6 @@ export function initDeviceWebSocket() {
         // onDisconnect callback
         () => {
             logger.warn('Device WebSocket disconnected');
-            // The Decaid link is down -- any run (manual OR trigger) has
-            // nothing to talk to any more. Unconditional: a dead link is not
-            // a routine exit, so there is no hand-back to attempt.
-            ledRunForceStop();
             if (activeSettingsCategory === 'ledstrip') updateSettingsContentArea('ledstrip');
         }
     );

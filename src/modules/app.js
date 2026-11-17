@@ -19,7 +19,6 @@ import { endPerfShot, initPerfProbe, measure, startPerfShot } from './perf-probe
 import { workflowGrindStep, workflowGrindRange } from './grinder-sync.js';
 import { isDye2Enabled } from './dye2-enabled.js';
 import { deriveScreensaverAction, isMachineAsleep, isScreensaverSuppressed } from './screensaver-policy.js';
-import { onMachineStateChange as ledStripOnMachineStateChange, forceStop as ledStripForceStop } from './led-strip-runner.js';
 import { createMachineLinkWatcher, machineFromDevicesPayload } from './machine-link.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { setMachineModel, isBengleMachine, setRefillKitPresent, isRefillKitPresent } from './machine.js';
@@ -570,9 +569,9 @@ function onScaleDisconnect() {
 
 const deviceErrorCopy = {
     scaleConnectFailed: 'Scale did not connect. Wake it and retry.',
-    machineConnectFailed: 'DE1 did not connect. Retry scan.',
+    machineConnectFailed: 'Machine did not connect. Retry scan.',
     scaleDisconnected: 'Scale dropped. Retry scan.',
-    machineDisconnected: 'DE1 dropped. Retry scan.',
+    machineDisconnected: 'Connection dropped. Retry scan.',
     adapterOff: 'Bluetooth is off. Turn it on to continue.',
     bluetoothPermissionDenied: 'Grant Bluetooth permission to continue.',
     scanFailed: 'Scan could not start. Retry.',
@@ -1022,20 +1021,6 @@ function handleData(data) {
             // No context clear here: bean/barista identity persists across shots, and the
             // per-shot note is cleared once, on the record-persisted frame below.
         })();
-    }
-
-    // Bengle LED colour-sequence trigger (led-strip-runner.js): reacts to the
-    // SAME snapshot stream this function already owns rather than opening a
-    // second subscription -- only on an actual state change, not every frame
-    // at ~10 Hz. A no-op for non-Bengle machines (the Lighting settings page
-    // that configures triggerStates is Bengle-only, so there is nothing to
-    // resolve) and for a machine with no sequence mapped to this state. On
-    // ERROR (the machine link itself is down, per isDe1Connected above) stop
-    // unconditionally -- manual or trigger -- rather than resolve a trigger
-    // for a state nothing should ever be mapped to.
-    if (state !== previousState.state) {
-        if (state === MachineState.ERROR) ledStripForceStop();
-        else ledStripOnMachineStateChange(state);
     }
 
     // Shot-history arrows: inert while the machine is pulling espresso, so a
