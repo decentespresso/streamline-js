@@ -14,6 +14,7 @@ import {
     transportFromDeviceId,
     firmwareEstimatedTotalSeconds,
     FIRMWARE_ESTIMATED_SECONDS,
+    firmwareDurationNote,
     FIRMWARE_VERIFY_SECONDS,
     FIRMWARE_LAST_TICK_PERCENT,
     formatDuration,
@@ -370,6 +371,22 @@ test('a BLE machine, and anything unrecognised, reads as BLE', () => {
     assert.equal(transportFromDeviceId('MockDe1'), 'ble');
     assert.equal(firmwareEstimatedTotalSeconds(transportFromDeviceId('MockDe1')),
         FIRMWARE_ESTIMATED_SECONDS.ble);
+});
+
+// A Bengle never matches the bundled DE1 catalog, so its only start path is the
+// manual upload one — the note has to be right from the device id alone, with no
+// catalog verdict behind it.
+test('the pre-start note names the transport\'s own duration', () => {
+    assert.match(firmwareDurationNote(transportFromDeviceId('usb-2e8a-a-8549628789ABCDEF')), /up to 25 minutes/);
+    assert.match(firmwareDurationNote(transportFromDeviceId('AA:BB:CC:DD:EE:FF')), /at least 50 minutes/);
+    // No machine to classify: keep the slower claim rather than promising half.
+    assert.match(firmwareDurationNote(transportFromDeviceId('')), /at least 50 minutes/);
+    assert.match(firmwareDurationNote(undefined), /at least 50 minutes/);
+    // Both halves of the note, whichever one is shown: the duration AND the
+    // don't-pull-the-plug line that is the whole reason it exists.
+    for (const note of [firmwareDurationNote('wired'), firmwareDurationNote('ble')]) {
+        assert.match(note, /Do not power off the machine and leave this page until it finishes\./);
+    }
 });
 
 test('no device id means no estimate at all', () => {

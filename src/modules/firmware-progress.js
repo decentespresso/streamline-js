@@ -259,6 +259,31 @@ export function firmwareEstimatedTotalSeconds(transport) {
     return transport === 'wired' ? FIRMWARE_ESTIMATED_SECONDS.wired : FIRMWARE_ESTIMATED_SECONDS.ble;
 }
 
+// Said before the update starts, on the firmware page itself and in the install
+// confirm. A flash is erase, upload and CRC verification with the bar barely
+// moving for most of it — someone who expected "a few minutes" reads that as a
+// hang and pulls the plug, which is the one thing that turns a slow update into
+// a broken machine. One pair of sentences so the number cannot drift between
+// the places that say it.
+//
+// "up to" on the wired side, "at least" on BLE: 25 minutes is the DE1 over
+// serial and a Bengle over USB finishes well inside it (20 ms per 8 chunks
+// against the DE1's 400 ms — see FIRMWARE_ESTIMATED_SECONDS), so wired is a
+// ceiling, while BLE's 50 is the floor users report.
+export const FIRMWARE_DURATION_NOTES = {
+    wired: 'The whole update takes up to 25 minutes. Do not power off the machine and leave this page until it finishes.',
+    ble: 'The whole update takes at least 50 minutes. Do not power off the machine and leave this page until it finishes.',
+};
+
+/**
+ * The pre-start note for a transport from transportFromDeviceId. An unknown or
+ * absent transport keeps the BLE sentence: it over-states the wait rather than
+ * promising a flash that finishes in half the time.
+ */
+export function firmwareDurationNote(transport) {
+    return transport === 'wired' ? FIRMWARE_DURATION_NOTES.wired : FIRMWARE_DURATION_NOTES.ble;
+}
+
 /**
  * Ballpark countdown, for the stretch where estimateRemainingSeconds has nothing
  * to extrapolate from. Returns null once the estimate is spent — the caller then

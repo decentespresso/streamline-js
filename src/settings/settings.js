@@ -11,7 +11,7 @@ import { logger } from '../modules/logger.js';
 import { isBengleMachine, setMachineModel } from '../modules/machine.js';
 import { brightnessNotices, QUEUED_NOTICE, LOW_BATTERY_NOTICE, GO_TO_SETTING_LABEL, LOW_BATTERY_SETTING_CATEGORY, REQUESTED_APPLIED_TEMPLATE, requestedBrightnessReadout } from '../modules/brightness-notice.js';
 import { resolveSteamStopMode, applyMilkProbeGate, steamDurationIntent, steamOffPatch, steamOnPatch, isSteamOff, MIN_STEAM_DURATION_S, STEAM_ENABLED_MIN_TEMP, STEAM_ENABLED_MAX_TEMP } from '../modules/steam-mode.js';
-import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, transportFromDeviceId, firmwareEstimatedTotalSeconds, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
+import { summarizeFirmwareCatalog, isFirmwareCancellationError, estimateRemainingSeconds, isUploadComplete, estimateVerifyRemainingSeconds, estimateTotalRemainingSeconds, transportFromDeviceId, firmwareEstimatedTotalSeconds, firmwareDurationNote, FIRMWARE_VERIFY_SECONDS, formatDuration } from '../modules/firmware-progress.js';
 import { setScreensaverSuppressed, isMachineAsleep } from '../modules/screensaver-policy.js';
 import { wakeProfileChoices } from '../modules/wake-profile.js';
 import { SCREENSAVER_CLOCK_FORMATS, SCREENSAVER_CLOCK_POSITIONS, SCREENSAVER_DATE_FORMATS, resolveScreensaverDateFormat, resolveScreensaverClockFormat, resolveScreensaverClockPosition } from '../modules/screensaver-clock.js';
@@ -202,6 +202,11 @@ let firmwareElapsedTimer = null;
 // then no clock is shown rather than a guessed one.
 let firmwareStartedAt = 0;
 let firmwareTotalEstimateSeconds = 0;
+// How the connected machine is attached ('wired' | 'ble' | null), read once per
+// firmware-page open by detectFirmwareTransport. Decides which duration the
+// pre-start note claims; null (no machine to classify) keeps the BLE figure,
+// which over-states the wait rather than promising a faster flash.
+let firmwareTransport = null;
 // When the upload proper began, and the percentage the first event reported.
 // The countdown is measured from the first upload event, not from the start of
 // the operation: the erase
@@ -1202,7 +1207,7 @@ export function renderReaSettingsForm(settings) {
                 <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
                     <p class="leading-[1.2]" data-i18n-key="Decaid Settings">Decaid Settings</p>
                 </div>
-                <div class="text-red-500 p-4 text-[24px]">Failed to load settings</div>
+                <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
             </div>
         `;
     }
@@ -1944,7 +1949,7 @@ export function renderTalkToDecentSettings() {
                     </div>
                     <div>
                         <p class="text-[36px] font-semibold text-[var(--text-primary)] leading-[1.1]" data-i18n-key="Talk to Decent">Talk to Decent</p>
-                        <p class="text-[20px] text-[var(--low-contrast-white)] leading-[1.3]">Direct line to the Decent support team</p>
+                        <p class="text-[20px] text-[var(--low-contrast-white)] leading-[1.3]" data-i18n-key="Direct line to the Decent support team">Direct line to the Decent support team</p>
                     </div>
                 </div>
             </div>
@@ -2014,7 +2019,7 @@ export function renderTalkToDecentSettings() {
                     <div class="flex items-center justify-between p-[20px] rounded-[12px] bg-[var(--box-color)] border border-[var(--profile-button-outline-color)]">
                         <div class="flex flex-col gap-[4px]">
                             <p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">Attach Machine Info</p>
-                            <p class="text-[20px] text-[var(--low-contrast-white)]">Appends machine model, firmware version, and serial number</p>
+                            <p class="text-[20px] text-[var(--low-contrast-white)]" data-i18n-key="Appends machine model, firmware version, and serial number">Appends machine model, firmware version, and serial number</p>
                         </div>
                         <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                             <input type="checkbox" id="talkdecent-attach-machine" checked class="sr-only peer">
@@ -2100,7 +2105,7 @@ export function renderFeedbackSettings() {
                 <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]" data-i18n-key="Title">Title</p>
                 <input type="text" id="feedback-title"
                        class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[54px] rounded-[54px] w-full text-[var(--text-primary)] text-[22px] px-[24px]"
-                       placeholder="Short summary of your feedback…">
+                       placeholder="${getTranslation('Short summary of your feedback…')}">
             </div>
 
             <!-- Description -->
@@ -2565,7 +2570,7 @@ export function renderWakeLockSettings() {
             </div>
 
             <div class="text-[18px] text-[var(--text-primary)] opacity-75 mt-4">
-                <p><strong>Note:</strong> Wake-lock automatically releases when the WebSocket disconnects.</p>
+                <p><strong>Note:</strong> <span data-i18n-key="Wake-lock automatically releases when the WebSocket disconnects.">Wake-lock automatically releases when the WebSocket disconnects.</span></p>
             </div>
         </div>
     `;
@@ -5087,7 +5092,7 @@ export function renderCalibVoltageSettings() {
         return `<button class="h-[72px] px-[48px] rounded-[72px] text-[24px] font-bold ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)]'}"
                         onclick="window.updateHeaterVoltage(${o.value})">${o.label}</button>`;
     }).join('');
-    const unsetNote = current === -1 ? `<p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[22px] w-full">No voltage set yet — select your mains voltage.</p>` : '';
+    const unsetNote = current === -1 ? `<p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[22px] w-full" data-i18n-key="No voltage set yet — select your mains voltage.">No voltage set yet — select your mains voltage.</p>` : '';
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
@@ -7047,13 +7052,6 @@ function renderFirmwareCheckBlock(summary) {
                      settings pane is wide enough to run them past 100 characters,
                      which is where a line stops being easy to track back from. -->
                 ${releaseNotes ? `<p class="text-[20px] text-[var(--text-secondary)] leading-[1.4] max-w-[70ch]">${escapeHtml(releaseNotes)}</p>` : ''}
-                <!-- Two notes, one slot. Before the start: how long to set aside.
-                     Once it is running, runFirmwareOperation swaps in the safety
-                     half alone — the duration claim is then the wrong one to make
-                     (the live clock beside the tracker is more specific, and on a
-                     wired machine half that figure), but "do not power off" is at
-                     its most load-bearing exactly while the flash is in progress. -->
-                <p id="firmware-duration-note" class="text-[20px] font-bold text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : FIRMWARE_DURATION_NOTE)}</p>
                 <button id="firmware-apply-btn" class="self-start bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[22px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                         ${artifactId ? `onclick="window.applyFirmwareUpdate('${escapeHtml(artifactId)}')"` : 'disabled'}>
                     ${getTranslation('Update')}
@@ -7078,12 +7076,40 @@ function renderFirmwareCheckBlock(summary) {
 // Fetch + paint the check. Fired from the firmware page's render hook, not from
 // preloadSettings: no reason to hit the endpoint on every settings open when
 // only this one page shows the result.
+// Which transport the connected machine is on, from the device id decaid already
+// publishes for it (GET /devices: a wired machine is "usb-…"/"serial-…", a BLE
+// one a platform handle). Read on every firmware-page open, before any byte
+// moves, because it decides both the pre-start note and the ballpark clock.
+// Stores null when there is no connected machine to classify — then the note
+// keeps the slower BLE figure and no ballpark clock is shown at all.
+async function detectFirmwareTransport() {
+    try {
+        const devices = await getDevices();
+        const machine = Array.isArray(devices)
+            ? devices.find(d => d?.type === 'machine' && d?.state === 'connected')
+            : null;
+        firmwareTransport = transportFromDeviceId(machine?.id);
+    } catch (error) {
+        logger.debug('Firmware transport: device list unavailable:', error);
+        firmwareTransport = null;
+    }
+    return firmwareTransport;
+}
+
 async function initFirmwareCheck() {
     const paint = () => {
         const section = document.getElementById('firmware-check-section');
         if (section) section.innerHTML = renderFirmwareCheckBlock(settingsCache.firmwareCheck);
+        // The note lives outside that section and survives the re-render, so it is
+        // set by hand. Never while a flash is running: runFirmwareOperation owns
+        // the slot then, and it is showing the power-off half.
+        const note = document.getElementById('firmware-duration-note');
+        if (note && !firmwareUploadInFlight) note.textContent = getTranslation(firmwareDurationNoteText());
     };
     settingsCache.firmwareCheck = null;
+    // Not awaited together with the catalog: the note is this page's own promise
+    // about the wait, and it should settle whether or not the check does.
+    detectFirmwareTransport().then(paint);
     paint();
     // The endpoint itself would report this as reason: 'machine_model_unknown'
     // (it doesn't require a connection — see rest_v1.yml), which is technically
@@ -7098,16 +7124,12 @@ async function initFirmwareCheck() {
     paint();
 }
 
-// Said before the update starts, everywhere it can be started from: the manual
-// upload block, the "update available" block, and the install confirm. A flash is
-// ~50 minutes of erase, upload and CRC verification, most of it with the bar
-// barely moving — someone who expected "a few minutes" reads that as a hang and
-// pulls the plug, which is the one thing that turns a slow update into a broken
-// machine. One constant so the number cannot drift between the three places.
-// 50 minutes is the BLE case, which is the one worth bracing someone for; a
-// wired machine comes in around half that and the live clock says so once the
-// update is running (firmwareClock picks the figure from the device id).
-const FIRMWARE_DURATION_NOTE = 'The whole update takes at least 50 minutes. Do not power off the machine and leave this page until it finishes.';
+// The pre-start note for the machine this page is looking at. The sentences and
+// the per-transport choice live in firmware-progress.js with the estimates they
+// have to agree with; this only supplies the transport (detectFirmwareTransport).
+function firmwareDurationNoteText() {
+    return firmwareDurationNote(firmwareTransport);
+}
 
 // The safety half on its own, shown in place of the note while the flash runs:
 // the duration claim is stale by then (the clock beside the tracker is the live
@@ -7291,6 +7313,20 @@ export function renderFirmwareUpdateSettings() {
                 <!-- Filled by initFirmwareCheck from GET /machine/firmware. Seeded from
                      the cache so returning to the page doesn't flash "Checking...". -->
                 <div id="firmware-check-section">${renderFirmwareCheckBlock(settingsCache.firmwareCheck)}</div>
+                <!-- Page level, not inside the catalog block: the bundled catalog only
+                     carries DE1 images, so a Bengle never gets an "update available"
+                     block at all and used to reach the Advanced upload path with no
+                     reminder anywhere. One note above both start paths covers each of
+                     them, and it cannot drift between two copies.
+                     Two notes, one slot. Before the start: how long to set aside, for
+                     this machine's transport (detectFirmwareTransport). Once it is
+                     running, runFirmwareOperation swaps in the safety half alone — the
+                     duration claim is then the wrong one to make (the live clock beside
+                     the tracker is more specific), but "do not power off" is at its most
+                     load-bearing exactly while the flash is in progress.
+                     max-w-[70ch]: prose, and the pane is wide enough at this font size
+                     to run a line past where it stops being easy to track back from. -->
+                <p id="firmware-duration-note" class="text-[20px] font-bold text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : firmwareDurationNoteText())}</p>
             </div>
 
             <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
@@ -7693,7 +7729,7 @@ async function _preloadSettingsInternal() {
                 contentArea.innerHTML = `
                     <div class="flex flex-col items-center justify-center h-full gap-[40px] p-8">
                         <p class="text-[var(--text-primary)] text-[30px] font-bold text-center">Unable to reach De1</p>
-                        <p class="text-[var(--text-primary)] text-[24px] text-center opacity-60">Retrying automatically every 3 seconds...</p>
+                        <p class="text-[var(--text-primary)] text-[24px] text-center opacity-60" data-i18n-key="Retrying automatically every 3 seconds...">Retrying automatically every 3 seconds...</p>
                         <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
                                 onclick="window.retryLoadSettings()">${getTranslation('Retry')} ${getTranslation('Now')}</button>
                     </div>`;
@@ -8417,7 +8453,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
 
             if (statusEl) statusEl.innerHTML = `
                 <span class="text-green-600 font-bold text-[22px]">Message sent!</span>
-                <span class="text-[20px] text-[var(--low-contrast-white)] ml-[8px]">Decent support will reply to your email.</span>`;
+                <span class="text-[20px] text-[var(--low-contrast-white)] ml-[8px]" data-i18n-key="Decent support will reply to your email.">Decent support will reply to your email.</span>`;
             document.getElementById('talkdecent-subject').value = '';
             document.getElementById('talkdecent-message').value = '';
             updateTalkDecentComposePreview('', '');
@@ -9021,25 +9057,16 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     };
 
     // How long this flash should take, before a single byte has moved: the
-    // connected machine's device id says how it is attached (usb-/serial- prefix
-    // vs a BLE handle), and the transport is what sets the pace. Read once per
-    // operation — /devices is deduped and the answer cannot change mid-flash.
+    // transport sets the pace (detectFirmwareTransport). Re-read at the start of
+    // the operation rather than trusting the page-open read — the machine may
+    // have been re-plugged since — and /devices is deduped, so it is cheap.
     //
     // Returns 0 when there is no connected machine to classify, and then no
     // ballpark clock is shown at all: a guessed duration on an unknown link is
     // the thing that makes a working update look hung.
     async function firmwareOperationEstimate() {
-        try {
-            const devices = await getDevices();
-            const machine = Array.isArray(devices)
-                ? devices.find(d => d?.type === 'machine' && d?.state === 'connected')
-                : null;
-            const transport = transportFromDeviceId(machine?.id);
-            return transport ? firmwareEstimatedTotalSeconds(transport) : 0;
-        } catch (error) {
-            logger.debug('Firmware estimate: device list unavailable:', error);
-            return 0;
-        }
+        const transport = await detectFirmwareTransport();
+        return transport ? firmwareEstimatedTotalSeconds(transport) : 0;
     }
 
     // Shared by the manual file-upload button and the catalog "Download &
@@ -9208,7 +9235,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             // Back for the next time: whatever happened, the next update is again
             // a thing the user is deciding whether to start.
             const noteEl = document.getElementById('firmware-duration-note');
-            if (noteEl) noteEl.textContent = getTranslation(FIRMWARE_DURATION_NOTE);
+            if (noteEl) noteEl.textContent = getTranslation(firmwareDurationNoteText());
             setScreensaverSuppressed(false);
             setFirmwareFlashInFlight(false);
             // The dim we suppressed was the idle->sleeping TRANSITION, and the
@@ -9265,7 +9292,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // to double as a deliberate gate.
     window.applyFirmwareUpdate = async function(artifactId) {
         if (!artifactId) return;
-        if (!confirm(`${getTranslation(FIRMWARE_DURATION_NOTE)}\n\n${getTranslation('Install this firmware update? Restart the machine once the update is done.')}`)) return;
+        if (!confirm(`${getTranslation(firmwareDurationNoteText())}\n\n${getTranslation('Install this firmware update? Restart the machine once the update is done.')}`)) return;
 
         await runFirmwareOperation((showProgress) => applyFirmware(artifactId, showProgress), {
             source: 'catalog',
@@ -10555,7 +10582,7 @@ export function renderBluetoothScaleSettings(settings) {
                             class="flex-1 h-[62px] rounded-[10px] px-[16px] text-[24px] bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[var(--text-primary)]"
                             onkeydown="if(event.key==='Enter'){event.preventDefault();window.addWifiScaleFromInput();}" />
                         <button class="border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[62px] rounded-[67.5px] border px-[32px] text-[24px] transition-colors duration-200 hover:bg-[var(--button-primary-bg)] hover:text-white"
-                            onclick="window.addWifiScaleFromInput()">
+                            onclick="window.addWifiScaleFromInput()" data-i18n-key="Add">
                             Add
                         </button>
                     </div>

@@ -11,8 +11,10 @@ test('feedback discloses public submission and sends no contact identifiers', ()
     const renderStart = source.indexOf('export function renderFeedbackSettings');
     const renderEnd = source.indexOf('// Render Screen Saver settings', renderStart);
     const renderSource = source.slice(renderStart, renderEnd).replace('export ', '');
-    const render = new Function('FEEDBACK_AREAS', 'FEEDBACK_DEFAULT_AREA',
-        `${renderSource}\nreturn renderFeedbackSettings;`)(FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA);
+    // The real module resolves placeholder text through i18n; the slice only
+    // needs the same shape (identity is enough for these assertions).
+    const render = new Function('FEEDBACK_AREAS', 'FEEDBACK_DEFAULT_AREA', 'getTranslation',
+        `${renderSource}\nreturn renderFeedbackSettings;`)(FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA, key => key);
     const html = render();
 
     assert.match(html, /public GitHub issue/);
@@ -40,8 +42,8 @@ test('the form asks which part of the system the report is about', () => {
     const renderStart = source.indexOf('export function renderFeedbackSettings');
     const renderEnd = source.indexOf('// Render Screen Saver settings', renderStart);
     const renderSource = source.slice(renderStart, renderEnd).replace('export ', '');
-    const render = new Function('FEEDBACK_AREAS', 'FEEDBACK_DEFAULT_AREA',
-        `${renderSource}\nreturn renderFeedbackSettings;`)(FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA);
+    const render = new Function('FEEDBACK_AREAS', 'FEEDBACK_DEFAULT_AREA', 'getTranslation',
+        `${renderSource}\nreturn renderFeedbackSettings;`)(FEEDBACK_AREAS, FEEDBACK_DEFAULT_AREA, key => key);
     const html = render();
 
     for (const area of FEEDBACK_AREAS) {
