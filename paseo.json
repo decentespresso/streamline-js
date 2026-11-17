@@ -1,0 +1,5 @@
+{
+  "worktree": {
+    "setup": "npx http-server -p 8044  "
+  }
+}

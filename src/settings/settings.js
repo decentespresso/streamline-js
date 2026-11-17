@@ -7019,7 +7019,7 @@ const FIRMWARE_REASON_TEXT = {
 // check" must never look like "up to date".
 function renderFirmwareCheckBlock(summary) {
     if (!summary) {
-        return `<p class="text-[22px] text-[var(--text-secondary)]">${getTranslation('Loading...')}</p>`;
+        return `<p class="text-[24px] text-[var(--text-secondary)]">${getTranslation('Loading...')}</p>`;
     }
 
     const { status, latestBuild, latestLabel, releaseNotes, reason, operationState } = summary;
@@ -7029,33 +7029,51 @@ function renderFirmwareCheckBlock(summary) {
     // machine token in the middle of a sentence, untranslated and unexplained,
     // and the tracker below says the same thing properly once we are driving.
     if (operationState && operationState !== 'idle') {
-        return `<p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">${getTranslation('Updating')}…</p>`;
+        return `<p class="text-[30px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] leading-[1.2]">${getTranslation('Updating')}…</p>`;
     }
 
     const pill = (text, cls) =>
-        `<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full ${cls}">${text}</span>`;
+        `<span class="text-[22px] font-bold px-[20px] py-[8px] rounded-full ${cls}">${text}</span>`;
 
     // Installed build is already shown next to "Firmware Version" above (the
     // #de1-firmware-version row) — this block only needs to say what's new.
     if (status === 'updateAvailable') {
         const artifactId = summary.artifactId;
         return `
-            <div class="flex flex-col gap-[10px]">
-                <div class="flex items-center gap-[14px] flex-wrap">
-                    ${pill(getTranslation('Update available'), 'bg-green-500/15 text-green-600')}
-                    <!-- Bare number, matching the installed one in the Version row
-                         directly above: two build numbers on one screen read as a
-                         before/after without a word in front of either. -->
-                    <span class="text-[22px] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
+            <div class="flex flex-col gap-[16px] w-full">
+                <!-- Status left, the action it enables right, on one row: the same
+                     shape as every other page that pairs a state with a button
+                     (Active Skin's update row, Updates' two rows). -->
+                <div class="flex items-center justify-between gap-[20px] flex-wrap w-full">
+                    <div class="flex items-center gap-[16px] flex-wrap">
+                        ${pill(getTranslation('Update available'), 'bg-green-500/15 text-green-600')}
+                        <!-- Bare number, matching the installed one in the Version row
+                             directly above: two build numbers on one screen read as a
+                             before/after without a word in front of either. -->
+                        <span class="text-[24px] font-['Inter:Regular',sans-serif] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
+                    </div>
+                    <button id="firmware-apply-btn" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                            ${artifactId ? `onclick="window.applyFirmwareUpdate('${escapeHtml(artifactId)}')"` : 'disabled'}>
+                        ${getTranslation('Update')}
+                    </button>
                 </div>
-                <!-- max-w-[70ch]: both lines are prose, and at this font size the
-                     settings pane is wide enough to run them past 100 characters,
-                     which is where a line stops being easy to track back from. -->
-                ${releaseNotes ? `<p class="text-[20px] text-[var(--text-secondary)] leading-[1.4] max-w-[70ch]">${escapeHtml(releaseNotes)}</p>` : ''}
-                <button id="firmware-apply-btn" class="self-start bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[22px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                        ${artifactId ? `onclick="window.applyFirmwareUpdate('${escapeHtml(artifactId)}')"` : 'disabled'}>
-                    ${getTranslation('Update')}
-                </button>
+                <!-- What the build about to be installed changes, in the page's own
+                     card treatment rather than loose prose: it is the one thing on
+                     screen that argues for pressing Update, and under the status row
+                     it used to read as a caption to the pill. Headed with the build
+                     it describes, so it cannot be mistaken for notes about the
+                     installed version in the Version card above.
+                     max-w-[70ch]: prose, and at this font size the settings pane is
+                     wide enough to run a line past 100 characters, which is where it
+                     stops being easy to track back from. -->
+                ${releaseNotes ? `
+                    <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] w-full flex flex-col gap-[16px]">
+                        <div class="flex items-center justify-between gap-[20px] w-full">
+                            <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">${getTranslation('Update')} ${getTranslation('Notes')}</p>
+                            <p class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</p>
+                        </div>
+                        <p class="text-[22px] font-['Inter:Regular',sans-serif] text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${escapeHtml(releaseNotes)}</p>
+                    </div>` : ''}
             </div>`;
     }
 
@@ -7067,9 +7085,9 @@ function renderFirmwareCheckBlock(summary) {
     }
 
     const why = FIRMWARE_REASON_TEXT[reason];
-    return `<div class="flex items-center gap-[14px] flex-wrap">
+    return `<div class="flex items-center gap-[16px] flex-wrap">
                 ${pill(getTranslation('Could not check'), 'bg-[var(--muted-pill-bg)] text-[var(--text-primary)] opacity-70')}
-                ${why ? `<span class="text-[22px] text-[var(--text-secondary)]">${getTranslation(why)}</span>` : ''}
+                ${why ? `<span class="text-[24px] font-['Inter:Regular',sans-serif] text-[var(--text-secondary)]">${getTranslation(why)}</span>` : ''}
             </div>`;
 }
 
@@ -7285,7 +7303,7 @@ function renderFirmwareSteps(progress, { failed = false, cancelled = false } = {
             <div class="relative flex-1 flex flex-col items-center gap-[8px]">
                 ${i < last ? `<div class="absolute top-[17px] left-1/2 w-full h-[3px] ${lineCls}"></div>` : ''}
                 <div class="relative z-10 flex items-center justify-center size-[36px] rounded-full text-[18px] font-bold ${circleCls}">${glyph}</div>
-                <p class="text-[16px] font-bold ${labelCls}">${getTranslation(key)}</p>
+                <p class="text-[18px] font-bold ${labelCls}">${getTranslation(key)}</p>
             </div>`;
     }).join('')}</div>`;
 }
@@ -7298,17 +7316,21 @@ export function renderFirmwareUpdateSettings() {
     const de1Version = settingsCache.machineInfo?.version;
 
     return `
-        <div class="content-stretch flex flex-col gap-[22px] items-start relative w-full">
+        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
             <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Firmware Update">Firmware Update</p>
             </div>
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div class="content-stretch flex flex-col gap-[10px] relative w-full">
-                <div class="content-stretch flex items-center justify-between relative w-full">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Version">Version</p>
-                    <p id="de1-firmware-version" class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${de1Version || '—'}</p>
+            <div class="content-stretch flex flex-col gap-[30px] relative w-full">
+                <!-- The installed build in the same card Machine Info shows it in, so
+                     the one fact both pages report looks like one object. -->
+                <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] w-full">
+                    <div class="content-stretch flex items-center justify-between relative w-full">
+                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Version">Version</p>
+                        <p id="de1-firmware-version" class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${de1Version || '—'}</p>
+                    </div>
                 </div>
                 <!-- Filled by initFirmwareCheck from GET /machine/firmware. Seeded from
                      the cache so returning to the page doesn't flash "Checking...". -->
@@ -7326,17 +7348,17 @@ export function renderFirmwareUpdateSettings() {
                      load-bearing exactly while the flash is in progress.
                      max-w-[70ch]: prose, and the pane is wide enough at this font size
                      to run a line past where it stops being easy to track back from. -->
-                <p id="firmware-duration-note" class="text-[20px] font-bold text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : firmwareDurationNoteText())}</p>
+                <p id="firmware-duration-note" class="text-[22px] font-bold text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : firmwareDurationNoteText())}</p>
             </div>
 
-            <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
+            <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                 <!-- Filled by window.uploadFirmware from the NDJSON progress stream. Hidden
                      via inline display, not the hidden attribute: the flex utility would override it.
                      Seeded from lastFirmwareProgress so leaving this page and coming back
                      mid-update rejoins it where it is, not at zero-and-hidden. -->
-                <div id="firmware-progress" class="w-full flex flex-col gap-3" style="display:${lastFirmwareProgress ? 'flex' : 'none'}">
+                <div id="firmware-progress" class="w-full flex flex-col gap-[20px]" style="display:${lastFirmwareProgress ? 'flex' : 'none'}">
                     <div id="firmware-steps">${renderFirmwareSteps(lastFirmwareProgress)}</div>
-                    <p id="firmware-progress-label" class="text-[20px] font-bold text-[var(--text-primary)]">${firmwareProgressLabel(lastFirmwareProgress)}</p>
+                    <p id="firmware-progress-label" class="text-[24px] font-bold text-[var(--text-primary)] leading-[1.2]">${firmwareProgressLabel(lastFirmwareProgress)}</p>
                     <!-- Only Upload has a real byte-level percentage (see firmwareStepIndex) —
                          showing this bar during the silent erase/verify phases would just be
                          a second thing sitting still next to the tracker. The verify latch,
@@ -7348,7 +7370,7 @@ export function renderFirmwareUpdateSettings() {
                          it must appear the instant an update starts and disappear once the
                          stream settles, same as the panel it lives in. -->
                     <button id="firmware-cancel-btn" type="button"
-                            class="self-start h-[48px] px-[28px] rounded-[64px] border-2 border-[var(--border-color)] text-[var(--text-primary)] text-[20px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                            class="self-end bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] px-[48px] rounded-[72px] text-[var(--mimoja-blue-v2)] text-[24px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                             style="display:${firmwareUploadInFlight ? 'inline-flex' : 'none'}"
                             onclick="window.cancelFirmwareUpdate()">
                         ${getTranslation('Cancel')}
@@ -7373,11 +7395,11 @@ export function renderFirmwareUpdateSettings() {
                          style="display:${firmwareUploadInFlight && firmwareOperationSource === 'catalog' ? 'none' : ''}">
                     <!-- Both marker rules: list-none covers modern browsers, the webkit
                          pseudo-element covers the older WebKit the tablet webview ships. -->
-                    <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[22px] font-bold text-[var(--text-secondary)] py-[8px]">
+                    <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[24px] font-bold text-[var(--text-secondary)] py-[8px]">
                         <span data-i18n-key="Advanced">Advanced</span> ▾
                     </summary>
 
-                    <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full pt-[8px]">
+                    <div class="content-stretch flex flex-col gap-[20px] items-start relative w-full pt-[16px]">
                         <!-- No heading: the card below is the only thing behind "Advanced"
                              on a page already titled Firmware Update, and "No file
                              selected" next to Select File says what it is.
@@ -7385,20 +7407,22 @@ export function renderFirmwareUpdateSettings() {
                              "what did I pick" state reads as a unit with "what happens to it".
                              Select File and Upload stay paired on the same row/level — they're
                              the two steps of one action, in reading order. -->
-                        <div class="rounded-[10px] border border-[var(--border-primary)] p-4 bg-[var(--box-color)] flex items-center justify-between gap-[20px] flex-wrap w-full">
+                        <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] flex items-center justify-between gap-[20px] flex-wrap w-full">
                             <div class="min-w-0">
-                                <p id="firmware-filename" class="font-['Inter:Regular',sans-serif] text-[22px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
+                                <p id="firmware-filename" class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
                                 <!-- Filled by onFirmwareFileSelected: size in KB/MB, plus a plain-
                                      language flag once it's bigger than any real DE1 image — a toast
                                      fades, this stays on screen next to the file it's about. -->
-                                <p id="firmware-filename-hint" class="text-[16px] text-[var(--text-secondary)]"></p>
+                                <p id="firmware-filename-hint" class="text-[18px] text-[var(--text-secondary)]"></p>
                             </div>
                             <div class="flex items-center gap-[16px] flex-shrink-0">
-                                <button class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[20px] font-bold"
+                                <!-- Picking a file is the step before the one that matters, so it
+                                     takes the page's secondary button and Upload keeps the solid one. -->
+                                <button class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] px-[48px] rounded-[72px] text-[var(--mimoja-blue-v2)] text-[24px] font-bold"
                                         onclick="document.getElementById('firmware-file-input').click()">
                                     ${getTranslation('Select')} ${getTranslation('File')}
                                 </button>
-                                <button id="firmware-upload-btn" class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[20px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                                <button id="firmware-upload-btn" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                                         disabled onclick="window.uploadFirmware()">
                                     ${getTranslation(firmwareUploadInFlight ? 'Uploading...' : 'Upload')}
                                 </button>
@@ -9032,7 +9056,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             if (label) label.textContent = file.name;
             if (hint) {
                 hint.textContent = `${formatFileSize(file.size)} — ${getTranslation('too large for a DE1 firmware image')}`;
-                hint.className = 'text-[16px] font-bold text-[#da515e]';
+                hint.className = 'text-[18px] font-bold text-[#da515e]';
             }
             if (uploadBtn) uploadBtn.disabled = true;
             ui.showToast(
@@ -9046,7 +9070,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             if (label) label.textContent = file.name;
             if (hint) {
                 hint.textContent = formatFileSize(file.size);
-                hint.className = 'text-[16px] text-[var(--text-secondary)]';
+                hint.className = 'text-[18px] text-[var(--text-secondary)]';
             }
             if (uploadBtn) uploadBtn.disabled = false;
         } else {
