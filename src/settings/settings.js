@@ -1430,7 +1430,7 @@ export function renderFlushSettingsForm(settings) {
                         <p id="flush-flow-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Flush flow rate">
                             Flush flow rate
                         </p>
-                        <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">1 – 8 ml/s</span>
+                        <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">1 – 8 ${getTranslation('ml/s')}</span>
                     </div>
                     <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
                         <button id="flush-flow-minus" aria-label="Decrease flush flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -1445,7 +1445,7 @@ export function renderFlushSettingsForm(settings) {
                                    value="${settings.flushFlow !== undefined ? settings.flushFlow : ''}"
                                    step="1" min="1" max="8"
                                    onchange="window.updateDe1Setting('flushFlow', parseFloat(this.value))">
-                            <span class="ml-2 text-nowrap" aria-hidden="true">ml/s</span>
+                            <span class="ml-2 text-nowrap" aria-hidden="true" data-i18n-key="ml/s">ml/s</span>
                         </div>
                         <button id="flush-flow-plus" aria-label="Increase flush flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustFlushFlow(1);">
@@ -1742,7 +1742,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                     <div class="content-stretch flex items-center justify-between relative w-full">
                         <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Heater warmup flow rate">Heater warmup flow rate</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 10 ml/s</span>
+                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 10 ${getTranslation('ml/s')}</span>
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease heater warmup flow rate" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -1756,7 +1756,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                                        value="${settings.heaterPh1Flow !== undefined ? settings.heaterPh1Flow : ''}"
                                        step="0.1" min="0" max="10"
                                        onchange="window.updateDe1AdvancedSetting('heaterPh1Flow', parseFloat(this.value))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">ml/s</span>
+                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true" data-i18n-key="ml/s">ml/s</span>
                             </div>
                             <button aria-label="Increase heater warmup flow rate" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHeaterPh1Flow(0.1);">
@@ -1779,7 +1779,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                     <div class="content-stretch flex items-center justify-between relative w-full">
                         <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Heater test flow rate">Heater test flow rate</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 10 ml/s</span>
+                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 10 ${getTranslation('ml/s')}</span>
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease heater test flow rate" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -1793,7 +1793,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                                        value="${settings.heaterPh2Flow !== undefined ? settings.heaterPh2Flow : ''}"
                                        step="0.1" min="0" max="10"
                                        onchange="window.updateDe1AdvancedSetting('heaterPh2Flow', parseFloat(this.value))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">ml/s</span>
+                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true" data-i18n-key="ml/s">ml/s</span>
                             </div>
                             <button aria-label="Increase heater test flow rate" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHeaterPh2Flow(0.1);">
@@ -1816,7 +1816,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                     <div class="content-stretch flex items-center justify-between relative w-full">
                         <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Heater test time-out">Heater test time-out</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 60 sec</span>
+                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 60 ${getTranslation('sec')}</span>
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
                             <button aria-label="Decrease heater test time-out" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
@@ -1830,7 +1830,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                                        value="${settings.heaterPh2Timeout !== undefined ? settings.heaterPh2Timeout : ''}"
                                        step="1" min="0" max="60"
                                        onchange="window.updateDe1AdvancedSetting('heaterPh2Timeout', parseInt(this.value, 10))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">sec</span>
+                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true" data-i18n-key="sec">sec</span>
                             </div>
                             <button aria-label="Increase heater test time-out" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHeaterPh2Timeout(1);">
@@ -2753,13 +2753,13 @@ async function loadPresenceSettingsAsync() {
                                         <input type="number" id="keep-awake-hours-input" class="input input-bordered w-20 text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
                                                min="0" max="12" placeholder="0" value="0"
                                                onchange="this.value = Math.max(0, Math.min(12, this.value)); if (this.value == 12) { document.getElementById('keep-awake-mins-input').value = 0; } if (this.value > 12) { ui.showToast('Maximum 12 hours', 3000, 'error'); }">
-                                        <span class="text-[var(--presence-card-text)]">hr</span>
+                                        <span class="text-[var(--presence-card-text)]" data-i18n-key="hr">hr</span>
                                     </div>
                                     <div class="flex items-center gap-2">
                                         <input type="number" id="keep-awake-mins-input" class="input input-bordered w-20 text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
                                                min="0" max="59" placeholder="0" value="0"
                                                onchange="this.value = Math.max(0, Math.min(59, this.value))">
-                                        <span class="text-[var(--presence-card-text)]">min</span>
+                                        <span class="text-[var(--presence-card-text)]" data-i18n-key="min">min</span>
                                     </div>
                                 </div>
                                 <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Duration to keep machine awake after schedule fires. Max 12 hours.">
@@ -3250,7 +3250,7 @@ export function renderSteamSettings() {
                                 <input type="text" inputmode="decimal" id="steamFlowInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
                                        value="${flow.toFixed(1)}" step="0.1" min="0.4" max="2.5"
                                        onchange="window.updateSteamSetting('flow', parseFloat(this.value))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">ml/s</span>
+                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true" data-i18n-key="ml/s">ml/s</span>
                             </div>
                             <button aria-label="Increase steam flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustSteamFlow(0.1);">
@@ -3673,7 +3673,7 @@ export function renderCupWarmerSettings() {
                         <button aria-label="Decrease pre-warm minutes" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center" onclick="window.flashPlusMinusButton(this); window.adjustCupWarmerPrewarmMinutes(-5);">${minusSvg}</button>
                         <div class="flex items-center justify-center" style="width: 130px;">
                             <input type="text" inputmode="numeric" pattern="[0-9]*" id="cupWarmerPrewarmInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full" value="${prewarm.leadMinutes}" step="5" min="${PREWARM_MIN_MINUTES}" max="${PREWARM_MAX_MINUTES}" onchange="window.setCupWarmerPrewarmMinutes(parseFloat(this.value))">
-                            <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">min</span>
+                            <span class="ml-1 text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true" data-i18n-key="min">min</span>
                         </div>
                         <button aria-label="Increase pre-warm minutes" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center" onclick="window.flashPlusMinusButton(this); window.adjustCupWarmerPrewarmMinutes(5);">${plusSvg}</button>
                     </div>
@@ -4471,7 +4471,7 @@ export function renderHotWaterSettings() {
                                 <input type="text" inputmode="decimal" id="hotWaterFlowInput" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
                                        value="${flow.toFixed(1)}" step="0.1" min="0.1" max="8"
                                        onchange="window.updateHotWaterSetting('flow', parseFloat(this.value))">
-                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true">ml/s</span>
+                                <span class="ml-1 text-nowrap text-[var(--text-primary)] text-[24px] font-bold" aria-hidden="true" data-i18n-key="ml/s">ml/s</span>
                             </div>
                             <button aria-label="Increase hot water flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHotWaterFlow(0.1);">
@@ -4614,7 +4614,7 @@ export function renderWaterTankSettings() {
                                    value="${getWaterAlertLevel()}"
                                    step="5" min="0" max="30"
                                    onchange="window.commitWaterAlert(parseInt(this.value))">
-                            <span class="ml-2 text-nowrap">mm</span>
+                            <span class="ml-2 text-nowrap" data-i18n-key="mm">mm</span>
                         </div>
                         <button id="water-alert-plus" aria-label="Increase water alert level" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustWaterAlert(5);">
