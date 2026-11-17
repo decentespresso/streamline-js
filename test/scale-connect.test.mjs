@@ -77,3 +77,21 @@ test('scaleAutoRetryDecision stops once the wait budget is exhausted', () => {
 test('scaleAutoRetryDecision still waits when wait budget remains', () => {
     assert.equal(scaleAutoRetryDecision({ ...baseArgs, hostScanning: true, waitCount: 5, maxWaits: 6 }), 'wait');
 });
+
+// ── device-error toasts ─────────────────────────────────────────────────────
+// These reach ui.showToast through getTranslation, so every value in
+// deviceErrorCopy is a CSV key. A string added without its row would silently
+// show English in every language, which is what this file's own copy used to do.
+test('every device-error string has a translation row', () => {
+    const block = appSource.match(/const deviceErrorCopy = \{[\s\S]*?\n\};/);
+    assert.ok(block, 'deviceErrorCopy not found in app.js');
+    const strings = [...block[0].matchAll(/: '([^']+)'/g)].map(m => m[1]);
+    assert.ok(strings.length >= 7, `expected the whole map, got ${strings.length}`);
+
+    const csv = readFileSync('src/ui/de1 gui translation - Sheet1.csv', 'utf8');
+    const keys = new Set(csv.split('\r\n').map(line => line.split(',')[0]));
+    for (const text of strings) assert.ok(keys.has(text), `no CSV row for "${text}"`);
+
+    // The lookup itself: raw copy in the toast is the bug this guards.
+    assert.match(appSource, /const msg = copy \? getTranslation\(copy\)/);
+});

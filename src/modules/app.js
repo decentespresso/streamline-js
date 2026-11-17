@@ -567,12 +567,17 @@ function onScaleDisconnect() {
     scaleAutoRetryTimer = setTimeout(attemptScaleAutoRetry, SCALE_AUTO_RETRY_INTERVAL_MS);
 }
 
+// Each value is the English CSV key as well as the English text, so these are
+// translated like every other string -- they used to reach the toast raw, which
+// left them in English in every language. adapterOff deliberately reuses the
+// 'Bluetooth is not on' row that already exists, translated, rather than adding
+// a near-duplicate of it.
 const deviceErrorCopy = {
     scaleConnectFailed: 'Scale did not connect. Wake it and retry.',
     machineConnectFailed: 'Machine did not connect. Retry scan.',
     scaleDisconnected: 'Scale dropped. Retry scan.',
     machineDisconnected: 'Connection dropped. Retry scan.',
-    adapterOff: 'Bluetooth is off. Turn it on to continue.',
+    adapterOff: 'Bluetooth is not on',
     bluetoothPermissionDenied: 'Grant Bluetooth permission to continue.',
     scanFailed: 'Scan could not start. Retry.',
 };
@@ -593,7 +598,10 @@ function handleDeviceConnectionError(err) {
     // machine is NOT connected the banner still shows, since BT may genuinely be
     // the missing piece.
     if ((err.kind === 'adapterOff' || err.kind === 'bluetoothPermissionDenied') && isDe1Connected) return;
-    const msg = deviceErrorCopy[err.kind] ?? `${err.message}${err.suggestion ? `\n${err.suggestion}` : ''}`;
+    // Only our own copy is translatable; the fallback is whatever the failure
+    // itself said, which has no key.
+    const copy = deviceErrorCopy[err.kind];
+    const msg = copy ? getTranslation(copy) : `${err.message}${err.suggestion ? `\n${err.suggestion}` : ''}`;
     ui.showToast(msg, 5000, 'error');
 }
 

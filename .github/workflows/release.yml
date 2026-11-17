@@ -18,19 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync translations from Google Sheets
-        env:
-          TRANSLATIONS_URL: ${{ secrets.TRANSLATIONS_SHEET_URL }}
-        run: |
-          set -euo pipefail
-          if [ -z "${TRANSLATIONS_URL:-}" ]; then
-            echo "::warning::TRANSLATIONS_SHEET_URL secret not set — skipping translation sync, using committed file"
-          else
-            curl -fL "$TRANSLATIONS_URL" -o "src/ui/de1 gui translation - Sheet1.csv"
-            echo "Translations synced from Google Sheets"
-            echo "Languages: $(head -1 'src/ui/de1 gui translation - Sheet1.csv')"
-          fi
-
       - name: Stage whitelist into ./dist
         run: |
           set -euo pipefail

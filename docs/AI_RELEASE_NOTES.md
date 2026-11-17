@@ -74,13 +74,13 @@ The tag is the release artifact's manifest-version source, but it does not updat
 
 Do not assume the existing test enforces equality between every version field; inspect it.
 
-## Translation Sync
+## Translations
 
-The release workflow can replace the committed translation CSV with a protected Google Sheets export when `TRANSLATIONS_SHEET_URL` is configured. When it is absent, the committed CSV is used.
+`src/ui/de1 gui translation - Sheet1.csv` in this repository is the only source. The release ships exactly the file that is committed; nothing is fetched at build time, so what was reviewed and tested is what users get.
 
-- Never print, hardcode, or expose the secret URL.
-- Audit translation changes before release.
-- Ensure generated release content was tested with the same translation data where practical.
+- Translations are written here, in the repo, and reviewed like code.
+- Add a new key by appending a row; never rewrite or reorder existing rows (an append is N insertions and 0 deletions in the diff).
+- Keep the file CRLF-terminated and the header's column order unchanged -- the language list is read from that header.
 - Run `node scripts/i18n_audit.mjs`, but separate existing translation debt from release regressions.
 
 ## Establish The Release Range
