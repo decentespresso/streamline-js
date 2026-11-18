@@ -3167,6 +3167,7 @@ async function saveProfile({ asNew = false } = {}) {
         const editedJson = JSON.stringify(editorState.profile);
         if (sourceProfileJson) {
             if (sourceProfileJson === editedJson) {
+                await pushSavedProfileToMachine(src);
                 finishSaveSuccess(src.id);
                 return;
             }

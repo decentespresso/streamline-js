@@ -657,20 +657,17 @@ function renderProfiles() {
             frag.appendChild(h);
         };
 
-        // Group profiles that share a name family: either a common prefix
-        // before a "/", "•" or ":" separator ("A-Flow / default-dark",
-        // "A-Flow / default-light", ... -> family "A-Flow"), or -- when there
-        // is no separator -- an auto-suffixed duplicate title ("Adaptive v2"
-        // / "Adaptive v2 (2)" -> family "Adaptive v2"). Pure title match,
-        // unrelated to parentId/clone lineage -- the "from X" badge below
-        // still covers that separately.
+        // Group profiles that share a name family: a common prefix before a
+        // "/", "•" or ":" separator ("A-Flow / default-dark", "A-Flow /
+        // default-light", ... -> family "A-Flow"). Pure title match, unrelated
+        // to parentId lineage -- the "from X" badge covers that.
         const isProfileVisible = (rec) => isShowingHidden || rec.visibility !== 'hidden';
         const familyBaseTitle = (title) => {
             const t = title || '';
             const sep = t.match(/^(.*?)\s*[/•:]\s*\S.*$/);
-            if (sep) return sep[1].trim();
-            return t.replace(/\s*\(\d+\)\s*$/, '').trim();
+            return sep ? sep[1].trim() : t.trim();
         };
+        const lookAlikeKey = (rec, title) => `${rec.isDefault === true}|${title.replace(/\s*\(\d+\)\s*$/, '').trim()}`;
         const familyGroups = new Map();
         const titleCounts = new Map();
         for (const [key, rec] of sortedProfiles) {
@@ -680,7 +677,7 @@ function renderProfiles() {
             if (!familyGroups.has(groupKey)) familyGroups.set(groupKey, { base, members: [] });
             familyGroups.get(groupKey).members.push([key, rec, title]);
             if (isProfileVisible(rec)) {
-                const titleKey = `${rec.isDefault === true}|${title}`;
+                const titleKey = lookAlikeKey(rec, title);
                 titleCounts.set(titleKey, (titleCounts.get(titleKey) || 0) + 1);
             }
         }
@@ -693,7 +690,7 @@ function renderProfiles() {
         const syntheticFamilies = new Map();
         for (const [groupKey, { base, members }] of familyGroups) {
             const visibleMembers = members.filter(([, rec]) => isProfileVisible(rec));
-            if (visibleMembers.length < 2) continue;
+            if (visibleMembers.length < 2 || visibleMembers.every(([, , title]) => title === base)) continue;
             const headIdx = visibleMembers.findIndex(([, , title]) => title === base);
             if (headIdx !== -1) {
                 const [headKey] = visibleMembers[headIdx];
@@ -768,19 +765,19 @@ function renderProfiles() {
             titleSpan.textContent = displayTitle;
             leftSide.appendChild(titleSpan);
 
-            if (titleCounts.get(`${profileRecord.isDefault === true}|${displayTitle}`) > 1) {
+            if (titleCounts.get(lookAlikeKey(profileRecord, displayTitle)) > 1) {
                 const saved = new Date(profileRecord.updatedAt ?? profileRecord.createdAt);
                 if (!isNaN(saved.getTime())) {
                     const stamp = document.createElement('span');
                     stamp.className = 'text-[18px] text-[var(--low-contrast-white)] whitespace-nowrap';
-                    stamp.textContent = saved.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    stamp.textContent = saved.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     leftSide.appendChild(stamp);
                 }
             }
 
             const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
             const parentTitle = parentRecord?.profile?.title;
-            if (parentTitle && parentTitle !== profile.title && !nestedChildKeys.has(key)) {
+            if (parentTitle && (parentRecord.isDefault || parentTitle !== profile.title)) {
                 const badge = document.createElement('span');
                 badge.className = 'text-[16px] px-2 py-0.5 rounded-full bg-white/15 whitespace-nowrap';
                 badge.textContent = `from ${translateProfileTitle(parentTitle)}`;
@@ -1545,7 +1542,7 @@ function filterProfiles(searchTerm) {
 
         const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
         const parentTitle = parentRecord?.profile?.title;
-        if (parentTitle && parentTitle !== profile.title) {
+        if (parentTitle && (parentRecord.isDefault || parentTitle !== profile.title)) {
             const badge = document.createElement('span');
             badge.className = 'text-[16px] px-2 py-0.5 rounded-full bg-white/15 whitespace-nowrap';
             badge.textContent = `from ${translateProfileTitle(parentTitle)}`;
