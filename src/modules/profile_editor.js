@@ -3092,11 +3092,7 @@ function resolveSaveTarget({ hasSource, isDefault, execChanged, titleChanged, as
 //
 //  - PUT (in place), or SAVE's hide+replace overwrite: the same profile kept
 //    under whatever title it now has — no collision check at all, even if
-//    that title happens to match something else. A bundled default's fork is
-//    one of these: plain SAVE retires the bundled record (hidden, restorable
-//    from Revert and from the selector's hidden view), so the edit inherits
-//    the name the user knows instead of becoming "… (2)" beside an untouched
-//    original that every title lookup and old favorite still points at.
+//    that title happens to match something else.
 //  - Everything else that mints a record (Save As New, or a brand-new/
 //    uploaded profile) must not silently share a title with its own source,
 //    which stays visible alongside it.
@@ -3215,6 +3211,8 @@ async function saveProfile({ asNew = false } = {}) {
                 .map(r => r.profile?.title)
                 .filter(Boolean)
         );
+        const forkingDefault = !!src?.isDefault && execChanged && !asNew;
+
         const finalTitle = resolveFinalTitle({
             title: editorState.profile.title,
             existingTitles,
@@ -3280,7 +3278,7 @@ async function saveProfile({ asNew = false } = {}) {
             // change), not a default, not an explicit Save As New — same id,
             // PUT in place. Renaming a user profile with plain SAVE lands here.
             saved = await updateProfile(src.id, editorState.profile);
-        } else if (!src || asNew) {
+        } else if (!src || asNew || forkingDefault) {
             // New profile / uploaded file, or an explicit Save As New with a
             // real execution change: a plain POST. src?.id links provenance
             // (getProfileLineage) but the source's visibility is never
@@ -3291,27 +3289,12 @@ async function saveProfile({ asNew = false } = {}) {
                 return;
             }
         } else {
-            // Plain SAVE overwriting the source with a real execution change,
-            // whether that source is one of the user's own profiles or a
-            // bundled default: the content rehashes to a new id, so keep the
+            // Plain SAVE overwriting one of the user's own profiles with a real
+            // execution change: the content rehashes to a new id, so keep the
             // prior version as a hidden, restorable snapshot instead of
             // letting the server drop it on rehash. The new record links back
             // via parentId, so /lineage returns the full history the Revert
             // picker reads.
-            //
-            // A default takes the same route for a different reason: Decaid
-            // refuses content edits on a bundled record outright
-            // (ProfileController.update, 'Cannot modify default profile
-            // content'), so forking is the only way to edit one at all. It
-            // used to stop there and leave the bundled record visible, which
-            // meant the edit landed as "… (2)" while the original kept the
-            // familiar name, every title lookup, and any favorite pointing at
-            // it — so the user's own button put the pre-edit profile back on
-            // the machine (streamline.js#171). Retiring it is safe and
-            // reversible: setVisibility accepts 'hidden' for a default (only
-            // 'deleted' is refused), a hidden default survives Decaid's boot
-            // re-seed untouched, /lineage ignores visibility so Revert still
-            // offers it, and the selector's hidden view can restore it.
             retiredSource = true;
             saved = await uploadProfileWithParent(editorState.profile, src.id);
             // A dedup here would return src itself — flipping it visible then
@@ -3331,9 +3314,6 @@ async function saveProfile({ asNew = false } = {}) {
         const oldId = editorState.sourceProfileId;
         availableProfiles[saved.id] = saved;
 
-        // The retired id is dead: drop it from the list and repoint the
-        // favorite slots and wakeProfileId at the edit, or the user's own
-        // button keeps loading the PRE-EDIT content it still names.
         if (retiredSource && oldId && oldId !== saved.id) {
             delete availableProfiles[oldId];
             await remapFavorite(oldId, saved.id);
@@ -3343,23 +3323,12 @@ async function saveProfile({ asNew = false } = {}) {
         // temp/steam/flow calibration) are keyed by the old one. Move them, or
         // the edited profile silently loses numbers the user set — including
         // the flow calibration they may have just typed on this tab.
-        //
-        // Only on the overwrite path, where the new record IS the old profile
-        // under a new hash. Save As New mints a deliberately separate profile
-        // and its source keeps its own numbers, so it starts from the profile's
-        // baked-in defaults and the last values set anywhere, like any other
-        // profile the user has never dialled in.
         if (retiredSource && oldId && oldId !== saved.id) {
             await ensureProfileOverridesLoaded();
             const carried = getProfileOverride(oldId);
             if (carried) {
                 const merged = await saveProfileOverride(saved.id, carried);
                 saved.metadata = { ...(saved.metadata || {}), ...merged };
-                // The old id will never be loaded again, so its copy is dead
-                // weight in the synchronized KV record — one stale entry per
-                // edit, forever. A later Revert to this version re-carries the
-                // numbers forward from whatever is current, so nothing the user
-                // can reach loses a value.
                 await clearProfileOverride(oldId);
             }
         }

@@ -253,17 +253,6 @@ test('fork WITH a rename to a genuinely free title needs no suffix', () => {
     }), 'Morning blend');
 });
 
-test('plain SAVE on a bundled default keeps the name it is replacing', () => {
-    // The bundled record is retired (hidden) by the same save, so there is no
-    // visible original left to collide with — and the edit has to inherit the
-    // familiar name, or every title lookup and old favorite keeps resolving to
-    // the pre-edit profile (streamline.js#171).
-    assert.equal(resolveFinalTitle({
-        title: 'Espresso', existingTitles: new Set(),
-        sourceId: 'default:1', sourceTitle: 'Espresso', asNew: false, target: 'post',
-    }), 'Espresso');
-});
-
 test('SAVE AS NEW on a bundled default still suffixes — the original stays', () => {
     assert.equal(resolveFinalTitle({
         title: 'Espresso', existingTitles: new Set(),

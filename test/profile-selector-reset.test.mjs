@@ -5,13 +5,14 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { profileChanges, stepsDiffer } from '../src/modules/profile-version-diff.js';
 
 const source = readFileSync(new URL('../src/modules/profile_selector.js', import.meta.url), 'utf8');
 
 const start = source.indexOf('const DIFF_FIELD_LABELS');
-const end = source.indexOf('\nfunction promptVersionRestore');
+const end = source.indexOf('\nfunction el(');
 assert.ok(start >= 0 && end > start, 'summarizeProfileDiff not found in profile_selector.js');
-const summarizeProfileDiff = new Function(`${source.slice(start, end)}\nreturn summarizeProfileDiff;`)();
+const summarizeProfileDiff = new Function('stepsDiffer', `${source.slice(start, end)}\nreturn summarizeProfileDiff;`)(stepsDiffer);
 
 const step = (extra) => ({ name: 'Step', pump: 'flow', flow: 2, temperature: 93, seconds: 10, ...extra });
 const profile = (extra) => ({ title: 'X', target_weight: 36, target_volume: 0, beverage_type: 'espresso', tank_temperature: 0, steps: [step()], ...extra });
@@ -86,3 +87,34 @@ test('with only older entries, the newest-first order is kept', () => {
 });
 
 console.log('profile-selector-reset: all assertions passed');
+
+test('changes name each changed step field with its current and restored value', () => {
+    const current = profile({ steps: [step({ name: 'Pour', pump: 'pressure', pressure: 9, seconds: 30 })] });
+    const older = profile({ target_weight: 40, steps: [step({ name: 'Pour', pump: 'pressure', pressure: 8, seconds: 25 })] });
+    assert.deepEqual(profileChanges(current, older), {
+        steps: [{ index: 0, name: 'Pour', status: 'changed', fields: [
+            { label: 'Pressure', from: '9 bar', to: '8 bar' },
+            { label: 'Time', from: '30 s', to: '25 s' },
+        ] }],
+        profile: [{ label: 'Stop at weight', from: '36 g', to: '40 g' }],
+    });
+});
+
+test('changes report added and removed steps and format exit and limiter', () => {
+    const current = profile({ steps: [step({ exit: { type: 'flow', condition: 'over', value: 2.5 } }), step({ name: 'Decline' })] });
+    const older = profile({ steps: [step({ exit: null, limiter: { value: 8.6, range: 0.6 } })] });
+    const { steps } = profileChanges(current, older);
+    assert.deepEqual(steps[0].fields, [
+        { label: 'Exit', from: 'flow over 2.5 ml/s', to: 'None' },
+        { label: 'Limit', from: 'None', to: '8.6 (range 0.6)' },
+    ]);
+    assert.deepEqual(steps[1], { index: 1, name: 'Decline', status: 'removed', fields: [] });
+    assert.equal(profileChanges(older, current).steps[1].status, 'added');
+});
+
+test('a title-only difference, a zero limiter, or a missing side, lists nothing', () => {
+    const none = { steps: [], profile: [] };
+    assert.deepEqual(profileChanges(profile(), profile({ title: 'Renamed' })), none);
+    assert.deepEqual(profileChanges(null, profile()), none);
+    assert.deepEqual(profileChanges(profile(), profile({ steps: [step({ limiter: { value: 0, range: 0.6 } })] })), none);
+});
