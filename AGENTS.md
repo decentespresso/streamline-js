@@ -27,6 +27,7 @@ Start with [`docs/AI_REPO_MAP.md`](docs/AI_REPO_MAP.md). Open only the topic not
 
 ## Change Discipline
 
+- Avoid writing code comments. Make code self-explanatory through clear names and structure. When you touch code with an outdated comment, remove it on the spot.
 - Prefer small pure helpers and existing modules over new globals. Add to `window.app` only when injected HTML or an established cross-page bridge requires it.
 - Use the existing logger for production diagnostics and avoid noisy per-frame logging.
 - Follow existing naming and module boundaries. Do not perform broad style modernization during a functional fix.

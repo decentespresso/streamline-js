@@ -2200,9 +2200,6 @@ export function renderScreenSaverSettings() {
         </p>
     `;
 
-    // Rows share one rhythm: label left, control flush right, so every control
-    // on the page lines up on the same edge whichever section it is in. Row
-    // labels sit a step below the 30px section names they belong to.
     const ROW_LABEL = 'font-normal text-[var(--text-primary)] text-[24px] leading-[1.4]';
     const switchControl = (checked, handler, id = '') => `
             <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
@@ -2224,15 +2221,11 @@ export function renderScreenSaverSettings() {
                 ${options.map(o => `<option value="${o.value}" ${current === o.value ? 'selected' : ''} data-i18n-key="${o.label}">${o.label}</option>`).join('')}
             </select>
         </div>`;
-    // Two options, so joined square cells on the label's own row -- the same
-    // segmented control as Water Tank's Measurement Units.
     const modeSegment = (black, label) => `
         <button type="button" class="h-[69px] w-[180px] font-semibold text-[24px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200 ${blackSaver === black ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                 aria-pressed="${blackSaver === black}"
                 onclick="window.setBlackScreenSaver(${black})" data-i18n-key="${label}">${getTranslation(label)}</button>`;
 
-    // One section per question the page answers, divided from the next by a
-    // rule rather than boxed, so content starts at the page's own left edge.
     const section = (titleKey, rows) => `
         <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
             <p class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="${titleKey}">${getTranslation(titleKey)}</p>
@@ -2271,9 +2264,6 @@ export function renderScreenSaverSettings() {
         ...brightnessRows,
     ]);
 
-    // Its own section, not a fourth row under "Screen saver": closing the app is
-    // a sleep-button behaviour, not a property of the saver. The description is
-    // the half users cannot guess -- that reopening Decaid wakes the machine.
     const sleepExitSection = !sleepExitSupported ? '' : section('Sleep button', [`
         <div class="flex items-center justify-between gap-[24px] w-full">
             <p class="${ROW_LABEL}" data-i18n-key="Hold Sleep to sleep and close the app">Hold Sleep to sleep and close the app</p>
@@ -2288,8 +2278,6 @@ export function renderScreenSaverSettings() {
         showClock ? select('screensaver-clock-position', 'Clock position', SCREENSAVER_CLOCK_POSITIONS, clockPosition, 'window.setScreensaverClockPosition') : '',
     ]);
 
-    // The image deck only exists under the image saver, so it is a whole section
-    // that leaves rather than rows that grey out.
     const imagesSection = blackSaver ? '' : section('Images', [
         imageInfo,
         `<div class="flex items-center justify-between gap-[24px] w-full">
@@ -2339,9 +2327,6 @@ export function renderBrightnessSettings() {
     // whenever displayStateCache was null and got written back on first touch.
     const ds = displayState();
     const brightnessVal = ds?.brightness ?? ds?.requestedBrightness ?? 100;
-    // Auto is brightness 100: Decaid hands the screen back to the OS there
-    // (rest_v1.yml setBrightness), so it reads what was asked for, not the
-    // battery-capped level actually applied.
     const autoOn = isAutoBrightness(ds?.requestedBrightness ?? brightnessVal);
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
@@ -2381,9 +2366,6 @@ export function renderBrightnessSettings() {
     `;
 }
 
-// 100 is OS-managed brightness, not "maximum" (rest_v1.yml setBrightness).
-// Switching Auto off writes 99: the nearest manual level, so the screen does
-// not jump, and the slider takes it from there.
 function isAutoBrightness(level) { return Number(level) === 100; }
 
 function syncBrightnessAutoToggle(level) {
@@ -2486,11 +2468,6 @@ function bindSettingsJump() {
     settingsJumpBinding = { target, handler };
 }
 
-// Render Wake Lock settings
-// One toggle, one string: the click the skin plays on a tap, off by default.
-// Deliberately no description beyond the label -- the label is the whole
-// setting, and every extra sentence is another translation to carry. A single
-// control sits on the title row (Figma 2335:1686).
 export function renderSoundSettings() {
     const enabled = isTouchSoundEnabled();
     return `
@@ -2565,8 +2542,6 @@ export function renderWakeLockSettings() {
                             <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
                         </label>
                     </div>
-                    <!-- No display class on this wrapper: handleWakeProfileToggle flips
-                         the hidden attribute, which a flex/grid class would override. -->
                     <div id="wake-profile-select-row" class="w-full" ${wakeProfileEnabled ? '' : 'hidden'}>
                         <div class="flex justify-end w-full">
                             <select id="wake-profile-select"
@@ -2656,8 +2631,6 @@ async function loadPresenceSettingsAsync() {
     try {
         const settings = await getPresenceSettings();
         const schedules = settings.schedules || [];
-        // App text field and pill buttons, so this page reads like the rest of
-        // Settings rather than the daisyUI defaults it was first built with.
         const inputClass = 'p-3 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue-v2)]';
         const primaryPill = 'bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[24px] font-semibold inline-flex items-center justify-center flex-shrink-0';
         const outlinePill = 'border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] h-[56px] px-[28px] rounded-[64px] text-[24px] font-semibold inline-flex items-center justify-center flex-shrink-0';
@@ -3131,11 +3104,6 @@ export function renderSteamSettings() {
     }
 
     const steamSettings = settingsCache.workflow?.steamSettings || {};
-    // 0 is the heater switched off, not a temperature. Showing it would put a
-    // value outside the range this page advertises into the field (the same
-    // class of bug as the out-of-range values reported for hot water), so the
-    // stepper keeps showing the temperature we would switch back ON to and
-    // greys out while the master toggle below is off.
     const steamHeaterOn = !isSteamOff(steamSettings.targetTemperature ?? 150);
     const targetTemp = steamHeaterOn
         ? steamSettings.targetTemperature
@@ -3342,9 +3310,6 @@ export function renderSteamSettings() {
                             </button>
                         </div>
                     </div>
-                    <!-- Probe present (this section is unreachable without it) → show the
-                         LIVE reading instead of the old "requires the probe" note; the text
-                         node is patched per snapshot by window.onMilkProbeUpdate. -->
                     <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">${getTranslation('Live milk temperature:')} <span id="steam-milk-live-temp" class="font-bold">${probe.temperature.toFixed(1)} °C</span></p>
                 </div>
             </div>
@@ -3677,9 +3642,6 @@ export function renderCupWarmerSettings() {
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <!-- Pre-warm — the FIRMWARE owns the timing; we write two settings
-                 and read one status flag. Disabled + explained on firmware that
-                 does not have the registers: never a switch that pretends. -->
             <div class="flex flex-col gap-[24px] w-full">
                 <div class="flex items-center justify-between gap-[24px] w-full">
                     <div class="flex flex-col gap-[4px]">
@@ -5178,8 +5140,6 @@ async function seedRememberedSteamValues() {
     } catch (e) { /* defaults cover it */ }
 }
 
-// "Steam heater" on/off row for Quick Adjustments -> Steam. Carries no page
-// sizing; the page's container sets the width.
 function steamHeaterToggleRow(heaterOn) {
     return `
         <div class="flex items-center justify-between gap-[20px] w-full">
@@ -6126,9 +6086,6 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
     // read as a section heading and outranked the switch that turns the whole
     // plugin on.
     const labelHtml = `<span class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]">${label}</span>`;
-    // Manifest help text runs full width below the name/control row, as on the
-    // core settings pages -- a narrow column beside the control wrapped long
-    // descriptions into a tall strip that drifted toward the next setting.
     const description = schema?.description
         ? `<p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${escapeHtml(schema.description)}">${escapeHtml(getTranslation(schema.description))}</p>`
         : '';
@@ -6179,10 +6136,6 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
             </div>`;
     }
 
-    // `secure` is the manifest's own flag for a value that should not be read off
-    // the screen (visualizer's Password sets it) -- honour it rather than
-    // rendering every string in the clear. A text field is too wide to share the
-    // name's row, so it runs full width below the name.
     if (schema?.type === 'string') {
         return `
             <div class="flex flex-col gap-[30px] w-full">
@@ -6228,9 +6181,6 @@ export function bindPluginSettingControls(rootEl, {
         else if (value !== undefined && value !== null) el.value = value;
     }
 
-    // Saving a plugin setting needs an extensions:manage bearer token Decaid
-    // never gives a skin (POST /plugins/{id}/settings answers 401), so the
-    // generic plugin card shows the stored values and changes happen in Decaid.
     if (readOnly) {
         rootEl.querySelectorAll('[data-setting-key]').forEach(el => { el.disabled = true; });
         return;
@@ -6621,8 +6571,6 @@ function renderPluginVersionInfo(el, pluginId, info, override) {
     else if (src?.kind === 'local_zip') sourceText = getTranslation('Local ZIP');
     else if (src?.kind === 'local_folder') sourceText = getTranslation('Local folder');
 
-    // Approving it needs an extensions:manage token, so the skin only names the
-    // new permissions; the approval itself happens in Decaid.
     const pendingBlock = info.pending ? `
         <div class="flex flex-col gap-[12px] w-full rounded-[16px] bg-amber-500/10 border border-amber-500/30 p-[24px]">
             <span class="text-[24px] text-[var(--text-primary)]">
@@ -6674,21 +6622,6 @@ async function fetchPluginVersionInfo(pluginId, override) {
     return { reachable: vm.reachable, installed: vm.version, loaded: vm.loaded, source: vm.source, pending: vm.pending };
 }
 
-// One card per plugin, built entirely from GET /plugins (plus, for the rare
-// plugin that needs one, PLUGIN_CARD_OVERRIDES). `plugins` is the array the
-// caller already fetched once for the whole list -- see window.loadPluginList
-// -- so N cards cost one network round trip, not N. Manifest text (name,
-// description) is untrusted and always goes through escapeHtml.
-// A plugin's settings, in three tiers: who it is (name, description), what
-// state it is in (enabled, version, source, and where to change that), and
-// what it is configured with (its manifest settings, read-only). Tiers are separated by
-// hairline rules rather than by headings -- a "Plugin Version" heading in the
-// same blue and weight as the plugin's own name made the two read as equals,
-// which is how the old page lost its hierarchy.
-//
-// `asPage` is the per-plugin page, where the settings shell has already printed
-// the plugin's name as the page title; the list fallback renders the name
-// inline instead so its cards stay self-identifying.
 function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     const override = pluginCardOverride(pluginId);
     const vm = pluginViewModel(plugins, pluginId);
@@ -6704,30 +6637,15 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
             <span data-i18n-key="${escapeHtml(titleKey)}">${escapeHtml(title)}</span>
         </div>`;
 
-    // Body text at the same size, weight and width as every core settings
-    // description.
     const descriptionHtml = description ? `
         <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full"
            data-i18n-key="${escapeHtml(description)}">${escapeHtml(getTranslation(description))}</p>` : '';
 
-    // Sits on the description's own line, right-aligned in the same column as
-    // every other control -- the actions keep one edge, and the button does not
-    // cost a row of its own.
-    //
-    // A button rather than a link: a plugin whose skin answer declares
-    // `settingsOpen` as an overlay gets its page in a dialog over Settings
-    // instead of taking the page away (setupPluginCard binds it). The href
-    // stays on the element as the fallback target, so a tap still navigates
-    // when the plugin asks for nothing.
     const openHtml = uiUrl ? `
         <button type="button" data-role="plugin-open" data-plugin-url="${escapeHtml(uiUrl)}"
            class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[24px] font-bold inline-flex items-center justify-center flex-shrink-0"
            data-i18n-key="Open">Open</button>` : '';
 
-    // Turning a plugin on or off, installing, updating and saving its settings
-    // all need an extensions:manage bearer token Decaid never hands a skin, so
-    // this card only reports state and points at Decaid. The button needs the
-    // app's WebView exit bridge; a plain browser gets the note alone.
     const canExit = !!window.__DECENT_HOST__ && typeof window.decentApp?.exitToDashboard === 'function';
     const manageRow = `
         <div class="flex items-center justify-between gap-[24px] w-full">
@@ -6823,9 +6741,6 @@ function bindPluginOpenButton(cardEl, plugin) {
     });
 }
 
-// Wire the listeners a freshly-rendered card needs: the version-info fetch, the
-// Manage in Decaid button, and the manifest's own settings schema, filled
-// read-only from the stored values.
 function setupPluginCard(cardEl, pluginId, plugins) {
     const override = pluginCardOverride(pluginId);
     const vm = pluginViewModel(plugins, pluginId);
@@ -6980,9 +6895,6 @@ function renderFirmwareCheckBlock(summary) {
                 <div class="flex items-center justify-between gap-[20px] flex-wrap w-full">
                     <div class="flex items-center gap-[16px] flex-wrap">
                         ${pill(getTranslation('Update available'), 'bg-green-500/15 text-green-600')}
-                        <!-- Bare number, matching the installed one in the Version row
-                             directly above: two build numbers on one screen read as a
-                             before/after without a word in front of either. -->
                         <span class="text-[24px] font-normal text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
                     </div>
                     <button id="firmware-apply-btn" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
@@ -6990,12 +6902,6 @@ function renderFirmwareCheckBlock(summary) {
                         ${getTranslation('Update')}
                     </button>
                 </div>
-                <!-- What the build about to be installed changes, under its own heading
-                     rather than as loose prose: it is the one thing on screen that
-                     argues for pressing Update, and under the status row it used to
-                     read as a caption to the pill. Headed with the build it describes,
-                     so it cannot be mistaken for notes about the installed version in
-                     the Version row above. -->
                 ${releaseNotes ? `
                     <div class="w-full flex flex-col gap-[16px] pt-[14px]">
                         <div class="flex items-center justify-between gap-[20px] w-full">
@@ -7253,8 +7159,6 @@ export function renderFirmwareUpdateSettings() {
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <!-- The installed build as a plain setting row, aligned with the page's
-                 left edge like every other row; sections below are divided, not boxed. -->
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
                 <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Version">Version</p>
                 <p id="de1-firmware-version" class="font-normal text-[24px] text-[var(--text-primary)]">${de1Version || '—'}</p>
@@ -7331,19 +7235,9 @@ export function renderFirmwareUpdateSettings() {
                     </summary>
 
                     <div class="content-stretch flex flex-col gap-[20px] items-start relative w-full pt-[16px]">
-                        <!-- No heading: the card below is the only thing behind "Advanced"
-                             on a page already titled Firmware Update, and "No file
-                             selected" next to Select File says what it is.
-                             The file and the buttons that act on it share one row so the
-                             "what did I pick" state reads as a unit with "what happens to it".
-                             Select File and Upload stay paired on the same row/level — they're
-                             the two steps of one action, in reading order. -->
                         <div class="flex items-center justify-between gap-[20px] flex-wrap w-full">
                             <div class="min-w-0">
                                 <p id="firmware-filename" class="font-normal text-[24px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
-                                <!-- Filled by onFirmwareFileSelected: size in KB/MB, plus a plain-
-                                     language flag once it's bigger than any real DE1 image — a toast
-                                     fades, this stays on screen next to the file it's about. -->
                                 <p id="firmware-filename-hint" class="text-[20px] text-[var(--text-secondary)]"></p>
                             </div>
                             <div class="flex items-center gap-[16px] flex-shrink-0">
@@ -8127,21 +8021,6 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     // declaration, so anything else 404s. Built off API_BASE_URL, not a literal
     // localhost, so it stays right when the bridge hostname is configured.
 
-    // Plugin manager — the single dynamic Extensions node (settings-tree.js
-    // 'plugins'). Every installed plugin gets a full generic settings card
-    // (renderPluginCard/setupPluginCard) built from this one getPlugins() call,
-    // so a future plugin needs zero skin code to get a page: it just has to be
-    // installed and reported by the bridge. PLUGIN_CARD_OVERRIDES adds a card
-    // for a self-installable plugin (currently only DYE2) even when it is not
-    // yet in the list — see that const's own comment for why the manifest alone
-    // cannot support that generically.
-    // One plugin's page. Same card, same setup path as the list used to use --
-    // only the container differs, so a plugin's controls behave identically
-    // whether it is reached from its own nav row or (with none installed) from
-    // the aggregate page.
-    // No update check here: POST /plugins/update needs an extensions:manage
-    // token a skin does not get. Decaid's own 12-hourly UpdateCheckService
-    // still installs updates that ask for no new permissions.
 
     window.loadPluginPage = async function(pluginId) {
         const container = document.getElementById('plugin-page-container');
@@ -9535,10 +9414,6 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
     };
 
-    // Heater switch for Settings > Quick Adjustments > Steam. Staged like the
-    // temperature input beside it (Save writes it, flushPendingChanges
-    // remembers enabled values) -- api.setSteamHeaterEnabled writes at once and
-    // would fight this page's Save model.
     window.setSteamHeaterOn = function(on) {
         const steam = settingsCache.workflow?.steamSettings ?? {};
         if (on) {
@@ -10373,7 +10248,6 @@ export function renderBluetoothScaleSettings(settings) {
 
             <hr class="border-t border-[var(--border-primary)] w-full" />
 
-            <!-- Scale Power Mode: three options, so joined tabs full width below the name -->
             <div class="flex flex-col gap-[30px] items-start relative w-full">
                 <p id="scale-power-management-label" class="font-semibold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Scale Power Mode">Scale Power Mode</p>
                 <div class="grid grid-cols-3 w-full" role="group" aria-labelledby="scale-power-management-label">

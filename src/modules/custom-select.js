@@ -1,18 +1,6 @@
-// Styled dropdown for native <select>s. The OS picker ignores the app's theme
-// and looks different on every WebView, so each select gets an outlined
-// trigger and an in-page option list drawn from the style guide (Figma
-// 432:2710): Background.Primary panel, Border/Primary outline, the selected row
-// in Action.Primary.Inactive with Action.Primary.Active text.
-//
-// The <select> stays in the DOM, hidden, and remains the source of truth:
-// existing code keeps reading `.value` and listening for `change`, and a pick
-// here sets the value and dispatches `change` exactly as the OS picker would.
-// Nothing at module load touches the DOM, so the pure helper is node-testable.
 
 const ENHANCED = 'customSelect';
 
-// Next enabled option index for a key press, or null when the key does not
-// move the selection. Disabled options are skipped; the ends do not wrap.
 export function nextOptionIndex(disabledFlags, current, key) {
     const n = disabledFlags.length;
     const enabled = i => i >= 0 && i < n && !disabledFlags[i];
@@ -51,9 +39,6 @@ function enhance(select) {
     const valueDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
     const indexDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
 
-    // The select's rendered width becomes a floor, not a fixed size: a fixed
-    // width sized for the OS control truncates the label once a chevron sits
-    // beside it.
     const minWidth = select.offsetWidth;
 
     const trigger = document.createElement('button');
@@ -64,7 +49,6 @@ function enhance(select) {
         if (select.hasAttribute(attr)) trigger.setAttribute(attr, select.getAttribute(attr));
     }
     if (select.id) {
-        // A <label for="id"> keeps naming the control after the select is hidden.
         const label = document.querySelector(`label[for="${CSS.escape(select.id)}"]`);
         if (label && !trigger.hasAttribute('aria-labelledby')) {
             if (!label.id) label.id = `${select.id}-label`;
@@ -84,8 +68,6 @@ function enhance(select) {
         trigger.disabled = select.disabled;
     };
 
-    // Code sets `select.value = x` after rendering, which fires no event; the
-    // instance accessors keep the trigger's text in step with it.
     Object.defineProperty(select, 'value', {
         configurable: true,
         get() { return valueDescriptor.get.call(this); },
@@ -96,8 +78,6 @@ function enhance(select) {
         get() { return indexDescriptor.get.call(this); },
         set(v) { indexDescriptor.set.call(this, v); refresh(); },
     });
-    // Options rebuilt, translated or the select disabled after render. The
-    // observer goes with the select when the page drops it.
     new MutationObserver(refresh).observe(select, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'selected'] });
     select.addEventListener('change', refresh);
 
@@ -143,10 +123,6 @@ function enhance(select) {
             }
         };
 
-        // The app scales the whole page with a transform on #scaled-content, so
-        // the list lives inside it (to get the same scale) and is positioned in
-        // that element's unscaled coordinates. A transformed ancestor is the
-        // containing block for `fixed`, so these offsets are relative to it.
         const host = trigger.closest('#scaled-content') || document.body;
         const hostRect = host.getBoundingClientRect();
         const scale = host === document.body ? 1 : (hostRect.width / host.offsetWidth) || 1;
@@ -155,8 +131,6 @@ function enhance(select) {
         panel.style.minWidth = local(r.width);
         panel.style.left = local(r.left - hostRect.left);
         host.append(panel);
-        // Opens downward unless the list would run off the bottom and there is
-        // more room above.
         const below = window.innerHeight - r.bottom - 8;
         const height = panel.offsetHeight * scale;
         if (height > below && r.top > below) panel.style.top = local(r.top - hostRect.top - height - 4);
@@ -174,8 +148,6 @@ function enhance(select) {
             if (next != null) { e.preventDefault(); active = next; markActive(); }
         };
         const onOutside = e => { if (!panel.contains(e.target) && !trigger.contains(e.target)) closeOpenPanel(); };
-        // The panel is fixed to the trigger's position at opening; a scroll or
-        // resize would leave it floating, so either one closes it.
         const onMove = e => { if (!panel.contains(e.target)) closeOpenPanel(); };
         const onResize = () => closeOpenPanel();
         document.addEventListener('keydown', onKey, true);
@@ -200,8 +172,6 @@ function enhance(select) {
         if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key)) { e.preventDefault(); open(); }
     });
 
-    // Inline display, not just `hidden`: class CSS such as daisyUI's `.select`
-    // sets its own display and would show the native control beside ours.
     select.hidden = true;
     select.style.setProperty('display', 'none', 'important');
     select.tabIndex = -1;
@@ -209,15 +179,12 @@ function enhance(select) {
     refresh();
 }
 
-// Enhance every select under `root` (the root itself included) not already done.
 export function enhanceSelects(root) {
     if (!root) return;
     if (root instanceof HTMLSelectElement) { enhance(root); return; }
     root.querySelectorAll?.('select').forEach(enhance);
 }
 
-// Enhance what `container` holds now and whatever is rendered into it later.
-// Returns the cleanup, which also closes a list left open.
 export function observeSelects(container) {
     if (!container) return () => {};
     enhanceSelects(container);

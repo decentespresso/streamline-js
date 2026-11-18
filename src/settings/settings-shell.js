@@ -369,7 +369,6 @@ export async function initializeSettingsShell() {
     warmSensorCalibrationInBackground();
     bindShell(root);
     selectCleanup?.();
-    // Every category, extracted or legacy, renders into this one area.
     selectCleanup = observeSelects(document.getElementById('settings-content-area'));
     initResizableSeparators();
     const saved = readSettingsLocation();

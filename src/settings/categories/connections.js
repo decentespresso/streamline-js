@@ -33,7 +33,6 @@ function switchControl(attr, checked, { big = false, enabled = true } = {}) {
     </label>`;
 }
 
-// Name and switch on one row, the description full width below it.
 function settingRow(name, title, text, on, enabled) {
     return `<div class="flex flex-col gap-[30px] w-full">
         <div class="flex items-center justify-between gap-[24px] w-full">

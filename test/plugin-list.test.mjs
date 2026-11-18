@@ -283,8 +283,6 @@ test('a card with only custom-UI settings keeps Open and version info, has no en
     };
     const html = render(plugin.id, [plugin], { asPage: true });
     assert.match(html, /data-i18n-key="Open"/);
-    // Enabling needs an extensions:manage token a skin never gets, so the card
-    // points at Decaid instead; in a plain browser there is no exit button.
     assert.doesNotMatch(html, /plugin-enable-toggle/);
     assert.match(html, /data-i18n-key="Manage this plugin in the Decaid dashboard\."/);
     assert.doesNotMatch(html, /data-role="plugin-manage"/);
