@@ -36,13 +36,15 @@ export const TTR_CAP_S = 300;
  * snapshot still says heating, and wiping the estimate on those is what made the
  * status swap between the countdown and a bare "Heating" about once a second.
  * Every frame refreshes the arrival time, so a live socket keeps the estimate
- * fresh and only a silent one expires (see TTR_STALE_MS).
+ * fresh and only a silent one expires (see TTR_STALE_MS). `not_heating` is the
+ * exception: the machine has stopped climbing, so the held deadline is void.
  *
  * @param {{status?: string, remainingTimeMs?: number}} frame
  * @param {number} now epoch ms
  * @param {{deadline: number, at: number}|null} previous estimate held so far
  */
 export function readTimeToReadyFrame(frame, now, previous = null) {
+    if (frame?.status === 'not_heating') return null;
     if (frame?.status === 'heating' && frame.remainingTimeMs > 0) {
         return { deadline: now + frame.remainingTimeMs, at: now };
     }

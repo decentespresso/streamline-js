@@ -45,6 +45,13 @@ test('an unusable frame keeps the estimate instead of flipping to plain "Heating
     }
 });
 
+test('a not_heating frame drops the held countdown', () => {
+    const held = readTimeToReadyFrame({ status: 'heating', remainingTimeMs: 42_000 }, NOW);
+    const cleared = readTimeToReadyFrame({ status: 'not_heating', remainingTimeMs: null }, NOW + 1_000, held);
+    assert.equal(cleared, null);
+    assert.equal(heatingSecondsLeft(cleared, NOW + 1_000), 0);
+});
+
 test('frames keep a live socket from expiring past the stale window', () => {
     let held = readTimeToReadyFrame({ status: 'heating', remainingTimeMs: 300_000 }, NOW);
     for (let elapsed = 1_000; elapsed <= 20_000; elapsed += 1_000) {
