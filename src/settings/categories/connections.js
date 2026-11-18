@@ -19,8 +19,8 @@ const POLL_MS = 3000;
 
 const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const OUTLINE_BTN = 'border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[62px] rounded-[67.5px] border text-[24px] transition-colors duration-200 hover:bg-[var(--button-primary-bg)] hover:text-white';
-const HEADING = "font-['Inter:Bold',sans-serif] font-bold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]";
-const BODY = "font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px]";
+const HEADING = "font-semibold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]";
+const BODY = "font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px]";
 const HR = '<hr class="border-t border-[var(--border-primary)] w-full" />';
 
 // The Scale page's switch, at its two sizes.
@@ -33,13 +33,14 @@ function switchControl(attr, checked, { big = false, enabled = true } = {}) {
     </label>`;
 }
 
+// Name and switch on one row, the description full width below it.
 function settingRow(name, title, text, on, enabled) {
-    return `<div class="flex items-center justify-between w-full">
-        <div class="flex items-baseline gap-[14px]">
-            <p class="${HEADING} shrink-0" data-i18n-key="${title}">${title}</p>
-            <p class="${BODY}" data-i18n-key="${text}">${text}</p>
+    return `<div class="flex flex-col gap-[30px] w-full">
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <p class="${HEADING}" data-i18n-key="${title}">${title}</p>
+            ${switchControl(`data-sync="${name}"`, on, { big: true, enabled })}
         </div>
-        ${switchControl(`data-sync="${name}"`, on, { big: true, enabled })}
+        <p class="${BODY} w-full" data-i18n-key="${text}">${text}</p>
     </div>`;
 }
 
@@ -54,9 +55,9 @@ function deviceCard(device, preferred, info) {
             : '<span class="text-[20px] font-bold px-[16px] py-[6px] rounded-full bg-[var(--muted-pill-bg)] text-[var(--text-primary)] opacity-50" data-i18n-key="Available">Available</span>';
     const id = esc(device.id);
     const actions = unavailable
-        ? `<button type="button" data-rescan class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200" data-i18n-key="Reconnect">Reconnect</button>
-           <button type="button" data-forget="${id}" data-name="${esc(device.name)}" class="border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200" data-i18n-key="Forget">Forget</button>`
-        : `<button type="button" data-${connected ? 'disconnect' : 'connect'}="${id}" class="${connected ? 'border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white' : 'bg-[var(--button-primary-bg)] text-white hover:bg-[#2c4a7a]'} h-[62px] px-[32px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200" data-i18n-key="${connected ? 'Disconnect' : 'Connect'}">${connected ? 'Disconnect' : 'Connect'}</button>`;
+        ? `<button type="button" data-rescan class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200" data-i18n-key="Reconnect">Reconnect</button>
+           <button type="button" data-forget="${id}" data-name="${esc(device.name)}" class="border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200" data-i18n-key="Forget">Forget</button>`
+        : `<button type="button" data-${connected ? 'disconnect' : 'connect'}="${id}" class="${connected ? 'border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white' : 'bg-[var(--button-primary-bg)] text-white hover:bg-[#2c4a7a]'} h-[62px] px-[32px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200" data-i18n-key="${connected ? 'Disconnect' : 'Connect'}">${connected ? 'Disconnect' : 'Connect'}</button>`;
     return `<div class="flex items-center justify-between w-full bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] rounded-[18px] px-[28px] py-[24px] mb-[16px] ${unavailable ? 'opacity-60' : ''}">
         <div class="flex items-center gap-[16px] flex-1 min-w-0">
             <div class="relative flex-shrink-0">
@@ -64,14 +65,14 @@ function deviceCard(device, preferred, info) {
                 ${connected ? '<div class="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-40"></div>' : ''}
             </div>
             <div class="flex flex-col gap-[4px] min-w-0">
-                <span class="text-[26px] font-bold text-[var(--text-primary)] truncate leading-tight">${esc(device.name || device.id)}</span>
-                <span class="text-[18px] text-[var(--text-primary)] opacity-40 font-mono truncate">${id}</span>
+                <span class="text-[30px] font-semibold text-[var(--text-primary)] truncate leading-tight">${esc(device.name || device.id)}</span>
+                <span class="text-[20px] text-[var(--text-primary)] opacity-40 font-mono truncate">${id}</span>
             </div>
         </div>
         <div class="flex items-center gap-[20px] flex-shrink-0 ml-[24px]">
             ${connected && info?.deviceId === device.id ? surfaceLinks(info) : ''}
             <div class="flex flex-col items-center gap-[4px]">
-                <span class="text-[16px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
+                <span class="text-[20px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
                 ${switchControl(`data-prefer="${id}"`, preferred === device.id)}
             </div>
             ${badge}
@@ -86,7 +87,7 @@ function surfaceLinks(info) {
     return (info?.surfaces ?? []).map(surface => {
         let href;
         try { href = new URL(surface.href, origin).href; } catch { return ''; }
-        return `<a href="${esc(href)}" class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200 inline-flex items-center">${esc(surface.label || surface.role)}</a>`;
+        return `<a href="${esc(href)}" class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200 inline-flex items-center">${esc(surface.label || surface.role)}</a>`;
     }).join('');
 }
 
@@ -102,18 +103,19 @@ function view({ devices, info, preferred }) {
     return `<div class="flex flex-col gap-[32px] items-start relative w-full max-w-full overflow-x-hidden">
         <div class="flex items-center w-full">
             <div class="w-[139px] shrink-0"></div>
-            <p class="flex-1 text-center font-['Inter:Semi_Bold',sans-serif] font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Grinder">Grinder</p>
+            <p class="flex-1 text-center font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Grinder">Grinder</p>
             <button type="button" data-search class="w-[139px] shrink-0 ${OUTLINE_BTN}" data-i18n-key="Search">Search</button>
         </div>
         ${HR}
         <div class="flex flex-col gap-[16px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                 <p class="leading-[1.2]" data-i18n-key="Connected Device">Connected Device</p>
             </div>
             <div class="w-full">${list}</div>
         </div>
         ${HR}
         ${settingRow('follow', 'Follow Grinder', 'Grind tile follows the grinder.', getGrinderSync('follow'), true)}
+        ${HR}
         ${settingRow('send', 'Send Grind', canSend ? 'Grind tile sets the grinder.' : 'Needs a settable grinder.', getGrinderSync('send'), canSend || getGrinderSync('send'))}
         <div class="w-full flex justify-center pt-[8px]">
             <a href="${DOCS_URL}" class="text-[#959595] hover:text-[var(--mimoja-blue-v2)] text-[20px] underline underline-offset-4 transition-colors duration-200" data-i18n-key="Learn more about Grinder Plugins">Learn more about Grinder Plugins</a>

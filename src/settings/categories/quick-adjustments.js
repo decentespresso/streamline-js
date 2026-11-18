@@ -12,9 +12,9 @@ const PLUS_ICON = '<svg aria-hidden="true" width="36" height="36" viewBox="0 0 5
 
 function multiplierCard({ key, label, description, unit = '', step }) {
     return `
-        <section class="border border-[var(--border-primary)] border-solid flex flex-col gap-[20px] items-center px-[60px] py-[20px] w-[590px]">
-            <p id="${key}-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] text-[var(--text-primary)] text-[30px]" data-i18n-key="${label}">${label}</p>
-            <div class="flex gap-[20px] h-[72px] items-center justify-center w-full">
+        <section class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+            <p id="${key}-label" class="font-semibold leading-[1.2] text-[var(--action-label)] text-[30px]" data-i18n-key="${label}">${label}</p>
+            <div class="flex gap-[20px] items-center justify-end">
                 <button type="button" data-adjust="${key}" data-delta="-${step}" aria-label="Decrease ${label.toLowerCase()}" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center">${MINUS_ICON}</button>
                 <div class="text-center text-[var(--text-primary)] text-[24px] font-bold flex items-center justify-center w-[130px]">
                     <input type="text" inputmode="decimal" data-setting="${key}" aria-labelledby="${key}-label" class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full" min="0">
@@ -22,18 +22,18 @@ function multiplierCard({ key, label, description, unit = '', step }) {
                 </div>
                 <button type="button" data-adjust="${key}" data-delta="${step}" aria-label="Increase ${label.toLowerCase()}" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center">${PLUS_ICON}</button>
             </div>
-            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="${description}">${description}</p>
+            <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full col-span-2" data-i18n-key="${description}">${description}</p>
         </section>`;
 }
 
 function render(container) {
     container.innerHTML = `
         <div class="flex flex-col gap-[60px] items-start w-full">
-            <div class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[var(--text-primary)] text-[36px] text-center w-full">
+            <div class="font-semibold text-[var(--text-primary)] text-[36px] text-center w-full">
                 <p class="leading-[1.2]" data-i18n-key="Flow Multiplier Settings">Flow Multiplier Settings</p>
             </div>
             <div class="h-0 w-full"><hr class="border-t border-[var(--border-primary)] w-full"></div>
-            <div class="flex flex-col items-center gap-[30px] w-full">
+            <div class="flex flex-col items-start w-full divide-y divide-[var(--border-primary)]">
                 ${multiplierCard({
                     key: 'weightFlowMultiplier',
                     label: 'Weight Flow Multiplier',
@@ -46,7 +46,7 @@ function render(container) {
                     step: 0.05,
                     description: 'Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.'
                 })}
-                <p data-settings-error role="status" class="hidden text-red-500 text-[22px] text-center"></p>
+                <p data-settings-error role="status" class="hidden text-red-500 text-[24px] pt-[30px]"></p>
             </div>
         </div>`;
     translatePage();

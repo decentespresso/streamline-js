@@ -65,7 +65,6 @@ const SETTINGS_NUMPAD_CONFIGS = {
     'sensor-cal-temperature-measured': { title: 'MEASURED TEMP',     unit: '°C',   min: 0, max: 200, fieldType: 'settings-sensor-cal-temp-measured' },
     'sensor-cal-pressure-measured':    { title: 'MEASURED BAR',      unit: 'bar',  min: 0, max: 20,  fieldType: 'settings-sensor-cal-pressure-measured' },
     'sensor-cal-flow-measured':        { title: 'MEASURED FLOW',     unit: 'ml/s', min: 0, max: 20,  fieldType: 'settings-sensor-cal-flow-measured' },
-    steamCalibTempInput:     { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 135, max: 170,  fieldType: 'settings-steam-calib-temp' },
     // min 0 so the numpad can express Off; anything typed below
     // STEAM_ENABLED_MIN_TEMP lands as Off rather than as a temperature.
     steamTempInput:          { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 0,   max: 170,  fieldType: 'settings-steam-temp' },
@@ -372,7 +371,7 @@ const invalidateScaleInfo = () => scaleInfoLifecycle.invalidate();
 function renderLoadingState(title) {
     return `
         <div class="flex flex-col gap-[60px] items-start relative w-full max-w-full overflow-x-hidden" role="status" aria-busy="true">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
+            <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
                 <p class="leading-[1.2]">${title}</p>
             </div>
             <div class="text-[var(--text-primary)] p-4 text-[24px] text-center w-full" data-i18n-key="Loading settings...">Loading settings...</div>
@@ -423,7 +422,7 @@ function formatBuildTimestamp(timestamp) {
 function renderErrorState(title, message) {
     return `
         <div class="flex flex-col gap-[60px] items-start relative w-full max-w-full overflow-x-hidden" role="alert">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
+            <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
                 <p class="leading-[1.2]">${escapeHtml(title)}</p>
             </div>
             <div class="text-red-500 p-4 text-[24px] text-center w-full">Failed to load settings: ${escapeHtml(message)}</div>
@@ -1009,8 +1008,6 @@ export function renderSettingsContent(category) {
             return renderCalibRefillKitSettings();
         case 'calib_voltage':
             return renderCalibVoltageSettings();
-        case 'calib_steam':
-            return renderCalibSteamSettings();
         case 'calib_sensors':
             return renderSensorCalSettings();
         case 'calib_loadcell':
@@ -1089,7 +1086,7 @@ export function renderFlowMultiplierSettings(settings) {
     if (!settings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Flow Multiplier Settings">Flow Multiplier Settings</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load flow multiplier settings">Failed to load flow multiplier settings</div>
@@ -1099,7 +1096,7 @@ export function renderFlowMultiplierSettings(settings) {
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Flow Multiplier Settings">Flow Multiplier Settings</p>
             </div>
 
@@ -1108,14 +1105,14 @@ export function renderFlowMultiplierSettings(settings) {
                 <hr class="border-t border-[var(--border-primary)] w-full" />
             </div>
 
-            <div class="content-stretch flex flex-col items-center relative w-full">
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px]">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p id="weight-flow-multiplier-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Weight Flow Multiplier">
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex items-center relative min-w-0">
+                        <p id="weight-flow-multiplier-label" class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Weight Flow Multiplier">
                             Weight Flow Multiplier
                         </p>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="weight-flow-mult-minus" aria-label="Decrease weight flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustWeightFlowMultiplier(-0.1);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1136,18 +1133,18 @@ export function renderFlowMultiplierSettings(settings) {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2">
                         Multiplier factor applied to weight flow for projected weight calculation when stopping shots by weight. Default is 1.0. Higher values stop the shot earlier, lower values stop later.
                     </p>
                 </div>
 
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px] mt-[30px]">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p id="volume-flow-multiplier-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Volume Look-ahead">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex items-center relative min-w-0">
+                        <p id="volume-flow-multiplier-label" class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Volume Look-ahead">
                             Volume Look-ahead
                         </p>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="volume-flow-mult-minus" aria-label="Decrease volume flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustVolumeFlowMultiplier(-0.05);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1168,7 +1165,7 @@ export function renderFlowMultiplierSettings(settings) {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2" data-i18n-key="Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.">
                         Used only when no scale is connected. Sets how far ahead the shot stop is anticipated, to allow for water still flowing after the stop. Default is 0.3. Higher values stop earlier, lower values stop later.
                     </p>
                 </div>
@@ -1203,7 +1200,7 @@ export function renderReaSettingsForm(settings) {
     if (!settings) {
         return `
             <div class="flex flex-col gap-[60px] items-start relative w-full max-w-full overflow-x-hidden">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
+                <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
                     <p class="leading-[1.2]" data-i18n-key="Decaid Settings">Decaid Settings</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
@@ -1219,17 +1216,17 @@ export function renderReaSettingsForm(settings) {
     const appInfoDetails = appInfo ? `
                 <div class="grid gap-[12px] sm:grid-cols-2">
                     <div class="rounded-[10px] border border-[var(--border-primary)] px-4 py-3 bg-[var(--box-color)]">
-                        <p class="text-[20px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Version">Version</p>
-                        <p class="text-[24px] font-['Inter:Regular',sans-serif]">${appInfo.version} (${appInfo.buildNumber})</p>
-                        <p class="text-[16px] text-[var(--text-secondary)]">${appInfo.fullVersion} &middot; ${formatBuildTimestamp(appInfo.buildTime)}</p>
+                        <p class="text-[20px] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Version">Version</p>
+                        <p class="text-[24px] font-normal">${appInfo.version} (${appInfo.buildNumber})</p>
+                        <p class="text-[20px] text-[var(--text-secondary)]">${appInfo.fullVersion} &middot; ${formatBuildTimestamp(appInfo.buildTime)}</p>
                     </div>
                     <div id="app-update-section" class="rounded-[10px] border border-[var(--border-primary)] px-4 py-3 bg-[var(--box-color)]">${renderAppUpdateBlock(settingsCache.appUpdateState)}</div>
                 </div>
             ` : `
                 <div class="grid gap-[12px] sm:grid-cols-2">
                     <div class="rounded-[10px] border border-[var(--border-primary)] px-4 py-3 bg-[var(--box-color)]">
-                        <p class="text-[20px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Version">Version</p>
-                        <p class="text-[24px] font-['Inter:Regular',sans-serif]" data-i18n-key="Fetching build metadata...">Fetching build metadata...</p>
+                        <p class="text-[20px] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Version">Version</p>
+                        <p class="text-[24px] font-normal" data-i18n-key="Fetching build metadata...">Fetching build metadata...</p>
                     </div>
                     <div id="app-update-section" class="rounded-[10px] border border-[var(--border-primary)] px-4 py-3 bg-[var(--box-color)]">${renderAppUpdateBlock(settingsCache.appUpdateState)}</div>
                 </div>
@@ -1237,7 +1234,7 @@ export function renderReaSettingsForm(settings) {
 
     return `
         <div class="flex flex-col gap-[60px] items-start relative w-full max-w-full overflow-x-hidden">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
+            <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
                 <p class="leading-[1.2]" data-i18n-key="Decaid Settings">Decaid Settings</p>
             </div>
 
@@ -1249,31 +1246,31 @@ export function renderReaSettingsForm(settings) {
             <div class="flex flex-col items-start relative w-full max-w-full">
                 <div class="flex flex-col gap-[30px] items-start relative w-full max-w-full">
                     <div class="flex flex-col items-start relative w-full max-w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px] mb-[20px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px] mb-[20px]">
                             <p id="gateway-mode-label" class="leading-[1.2]" data-i18n-key="Gateway Mode">Gateway Mode</p>
                         </div>
-                        <div class="flex items-center justify-between w-full max-w-[885px]" role="group" aria-labelledby="gateway-mode-label">
-                            <button class="h-[120px] w-[295px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[30px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                                ${settings.gatewayMode === 'disabled' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                        <div class="grid grid-cols-3 w-full" role="group" aria-labelledby="gateway-mode-label">
+                            <button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                                ${settings.gatewayMode === 'disabled' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                                 aria-pressed="${settings.gatewayMode === 'disabled'}"
                                 onclick="window.updateReaSetting('gatewayMode', 'disabled')" data-i18n-key="Disabled">
                                 Disabled
                             </button>
-                            <button class="h-[120px] w-[295px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[30px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                                ${settings.gatewayMode === 'tracking' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                            <button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                                ${settings.gatewayMode === 'tracking' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                                 aria-pressed="${settings.gatewayMode === 'tracking'}"
                                 onclick="window.updateReaSetting('gatewayMode', 'tracking')">
                                 Tracking
                             </button>
-                            <button class="h-[120px] w-[295px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[30px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                                ${settings.gatewayMode === 'full' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                            <button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                                ${settings.gatewayMode === 'full' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                                 aria-pressed="${settings.gatewayMode === 'full'}"
                                 onclick="window.updateReaSetting('gatewayMode', 'full')">
                                 Full
                             </button>
                         </div>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words" data-i18n-key="Controls how the gateway monitors and controls the espresso machine">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words" data-i18n-key="Controls how the gateway monitors and controls the espresso machine">
                         Controls how the gateway monitors and controls the espresso machine
                     </p>
                 </div>
@@ -1287,7 +1284,7 @@ export function renderReaSettingsForm(settings) {
             <div class="flex flex-col items-start relative w-full max-w-full">
                 <div class="flex flex-col gap-[30px] items-start relative w-full max-w-full">
                     <div class="flex items-center justify-between relative w-full max-w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p id="log-level-label" class="leading-[1.2]" data-i18n-key="Log Level">Log Level</p>
                         </div>
                         <select id="logLevelSelect" aria-labelledby="log-level-label" class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[250px] text-white text-[24px] p-2 max-w-[250px]"
@@ -1304,7 +1301,7 @@ export function renderReaSettingsForm(settings) {
                             <option value="OFF" ${settings.logLevel === 'OFF' ? 'selected' : ''} data-i18n-key="OFF">OFF</option>
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words" data-i18n-key="Sets the verbosity of application logging output">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words" data-i18n-key="Sets the verbosity of application logging output">
                         Sets the verbosity of application logging output
                     </p>
                 </div>
@@ -1315,7 +1312,7 @@ export function renderReaSettingsForm(settings) {
             <div class="flex flex-col items-start relative w-full max-w-full">
                 <div class="flex flex-col gap-[30px] items-start relative w-full max-w-full">
                     <div class="flex items-center justify-between relative w-full max-w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Automatic Update Checks">Automatic Update Checks</p>
                         </div>
                         <select class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[250px] text-white text-[24px] p-2 max-w-[250px]"
@@ -1324,7 +1321,7 @@ export function renderReaSettingsForm(settings) {
                             <option value="false" ${settings.automaticUpdateCheck === false ? 'selected' : ''} data-i18n-key="Disabled">Disabled</option>
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words pr-[270px]" data-i18n-key="Check for app updates every 12 hours automatically">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words pr-[270px]" data-i18n-key="Check for app updates every 12 hours automatically">
                         Check for app updates every 12 hours automatically
                     </p>
                 </div>
@@ -1333,7 +1330,7 @@ export function renderReaSettingsForm(settings) {
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="w-full flex flex-col gap-[12px]">
-                <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">Decaid <span data-i18n-key="Update info">Update info</span></p>
+                <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">Decaid <span data-i18n-key="Update info">Update info</span></p>
                 ${appInfoDetails}
             </div>
 
@@ -1341,10 +1338,10 @@ export function renderReaSettingsForm(settings) {
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <div class="flex flex-col items-start relative w-full max-w-full">
                 <div class="flex flex-col gap-[20px] items-start relative w-full max-w-full">
-                    <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                    <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Web UI Path">Web UI Path</p>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal text-[20px] text-[var(--text-secondary)] break-all">${settings.webUiPath}</p>
+                    <p class="font-normal text-[20px] text-[var(--text-secondary)] break-all">${settings.webUiPath}</p>
                 </div>
             </div>
             ` : ''}
@@ -1354,7 +1351,7 @@ export function renderReaSettingsForm(settings) {
             <div class="flex flex-col items-start relative w-full max-w-full">
                 <div class="flex flex-col gap-[30px] items-start relative w-full max-w-full">
                     <div class="flex items-center justify-between relative w-full max-w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Go to Dashboard">Go to Dashboard</p>
                         </div>
                         <button type="button" class="bg-[var(--button-primary-bg)] h-[62.88px] px-[48px] rounded-[2617.374px] text-white text-[24px] font-bold"
@@ -1373,7 +1370,7 @@ export function renderFlushSettingsForm(settings) {
     if (!settings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Flush Settings">Flush Settings</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load flush settings">Failed to load flush settings</div>
@@ -1383,7 +1380,7 @@ export function renderFlushSettingsForm(settings) {
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Flush Settings">Flush Settings</p>
             </div>
 
@@ -1392,15 +1389,15 @@ export function renderFlushSettingsForm(settings) {
                 <hr class="border-t border-[var(--border-primary)] w-full" />
             </div>
 
-            <div class="content-stretch flex flex-col items-center relative w-full">
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px]">
-                    <div class="content-stretch flex items-baseline gap-[14px] relative shrink-0">
-                        <p id="flush-temp-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Temperature for flush cycles">
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex flex-wrap items-baseline gap-x-[14px] relative min-w-0">
+                        <p id="flush-temp-label" class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Temperature for flush cycles">
                             Temperature for flush cycles
                         </p>
                         <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">${tempInputValue(5)} – ${tempInputValue(95)} ${tempUnitLabel()}</span>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="flush-temp-minus" aria-label="Decrease flush temperature" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustFlushTemp(-5);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1424,14 +1421,14 @@ export function renderFlushSettingsForm(settings) {
                     </div>
                 </div>
 
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px] mt-[30px]">
-                    <div class="content-stretch flex items-baseline gap-[14px] relative shrink-0">
-                        <p id="flush-flow-label" class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Flush flow rate">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex flex-wrap items-baseline gap-x-[14px] relative min-w-0">
+                        <p id="flush-flow-label" class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Flush flow rate">
                             Flush flow rate
                         </p>
                         <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">1 – 8 ${getTranslation('ml/s')}</span>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="flush-flow-minus" aria-label="Decrease flush flow" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustFlushFlow(-1);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1464,7 +1461,7 @@ export function renderFanThresholdSettings(settings) {
     if (!settings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Fan Threshold">Fan Threshold</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load DE1 settings">Failed to load DE1 settings</div>
@@ -1479,7 +1476,7 @@ export function renderFanThresholdSettings(settings) {
         <div class="content-stretch flex flex-col gap-[48px] items-start relative w-full">
 
             <!-- Page title -->
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Fan Threshold">Fan Threshold</p>
             </div>
 
@@ -1507,7 +1504,7 @@ export function renderFanThresholdSettings(settings) {
                         <div class="flex items-end gap-[6px]">
                             <span id="fan-display" class="text-[var(--text-primary)] font-bold leading-none"
                                   style="font-size: 96px; font-family: 'Inter', monospace; letter-spacing: -2px;">${pct}</span>
-                            <span class="text-[var(--mimoja-blue-v2)] text-[36px] font-bold mb-[12px]">°C</span>
+                            <span class="text-[var(--mimoja-blue-v2)] text-[36px] font-semibold mb-[12px]">°C</span>
                         </div>
                         <input type="hidden" id="fanThresholdInput" value="${pct}">
                     </div>
@@ -1527,7 +1524,7 @@ export function renderFanThresholdSettings(settings) {
                              class="h-full rounded-full bg-[var(--button-primary-bg)] transition-all duration-150"
                              style="width: ${pct}%"></div>
                     </div>
-                    <div class="flex justify-between text-[18px] text-[var(--text-primary)] opacity-50">
+                    <div class="flex justify-between text-[20px] text-[var(--text-primary)] opacity-50">
                         <span>0°C</span>
                         <span data-i18n-key="Range: 0 – 50°C">Range: 0 – 50°C</span>
                         <span>100°C</span>
@@ -1536,7 +1533,7 @@ export function renderFanThresholdSettings(settings) {
             </div>
 
             <!-- Description -->
-            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.5] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="The fan activates when the machine's internal temperature exceeds this threshold.">
+            <p class="font-normal leading-[1.5] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="The fan activates when the machine's internal temperature exceeds this threshold.">
                 The fan activates when the machine's internal temperature exceeds this threshold.
                 Lower values run the fan more often; higher values keep it quieter during operation.
             </p>
@@ -1551,7 +1548,7 @@ export function renderUsbChargerModeSettings(settings) {
     if (!settings || !reaSettings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Smart Charging">${getTranslation('Smart Charging')}</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
@@ -1571,10 +1568,10 @@ export function renderUsbChargerModeSettings(settings) {
     // them keeps the page short instead of two full-height stacked sections.
     const timeField = (id, label, value, kind) => `
         <div class="flex-1 flex items-center justify-between gap-[16px] bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] rounded-[16px] px-[24px] h-[80px]">
-            <span class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[26px]">${label}</span>
+            <span class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px]">${label}</span>
             <input type="time" id="${id}" lang="en-US"
                    style="color-scheme: ${pickerScheme}"
-                   class="bg-transparent text-[var(--text-primary)] text-[28px] font-bold text-right w-[210px] outline-none cursor-pointer"
+                   class="bg-transparent text-[var(--text-primary)] text-[30px] font-semibold text-right w-[210px] outline-none cursor-pointer"
                    value="${minutesToTimeString(value)}"
                    onclick="this.showPicker?.()"
                    onchange="handleNightModeTimeChange('${kind}', this.value)">
@@ -1583,12 +1580,9 @@ export function renderUsbChargerModeSettings(settings) {
     const nightModeSection = chargingMode !== 'disabled' ? `
         <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-        <div class="flex flex-col gap-[16px] w-full">
+        <div class="flex flex-col gap-[30px] w-full">
             <div class="flex items-center justify-between gap-[24px] w-full">
-                <div class="flex flex-col gap-[4px]">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Night Mode">Night Mode</p>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal text-[var(--text-primary)] text-[22px] leading-[1.3]" data-i18n-key="Charge conservatively overnight between a sleep and morning time">Charge conservatively overnight between a sleep and morning time</p>
-                </div>
+                <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Night Mode">Night Mode</p>
                 <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                     <input type="checkbox" id="night-mode-toggle"
                            class="sr-only peer"
@@ -1598,6 +1592,7 @@ export function renderUsbChargerModeSettings(settings) {
                     <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
                 </label>
             </div>
+            <p class="font-normal text-[var(--text-primary)] text-[24px] leading-[1.4] w-full" data-i18n-key="Charge conservatively overnight between a sleep and morning time">Charge conservatively overnight between a sleep and morning time</p>
             ${nightModeEnabled ? `
             <div class="flex gap-[16px] w-full">
                 ${timeField('night-mode-sleep-time', 'Sleep', sleepTime, 'sleep')}
@@ -1610,7 +1605,7 @@ export function renderUsbChargerModeSettings(settings) {
     return `
         <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
 
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Smart Charging">${getTranslation('Smart Charging')}</p>
             </div>
 
@@ -1627,7 +1622,7 @@ export function renderUsbChargerModeSettings(settings) {
                  Charging Status. -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
-                    <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                    <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Charging Mode">Charging Mode</p>
                     </div>
                     <div class="grid grid-cols-2 gap-[12px] w-full">
@@ -1645,8 +1640,8 @@ export function renderUsbChargerModeSettings(settings) {
                                     ${active
                                         ? 'bg-[var(--button-primary-bg)] border-[var(--mimoja-blue-v2)] text-white'
                                         : 'bg-[var(--box-color)] border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}">
-                                <span class="font-['Inter:Bold',sans-serif] font-bold text-[26px] leading-tight">${label}</span>
-                                <span class="font-['Inter:Regular',sans-serif] text-[19px] leading-snug opacity-80">${sub}</span>
+                                <span class="font-semibold text-[30px] leading-tight">${label}</span>
+                                <span class="font-normal text-[20px] leading-snug opacity-80">${sub}</span>
                             </button>`;
                         }).join('')}
                     </div>
@@ -1658,7 +1653,7 @@ export function renderUsbChargerModeSettings(settings) {
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Dim the screen when low battery">Dim the screen when low battery</p>
                 </div>
                 <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
@@ -1680,7 +1675,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
     if (!settings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Before espresso starts">Before espresso starts</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load DE1 advanced settings">Failed to load DE1 advanced settings</div>
@@ -1690,7 +1685,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
 
     return `
         <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Before espresso starts">Before espresso starts</p>
             </div>
 
@@ -1702,7 +1697,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Idle temperature">Idle temperature</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">${tempInputValue(0)} – ${tempInputValue(99)} ${tempUnitLabel()}</span>
                         </div>
@@ -1739,7 +1734,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Heater warmup flow rate">Heater warmup flow rate</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 10 ${getTranslation('ml/s')}</span>
                         </div>
@@ -1776,7 +1771,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Heater test flow rate">Heater test flow rate</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 10 ${getTranslation('ml/s')}</span>
                         </div>
@@ -1813,7 +1808,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Heater test time-out">Heater test time-out</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] whitespace-nowrap">0 – 60 ${getTranslation('sec')}</span>
                         </div>
@@ -1850,7 +1845,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Fast Start Defaults">Fast Start Defaults</p>
                         </div>
                         <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
@@ -1858,7 +1853,7 @@ export function renderDe1AdvancedSettingsForm(settings) {
                             Apply
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Sets the four settings above to the cafe preset, for the shortest wait before the first espresso.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Sets the four settings above to the cafe preset, for the shortest wait before the first espresso.">
                         Sets the four settings above to the cafe preset, for the shortest wait before the first espresso.
                     </p>
                 </div>
@@ -1872,14 +1867,16 @@ export function renderDe1AdvancedSettingsForm(settings) {
 export function renderQuickstartGuideSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Quickstart Guide">Quickstart Guide</p>
             </div>
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Quickstart Guide">Quick Start Guide</p>
                         </div>
                         <a href="https://decentespresso.com/doc/quickstart/" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold flex items-center justify-center">
@@ -1888,14 +1885,14 @@ export function renderQuickstartGuideSettings() {
                     </div>
 
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Streamline User Manual">Streamline User Manual</p>
                         </div>
                         <a href="https://github.com/decentespresso/streamline-js/blob/main/README.md" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold flex items-center justify-center">
                             View
                         </a>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="The full manual for this skin: every screen, setting and gesture.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="The full manual for this skin: every screen, setting and gesture.">
                         The full manual for this skin: every screen, setting and gesture.
                     </p>
                 </div>
@@ -1908,7 +1905,7 @@ export function renderQuickstartGuideSettings() {
 
             <div class="content-stretch flex flex-col gap-[12px] items-start relative w-full">
                 <div class="content-stretch flex items-center justify-between relative w-full">
-                    <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                    <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Show help button">Show help button</p>
                     </div>
                     <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
@@ -1963,8 +1960,8 @@ export function renderTalkToDecentSettings() {
                         </svg>
                     </div>
                     <div class="flex flex-col gap-[8px]">
-                        <p class="text-[26px] font-bold text-[var(--text-primary)]">No Decent account linked</p>
-                        <p class="text-[22px] text-[var(--low-contrast-white)] max-w-[500px] leading-[1.4]" data-i18n-key="Link your Decent account in the Decent app to send messages to support.">
+                        <p class="text-[30px] font-semibold text-[var(--text-primary)]">No Decent account linked</p>
+                        <p class="text-[24px] text-[var(--low-contrast-white)] max-w-[500px] leading-[1.4]" data-i18n-key="Link your Decent account in the Decent app to send messages to support.">
                             Link your Decent account in the Decent app to send messages to support.
                         </p>
                     </div>
@@ -1976,20 +1973,20 @@ export function renderTalkToDecentSettings() {
 
                 <!-- Account badge -->
                 <div class="flex items-center p-[20px] rounded-[14px] bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] gap-[14px]">
-                    <div class="w-[40px] h-[40px] rounded-full bg-[var(--button-primary-bg)] flex items-center justify-center text-white text-[18px] font-bold">D</div>
+                    <div class="w-[40px] h-[40px] rounded-full bg-[var(--button-primary-bg)] flex items-center justify-center text-white text-[20px] font-bold">D</div>
                     <div>
                         <p class="text-[20px] font-semibold text-[var(--text-primary)]">Decent account linked</p>
-                        <p class="text-[18px] text-[var(--low-contrast-white)]" id="talkdecent-account-serial"></p>
+                        <p class="text-[20px] text-[var(--low-contrast-white)]" id="talkdecent-account-serial"></p>
                     </div>
                 </div>
 
                 <!-- Chat thread -->
                 <div class="flex flex-col gap-[12px] w-full">
                     <div class="flex items-center justify-between">
-                        <p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">Conversation History</p>
+                        <p class="text-[24px] font-bold text-[var(--mimoja-blue-v2)]">Conversation History</p>
                         <button id="talkdecent-refresh-btn"
                                 onclick="window.talkDecentRefresh()"
-                                class="h-[38px] px-[20px] rounded-[38px] bg-[var(--button-grey)] text-[var(--text-primary)] text-[18px] flex items-center gap-[8px] transition-opacity hover:opacity-80 disabled:opacity-40">
+                                class="h-[38px] px-[20px] rounded-[38px] bg-[var(--button-grey)] text-[var(--text-primary)] text-[20px] flex items-center gap-[8px] transition-opacity hover:opacity-80 disabled:opacity-40">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M1 4V10H7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                 <path d="M3.51 15a9 9 0 1 0 .49-4.17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1999,14 +1996,14 @@ export function renderTalkToDecentSettings() {
                     </div>
                     <div id="talkdecent-thread-messages"
                          class="flex flex-col gap-[14px] max-h-[480px] overflow-y-auto p-[20px] bg-[var(--box-color)] rounded-[16px] border border-[var(--profile-button-outline-color)]">
-                        <p class="text-center text-[18px] text-[var(--low-contrast-white)] py-[16px]">Loading messages…</p>
+                        <p class="text-center text-[20px] text-[var(--low-contrast-white)] py-[16px]">Loading messages…</p>
                     </div>
-                    <p id="talkdecent-thread-status" class="text-[18px] text-[var(--low-contrast-white)] text-center hidden"></p>
+                    <p id="talkdecent-thread-status" class="text-[20px] text-[var(--low-contrast-white)] text-center hidden"></p>
                 </div>
 
                 <!-- New message compose -->
                 <div class="flex flex-col gap-[24px] w-full">
-                    <p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">New Message</p>
+                    <p class="text-[24px] font-bold text-[var(--mimoja-blue-v2)]">New Message</p>
                     <input id="talkdecent-subject" type="hidden" value="">
                     <textarea id="talkdecent-message" class="hidden"></textarea>
                     <div id="talkdecent-compose-preview"
@@ -2017,7 +2014,7 @@ export function renderTalkToDecentSettings() {
                     <!-- Attach machine info toggle -->
                     <div class="flex items-center justify-between p-[20px] rounded-[12px] bg-[var(--box-color)] border border-[var(--profile-button-outline-color)]">
                         <div class="flex flex-col gap-[4px]">
-                            <p class="text-[22px] font-bold text-[var(--mimoja-blue-v2)]">Attach Machine Info</p>
+                            <p class="text-[24px] font-bold text-[var(--mimoja-blue-v2)]">Attach Machine Info</p>
                             <p class="text-[20px] text-[var(--low-contrast-white)]" data-i18n-key="Appends machine model, firmware version, and serial number">Appends machine model, firmware version, and serial number</p>
                         </div>
                         <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
@@ -2032,7 +2029,7 @@ export function renderTalkToDecentSettings() {
                                 class="h-[64px] px-[48px] rounded-[64px] bg-[var(--button-primary-bg)] text-white text-[24px] font-bold transition-opacity hover:opacity-90">
                             Send Message
                         </button>
-                        <span id="talkdecent-send-status" class="text-[22px] leading-[1.4]"></span>
+                        <span id="talkdecent-send-status" class="text-[24px] leading-[1.4]"></span>
                     </div>
                 </div>
             </div>
@@ -2059,7 +2056,7 @@ export function renderFeedbackSettings() {
                            ? 'bg-[var(--button-primary-bg)] border-[var(--mimoja-blue-v2)] text-white'
                            : 'bg-[var(--box-color)] border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}">
             <span class="text-[20px] font-bold leading-tight">${label}</span>
-            <span class="text-[16px] opacity-75 leading-tight">${sub}</span>
+            <span class="text-[20px] opacity-75 leading-tight">${sub}</span>
         </button>
     `;
 
@@ -2071,12 +2068,13 @@ export function renderFeedbackSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
-            <p class="font-semibold text-[var(--text-primary)] text-[32px] w-full text-center" data-i18n-key="Send Feedback">Send Feedback</p>
-            <p class="text-[19px] text-[var(--low-contrast-white)] w-full text-center">Feedback is submitted as a public GitHub issue. Do not include personal or private information.</p>
+            <p class="font-semibold text-[var(--text-primary)] text-[36px] w-full text-center" data-i18n-key="Send Feedback">Send Feedback</p>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+            <p class="font-normal leading-[1.4] text-[24px] text-[var(--text-primary)] w-full">Feedback is submitted as a public GitHub issue. Do not include personal or private information.</p>
 
             <!-- Category -->
             <div class="flex flex-col gap-[10px] w-full">
-                <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]" data-i18n-key="Category">Category</p>
+                <p class="font-semibold leading-[1.2] text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="Category">Category</p>
                 <input type="hidden" id="feedback-category" value="bug">
                 <div class="grid grid-cols-3 gap-[10px] w-full">
                     ${categoryCards}
@@ -2085,15 +2083,15 @@ export function renderFeedbackSettings() {
 
             <!-- Area -->
             <div class="flex flex-col gap-[10px] w-full">
-                <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]" data-i18n-key="What is it about?">What is it about?</p>
+                <p class="font-semibold leading-[1.2] text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="What is it about?">What is it about?</p>
                 <input type="hidden" id="feedback-area" value="${FEEDBACK_DEFAULT_AREA}">
                 <div class="grid grid-cols-3 gap-[10px] w-full">
                     ${areaCards}
                 </div>
                 <div id="feedback-plugin-row" class="hidden flex-col gap-[8px] w-full">
-                    <p class="text-[var(--text-primary)] text-[19px]">Which plugin? Naming it is what lets the report reach whoever maintains it.</p>
+                    <p class="text-[var(--text-primary)] text-[20px]">Which plugin? Naming it is what lets the report reach whoever maintains it.</p>
                     <select id="feedback-plugin"
-                            class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[54px] rounded-[54px] w-full text-[var(--text-primary)] text-[22px] px-[24px]">
+                            class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[54px] rounded-[54px] w-full text-[var(--text-primary)] text-[24px] px-[24px]">
                         <option value="">Loading…</option>
                     </select>
                 </div>
@@ -2101,19 +2099,19 @@ export function renderFeedbackSettings() {
 
             <!-- Title -->
             <div class="flex flex-col gap-[8px] w-full">
-                <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]" data-i18n-key="Title">Title</p>
+                <p class="font-semibold leading-[1.2] text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="Title">Title</p>
                 <input type="text" id="feedback-title"
-                       class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[54px] rounded-[54px] w-full text-[var(--text-primary)] text-[22px] px-[24px]"
+                       class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[54px] rounded-[54px] w-full text-[var(--text-primary)] text-[24px] px-[24px]"
                        placeholder="${getTranslation('Short summary of your feedback…')}">
             </div>
 
             <!-- Description -->
             <div class="flex flex-col gap-[8px] w-full">
-                <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]" data-i18n-key="Description">Description</p>
+                <p class="font-semibold leading-[1.2] text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="Description">Description</p>
                 <textarea id="feedback-description" class="hidden"></textarea>
                 <div id="feedback-description-preview"
                      onclick="window.openFeedbackDescriptionEditor()"
-                     class="cursor-pointer bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] rounded-[14px] w-full min-h-[110px] text-[21px] p-[18px] whitespace-pre-wrap select-none text-[var(--low-contrast-white)]" data-i18n-key="Tap to write description…">
+                     class="cursor-pointer bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] rounded-[14px] w-full min-h-[110px] text-[24px] p-[18px] whitespace-pre-wrap select-none text-[var(--low-contrast-white)]" data-i18n-key="Tap to write description…">
                     Tap to write description…
                 </div>
             </div>
@@ -2121,8 +2119,8 @@ export function renderFeedbackSettings() {
             <!-- System info toggle -->
             <div class="flex items-center justify-between w-full">
                 <div class="flex flex-col gap-[4px]">
-                    <p class="font-bold text-[var(--mimoja-blue-v2)] text-[22px]">Attach Diagnostics</p>
-                    <p class="text-[var(--text-primary)] text-[19px]">Includes application logs in a secret (unlisted) Gist. The Gist URL is added to the public GitHub issue, so anyone who can view the issue can access the logs. Also includes Decaid app version, platform, and OS version</p>
+                    <p class="font-semibold leading-[1.2] text-[var(--mimoja-blue-v2)] text-[30px]">Attach Diagnostics</p>
+                    <p class="text-[var(--text-primary)] text-[20px]">Includes application logs in a secret (unlisted) Gist. The Gist URL is added to the public GitHub issue, so anyone who can view the issue can access the logs. Also includes Decaid app version, platform, and OS version</p>
                 </div>
                 <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                     <input type="checkbox" id="feedback-attach-sysinfo" checked class="sr-only peer">
@@ -2135,10 +2133,10 @@ export function renderFeedbackSettings() {
             <div class="flex flex-row items-center gap-[12px] w-full">
                 <button id="feedback-submit-btn"
                         onclick="window.submitFeedback()"
-                        class="bg-[var(--button-primary-bg)] h-[54px] px-[40px] rounded-[54px] text-white text-[22px] font-bold" data-i18n-key="Submit">
+                        class="bg-[var(--button-primary-bg)] h-[54px] px-[40px] rounded-[54px] text-white text-[24px] font-bold" data-i18n-key="Submit">
                     Submit
                 </button>
-                <div id="feedback-status" class="text-[22px] leading-[1.4]"></div>
+                <div id="feedback-status" class="text-[24px] leading-[1.4]"></div>
             </div>
         </div>
     `;
@@ -2176,16 +2174,16 @@ export function renderScreenSaverSettings() {
     `).join('');
 
     const imageButtons = hasCustom ? `
-        <button class="bg-[var(--button-primary-bg)] h-[62px] px-[36px] rounded-[72px] text-white text-[22px] font-bold"
+        <button class="bg-[var(--button-primary-bg)] h-[62px] px-[36px] rounded-[72px] text-white text-[24px] font-bold"
                 onclick="document.getElementById('screensaver-file-input').click()">
             Add Images
         </button>
-        <button class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[62px] px-[36px] rounded-[72px] text-[var(--mimoja-blue-v2)] text-[22px] font-bold"
+        <button class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[62px] px-[36px] rounded-[72px] text-[var(--mimoja-blue-v2)] text-[24px] font-bold"
                 onclick="window.clearScreensaverImages()">
             Clear All
         </button>
     ` : `
-        <button class="bg-[var(--button-primary-bg)] h-[62px] px-[36px] rounded-[72px] text-white text-[22px] font-bold"
+        <button class="bg-[var(--button-primary-bg)] h-[62px] px-[36px] rounded-[72px] text-white text-[24px] font-bold"
                 onclick="document.getElementById('screensaver-file-input').click()">
             Choose Images
         </button>
@@ -2193,17 +2191,19 @@ export function renderScreenSaverSettings() {
 
     const imageInfo = hasCustom ? `
         <div class="flex flex-wrap gap-[12px]">${thumbnails}</div>
-        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[22px] w-full">
+        <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[24px] w-full">
             ${screensaverImagesCache.length} image${screensaverImagesCache.length !== 1 ? 's' : ''} selected
         </p>
     ` : `
-        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[22px] w-full" data-i18n-key="No custom images — using default. Select images from your device.">
+        <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[24px] w-full" data-i18n-key="No custom images — using default. Select images from your device.">
             No custom images — using default. Select images from your device.
         </p>
     `;
 
-    // Rows share one rhythm: label left, control flush right at 260px, so every
-    // control on the panel lines up on the same edge whichever card it is in.
+    // Rows share one rhythm: label left, control flush right, so every control
+    // on the page lines up on the same edge whichever section it is in. Row
+    // labels sit a step below the 30px section names they belong to.
+    const ROW_LABEL = 'font-normal text-[var(--text-primary)] text-[24px] leading-[1.4]';
     const switchControl = (checked, handler, id = '') => `
             <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                 <input type="checkbox" class="sr-only peer" ${id ? `id="${id}"` : ''} ${checked ? 'checked' : ''}
@@ -2212,38 +2212,37 @@ export function renderScreenSaverSettings() {
                 <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
             </label>`;
     const toggle = (label, key, checked, handler, id = '') => `
-        <div class="flex items-center justify-between gap-[20px]">
-            <p class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="${key}">${label}</p>${switchControl(checked, handler, id)}
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <p class="${ROW_LABEL}" data-i18n-key="${key}">${label}</p>${switchControl(checked, handler, id)}
         </div>`;
     const select = (id, label, options, current, handler) => `
-        <div class="flex items-center justify-between gap-[20px]">
-            <label for="${id}" class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="${label}">${label}</label>
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <label for="${id}" class="${ROW_LABEL}" data-i18n-key="${label}">${label}</label>
             <select id="${id}"
                     class="select select-bordered w-[260px] text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
                     onchange="${handler}(this.value)">
                 ${options.map(o => `<option value="${o.value}" ${current === o.value ? 'selected' : ''} data-i18n-key="${o.label}">${o.label}</option>`).join('')}
             </select>
         </div>`;
-    // 62px and 260px overall, matching the selects rather than standing above them
-    // as a banner -- it is one control among the others, not a second page title.
+    // Two options, so joined square cells on the label's own row -- the same
+    // segmented control as Water Tank's Measurement Units.
     const modeSegment = (black, label) => `
-        <button type="button" class="flex-1 h-[62px] rounded-[12px] font-bold text-[24px] flex items-center justify-center cursor-pointer transition-colors duration-200 ${blackSaver === black ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border-2 border-[var(--profile-button-outline-color)] text-[var(--text-primary)]'}"
+        <button type="button" class="h-[69px] w-[180px] font-semibold text-[24px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200 ${blackSaver === black ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                 aria-pressed="${blackSaver === black}"
                 onclick="window.setBlackScreenSaver(${black})" data-i18n-key="${label}">${getTranslation(label)}</button>`;
 
-    // One card per question the panel answers. Rows are divided rather than boxed
-    // again, so the card is the only container and nesting stays one level deep.
-    const card = (titleKey, rows) => `
-        <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] flex flex-col w-full">
-            <p class="font-bold text-[var(--mimoja-blue-v2)] text-[26px] leading-[1.2]" style="padding-bottom:8px" data-i18n-key="${titleKey}">${getTranslation(titleKey)}</p>
-            ${rows.filter(Boolean).map((row, i) => `
-            <div class="py-[16px] ${i ? 'border-t border-[var(--border-primary)]' : ''}">${row}</div>`).join('')}
+    // One section per question the page answers, divided from the next by a
+    // rule rather than boxed, so content starts at the page's own left edge.
+    const section = (titleKey, rows) => `
+        <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+            <p class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="${titleKey}">${getTranslation(titleKey)}</p>
+            ${rows.filter(Boolean).join('')}
         </div>`;
 
     const styleRow = `
-        <div class="flex items-center justify-between gap-[20px]">
-            <p id="screensaver-style-label" class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="Screen saver style">Screen saver style</p>
-            <div class="flex gap-[12px] w-[220px]" role="group" aria-labelledby="screensaver-style-label">
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <p id="screensaver-style-label" class="${ROW_LABEL}" data-i18n-key="Screen saver style">Screen saver style</p>
+            <div class="flex items-center" role="group" aria-labelledby="screensaver-style-label">
                 ${modeSegment(false, 'Images')}
                 ${modeSegment(true, 'Black')}
             </div>
@@ -2252,10 +2251,10 @@ export function renderScreenSaverSettings() {
     // The switch is "set it myself"; the slider below is the setting. One row each,
     // so the label is not competing with a second label for the same control.
     const brightnessRows = !blackSaver && brightnessSupported ? [`
-        <div class="flex items-center justify-between gap-[20px]">
-            <p id="saver-brightness-label" class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="Screen saver brightness">Screen saver brightness</p>
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <p id="saver-brightness-label" class="${ROW_LABEL}" data-i18n-key="Screen saver brightness">Screen saver brightness</p>
             <div class="flex items-center gap-[20px]">
-                <span class="font-bold text-[var(--text-secondary)] text-[22px]" data-i18n-key="Custom">Custom</span>${switchControl(customBrightness, 'window.setCustomSaverBrightness', 'saver-brightness-custom')}
+                <span class="font-normal text-[var(--text-secondary)] text-[24px]" data-i18n-key="Custom">Custom</span>${switchControl(customBrightness, 'window.setCustomSaverBrightness', 'saver-brightness-custom')}
             </div>
         </div>`, `
         <div class="flex items-center gap-[30px] w-full">
@@ -2266,39 +2265,35 @@ export function renderScreenSaverSettings() {
             <span id="saver-brightness-value" class="text-[var(--text-primary)] text-[24px] text-right" style="width:62px">${saverBrightness}%</span>
         </div>`] : [];
 
-    const saverCard = card('Screen saver', [
+    const saverSection = section('Screen saver', [
         styleRow,
         blackSaver ? '' : toggle('Show screen saver when the machine sleeps', 'Show screen saver when the machine sleeps', enabled, 'window.setScreensaverEnabled'),
         ...brightnessRows,
     ]);
 
-    // Its own card, not a fourth row under "Screen saver": closing the app is a
-    // sleep-button behaviour, not a property of the saver. The sub-line is the
-    // half users cannot guess -- that reopening Decaid wakes the machine.
-    const sleepExitCard = !sleepExitSupported ? '' : card('Sleep button', [`
-        <div class="flex items-center justify-between gap-[20px]">
-            <div class="flex flex-col gap-[4px]">
-                <p class="font-bold text-[var(--text-primary)] text-[24px] leading-[1.2]" data-i18n-key="Hold Sleep to sleep and close the app">Hold Sleep to sleep and close the app</p>
-                <p class="text-[var(--text-primary)] opacity-60 text-[20px] leading-[1.2]" data-i18n-key="Reopening Decaid wakes the machine.">Reopening Decaid wakes the machine.</p>
-            </div>
+    // Its own section, not a fourth row under "Screen saver": closing the app is
+    // a sleep-button behaviour, not a property of the saver. The description is
+    // the half users cannot guess -- that reopening Decaid wakes the machine.
+    const sleepExitSection = !sleepExitSupported ? '' : section('Sleep button', [`
+        <div class="flex items-center justify-between gap-[24px] w-full">
+            <p class="${ROW_LABEL}" data-i18n-key="Hold Sleep to sleep and close the app">Hold Sleep to sleep and close the app</p>
             ${switchControl(sleepExitEnabled, 'window.setSleepExitEnabled', 'sleep-exit-toggle')}
-        </div>`]);
+        </div>
+        <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Reopening Decaid wakes the machine.">Reopening Decaid wakes the machine.</p>`]);
 
-    const clockCard = card('Clock', [
+    const clockSection = section('Clock', [
         toggle('Show date and time', 'Show date and time', showClock, 'window.setScreensaverShowClock', 'screensaver-show-clock'),
         showClock ? select('screensaver-clock-format', 'Clock format', SCREENSAVER_CLOCK_FORMATS, clockFormat, 'window.setScreensaverClockFormat') : '',
         showClock ? select('screensaver-date-format', 'Date format', SCREENSAVER_DATE_FORMATS, dateFormat, 'window.setScreensaverDateFormat') : '',
         showClock ? select('screensaver-clock-position', 'Clock position', SCREENSAVER_CLOCK_POSITIONS, clockPosition, 'window.setScreensaverClockPosition') : '',
     ]);
 
-    // The image deck only exists under the image saver, so it is a whole card
+    // The image deck only exists under the image saver, so it is a whole section
     // that leaves rather than rows that grey out.
-    const imagesCard = blackSaver ? '' : card('Images', [
+    const imagesSection = blackSaver ? '' : section('Images', [
         imageInfo,
-        `<div class="flex items-center justify-between gap-[16px]">
-            <div class="flex items-baseline gap-[14px] font-bold ${screensaverImagesCache.length > 1 ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] opacity-50'} text-[24px]">
-                <p class="leading-[1.2]" data-i18n-key="Change image every:">Change image every:</p>
-            </div>
+        `<div class="flex items-center justify-between gap-[24px] w-full">
+            <p class="leading-[1.4] font-normal ${screensaverImagesCache.length > 1 ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)] opacity-50'} text-[24px]" data-i18n-key="Change image every:">Change image every:</p>
             <input type="number"
                    id="screensaver-cycle-seconds"
                    min="2"
@@ -2309,25 +2304,21 @@ export function renderScreenSaverSettings() {
                    class="w-[140px] h-[62px] px-[20px] rounded-[12px] border-2 border-[var(--mimoja-blue-v2)] bg-[var(--box-color)] text-[var(--text-primary)] text-[24px] text-center disabled:opacity-40 disabled:cursor-not-allowed"
                    onchange="window.handleScreensaverCycleChange(this.value)">
         </div>`,
-        `<div class="flex items-center justify-end gap-[16px]">${imageButtons}</div>`,
+        `<div class="flex items-center justify-end gap-[16px] w-full">${imageButtons}</div>`,
     ]);
 
     return `
-        <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Screen Saver">Screen Saver</p>
             </div>
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;column-gap:40px;row-gap:24px;align-items:start;width:100%;">
-                <div class="flex flex-col gap-[24px] w-full">
-                    ${saverCard}
-                    ${imagesCard}
-                </div>
-                <div class="flex flex-col gap-[24px] w-full">
-                    ${clockCard}
-                    ${sleepExitCard}
-                </div>
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                ${saverSection}
+                ${imagesSection}
+                ${clockSection}
+                ${sleepExitSection}
             </div>
 
             ${blackSaver ? '' : `
@@ -2348,13 +2339,25 @@ export function renderBrightnessSettings() {
     // whenever displayStateCache was null and got written back on first touch.
     const ds = displayState();
     const brightnessVal = ds?.brightness ?? ds?.requestedBrightness ?? 100;
+    // Auto is brightness 100: Decaid hands the screen back to the OS there
+    // (rest_v1.yml setBrightness), so it reads what was asked for, not the
+    // battery-capped level actually applied.
+    const autoOn = isAutoBrightness(ds?.requestedBrightness ?? brightnessVal);
     return `
-        <div class="content-stretch flex flex-col gap-[80px] items-start relative w-full px-[60px] py-[80px]">
-            <div class="content-stretch flex items-center justify-between relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px]">
+        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
+            <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
+                <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px]">
                     <p class="leading-[1.2]" data-i18n-key="Screen Brightness">Screen Brightness</p>
                 </div>
-                
+                <div class="flex items-center gap-[24px] flex-shrink-0">
+                    <label for="brightness-auto-toggle" class="text-[24px] font-semibold text-[var(--text-primary)]" data-i18n-key="Auto">Auto</label>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="brightness-auto-toggle" class="sr-only peer" ${autoOn ? 'checked' : ''}
+                               onchange="handleBrightnessChange(this.checked ? 100 : 99)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
+                </div>
             </div>
 
             <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
@@ -2365,7 +2368,7 @@ export function renderBrightnessSettings() {
                            onchange="handleBrightnessChange(this.value)">
                 </div>
                 <p id="brightness-requested-readout" class="${BRIGHTNESS_NOTICE_CLASS}" ${requestedBrightnessReadout({ requested: ds?.requestedBrightness, applied: ds?.brightness }) ? '' : 'hidden'}>${escapeHtml(requestedBrightnessReadout({ requested: ds?.requestedBrightness, applied: ds?.brightness }, getTranslation(REQUESTED_APPLIED_TEMPLATE)) || '')}</p>
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[32px] w-full" data-i18n-key="Adjust screen brightness level">
+                <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust screen brightness level">
                     Adjust screen brightness level
                 </p>
                 <div id="brightness-notices" class="flex flex-col gap-[16px] w-full">
@@ -2378,7 +2381,17 @@ export function renderBrightnessSettings() {
     `;
 }
 
-const BRIGHTNESS_NOTICE_CLASS = "font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] opacity-75 w-full";
+// 100 is OS-managed brightness, not "maximum" (rest_v1.yml setBrightness).
+// Switching Auto off writes 99: the nearest manual level, so the screen does
+// not jump, and the slider takes it from there.
+function isAutoBrightness(level) { return Number(level) === 100; }
+
+function syncBrightnessAutoToggle(level) {
+    const toggle = document.getElementById('brightness-auto-toggle');
+    if (toggle) toggle.checked = isAutoBrightness(level);
+}
+
+const BRIGHTNESS_NOTICE_CLASS = "font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] opacity-75 w-full";
 // Set when the last brightness write was queued because the display socket was down.
 let brightnessWriteQueued = false;
 
@@ -2475,15 +2488,15 @@ function bindSettingsJump() {
 
 // Render Wake Lock settings
 // One toggle, one string: the click the skin plays on a tap, off by default.
-// Deliberately no heading or description beyond the label -- the label is the
-// whole setting, and every extra sentence is another translation to carry.
+// Deliberately no description beyond the label -- the label is the whole
+// setting, and every extra sentence is another translation to carry. A single
+// control sits on the title row (Figma 2335:1686).
 export function renderSoundSettings() {
     const enabled = isTouchSoundEnabled();
     return `
-        <div class="space-y-6 px-[60px] py-[80px]">
-            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
-                <div class="flex items-center justify-between">
-                    <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Enable sounds">Enable sounds</label>
+        <div class="flex flex-col w-full">
+                <div class="flex items-center justify-between gap-[24px] w-full">
+                    <label for="touch-sound-toggle" class="text-[36px] font-semibold leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Enable sounds">Enable sounds</label>
                     <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                         <input type="checkbox" id="touch-sound-toggle" class="sr-only peer"
                                ${enabled ? 'checked' : ''}
@@ -2492,7 +2505,6 @@ export function renderSoundSettings() {
                         <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
                     </label>
                 </div>
-            </div>
         </div>
     `;
 }
@@ -2516,59 +2528,62 @@ export function renderWakeLockSettings() {
     }
 
     return `
-        <div class="space-y-6 px-[60px] py-[80px]">
-            <div>
-                <h2 class="text-[28px] font-bold text-[var(--text-primary)] mb-4" data-i18n-key="Wake Lock Settings">Wake Lock Settings</h2>
-                <p class="text-[var(--text-primary)] text-[20px] mb-6 opacity-75" data-i18n-key="Control screen wake-lock to prevent the display from sleeping during operation.">
-                    Control screen wake-lock to prevent the display from sleeping during operation.
-                </p>
+        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <p class="leading-[1.2]" data-i18n-key="Wake Lock Settings">Wake Lock Settings</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+            <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Control screen wake-lock to prevent the display from sleeping during operation.">
+                Control screen wake-lock to prevent the display from sleeping during operation.
+            </p>
 
-            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Enable Wake Lock">Enable Wake Lock</label>
-                        <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Keep the screen on while the app is active">
-                            Keep the screen on while the app is active
-                        </p>
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="flex items-center justify-between gap-[24px] w-full">
+                        <label for="wake-lock-toggle" class="font-semibold leading-[1.2] text-[var(--action-label)] text-[30px]" data-i18n-key="Enable Wake Lock">Enable Wake Lock</label>
+                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                            <input type="checkbox" id="wake-lock-toggle" class="sr-only peer"
+                                   ${wakeLockEnabled ? 'checked' : ''}
+                                   onchange="handleWakeLockToggle(this.checked)">
+                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                        </label>
                     </div>
-                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                        <input type="checkbox" id="wake-lock-toggle" class="sr-only peer"
-                               ${wakeLockEnabled ? 'checked' : ''}
-                               onchange="handleWakeLockToggle(this.checked)">
-                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                    </label>
+                    <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Keep the screen on while the app is active">
+                        Keep the screen on while the app is active
+                    </p>
                 </div>
-            </div>
 
-            <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Load Profile on Wake">Load Profile on Wake</label>
-                        <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Automatically load a chosen profile when the machine wakes from sleep">
-                            Automatically load a chosen profile when the machine wakes from sleep
-                        </p>
+                <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="flex items-center justify-between gap-[24px] w-full">
+                        <label for="wake-profile-toggle" class="font-semibold leading-[1.2] text-[var(--action-label)] text-[30px]" data-i18n-key="Load Profile on Wake">Load Profile on Wake</label>
+                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                            <input type="checkbox" id="wake-profile-toggle" class="sr-only peer"
+                                   ${wakeProfileEnabled ? 'checked' : ''}
+                                   onchange="handleWakeProfileToggle(this.checked)">
+                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                        </label>
                     </div>
-                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                        <input type="checkbox" id="wake-profile-toggle" class="sr-only peer"
-                               ${wakeProfileEnabled ? 'checked' : ''}
-                               onchange="handleWakeProfileToggle(this.checked)">
-                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                    </label>
-                </div>
-                <div id="wake-profile-select-row" class="mt-4" ${wakeProfileEnabled ? '' : 'hidden'}>
-                    <select id="wake-profile-select"
-                            class="select select-bordered w-full max-w-xs text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
-                            onchange="handleWakeProfileSelect(this.value)">
-                        <option value="" data-i18n-key="Select a profile">Select a profile</option>
-                        ${profileOptions}
-                    </select>
+                    <!-- No display class on this wrapper: handleWakeProfileToggle flips
+                         the hidden attribute, which a flex/grid class would override. -->
+                    <div id="wake-profile-select-row" class="w-full" ${wakeProfileEnabled ? '' : 'hidden'}>
+                        <div class="flex justify-end w-full">
+                            <select id="wake-profile-select"
+                                    class="select select-bordered w-full max-w-xs text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
+                                    onchange="handleWakeProfileSelect(this.value)">
+                                <option value="" data-i18n-key="Select a profile">Select a profile</option>
+                                ${profileOptions}
+                            </select>
+                        </div>
+                    </div>
+                    <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Automatically load a chosen profile when the machine wakes from sleep">
+                        Automatically load a chosen profile when the machine wakes from sleep
+                    </p>
                 </div>
             </div>
 
-            <div class="text-[18px] text-[var(--text-primary)] opacity-75 mt-4">
+            <div class="text-[20px] leading-[1.4] text-[var(--text-primary)] opacity-75">
                 <p><strong>Note:</strong> <span data-i18n-key="Wake-lock automatically releases when the WebSocket disconnects.">Wake-lock automatically releases when the WebSocket disconnects.</span></p>
             </div>
         </div>
@@ -2641,25 +2656,38 @@ async function loadPresenceSettingsAsync() {
     try {
         const settings = await getPresenceSettings();
         const schedules = settings.schedules || [];
+        // App text field and pill buttons, so this page reads like the rest of
+        // Settings rather than the daisyUI defaults it was first built with.
+        const inputClass = 'p-3 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue-v2)]';
+        const primaryPill = 'bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[24px] font-semibold inline-flex items-center justify-center flex-shrink-0';
+        const outlinePill = 'border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] h-[56px] px-[28px] rounded-[64px] text-[24px] font-semibold inline-flex items-center justify-center flex-shrink-0';
+        const deletePill = 'border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-[56px] px-[28px] rounded-[64px] text-[24px] font-semibold inline-flex items-center justify-center flex-shrink-0 transition-colors duration-200';
+        const nameClass = 'font-semibold leading-[1.2] not-italic text-[var(--action-label)] text-[30px]';
+        const bodyClass = 'font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] w-full';
+        const toggleSwitch = (attrs, checked, handler) => `
+                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                            <input type="checkbox" ${attrs} class="sr-only peer"
+                                   ${checked ? 'checked' : ''}
+                                   onchange="${handler}">
+                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                        </label>`;
+        const dayCheckbox = (value, day) => `
+                                    <label class="cursor-pointer text-[24px] text-[var(--presence-card-text)] flex items-center gap-[8px]"><input type="checkbox" value="${value}" class="checkbox checkbox-primary"> ${day}</label>`;
+
         const schedulesHtml = schedules.map(schedule => {
             const keepAwakeLabel = schedule.keepAwakeFor ? formatKeepAwakeDuration(schedule.keepAwakeFor) : '';
             return `
-            <div class="bg-[var(--presence-card-alt-bg)] rounded-lg p-4 flex items-center justify-between" data-schedule-id="${schedule.id}">
-                <div class="flex-grow">
-                    <div class="text-[22px] font-semibold text-[var(--presence-card-text)]">
+            <div class="bg-[var(--presence-card-alt-bg)] rounded-[10px] px-[24px] py-[16px] flex items-center justify-between gap-[24px] w-full" data-schedule-id="${schedule.id}">
+                <div class="flex-grow min-w-0">
+                    <div class="text-[24px] font-semibold text-[var(--text-primary)]">
                         ${schedule.time} - ${formatDaysOfWeek(schedule.daysOfWeek)}
-                        ${keepAwakeLabel ? `<span class="text-[18px] opacity-75 ml-2">(${keepAwakeLabel})</span>` : ''}
+                        ${keepAwakeLabel ? `<span class="text-[20px] font-normal text-[var(--text-secondary)] ml-2">(${keepAwakeLabel})</span>` : ''}
                     </div>
                 </div>
-                <div class="flex items-center gap-4">
-                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                        <input type="checkbox" class="sr-only peer"
-                               ${schedule.enabled ? 'checked' : ''}
-                               onchange="handleScheduleToggle('${schedule.id}', this.checked)">
-                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                    </label>
-                    <button class="btn btn-sm btn-error" onclick="handleDeleteSchedule('${schedule.id}')" data-i18n-key="Delete">
+                <div class="flex items-center gap-[24px] flex-shrink-0">
+                    ${toggleSwitch('', schedule.enabled, `handleScheduleToggle('${schedule.id}', this.checked)`)}
+                    <button type="button" class="${deletePill}" onclick="handleDeleteSchedule('${schedule.id}')" data-i18n-key="Delete">
                         Delete
                     </button>
                 </div>
@@ -2667,109 +2695,107 @@ async function loadPresenceSettingsAsync() {
         `}).join('');
 
         container.innerHTML = `
-            <div class="space-y-6 px-[60px] py-[80px]">
-                <div>
-                    <h2 class="text-[28px] font-bold text-[var(--text-primary)] mb-4" data-i18n-key="Presence Detection">Presence Detection</h2>
-                    <p class="text-[var(--text-primary)] text-[20px] mb-6 opacity-75" data-i18n-key="Automatically manage machine sleep/wake based on user presence and schedules.">
-                        Automatically manage machine sleep/wake based on user presence and schedules.
-                    </p>
+            <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                    <p class="leading-[1.2]" data-i18n-key="Presence Detection">Presence Detection</p>
                 </div>
+                <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-                <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
-                    <div class="flex items-center justify-between mb-6">
-                        <div>
-                            <label class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Enable Presence Detection">Enable Presence Detection</label>
-                            <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Track user presence to automatically sleep the machine">
-                                Track user presence to automatically sleep the machine
-                            </p>
+                <p class="${bodyClass}" data-i18n-key="Automatically manage machine sleep/wake based on user presence and schedules.">
+                    Automatically manage machine sleep/wake based on user presence and schedules.
+                </p>
+
+                <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                    <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+                        <div class="flex items-center justify-between gap-[24px] w-full">
+                            <label for="presence-enabled-toggle" class="${nameClass}" data-i18n-key="Enable Presence Detection">Enable Presence Detection</label>
+                            ${toggleSwitch('id="presence-enabled-toggle"', settings.userPresenceEnabled, 'handlePresenceToggle(this.checked)')}
                         </div>
-                        <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                            <input type="checkbox" id="presence-enabled-toggle" class="sr-only peer"
-                                   ${settings.userPresenceEnabled ? 'checked' : ''}
-                                   onchange="handlePresenceToggle(this.checked)">
-                            <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                            <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                        </label>
+                        <p class="${bodyClass}" data-i18n-key="Track user presence to automatically sleep the machine">
+                            Track user presence to automatically sleep the machine
+                        </p>
                     </div>
 
-                    <div class="mt-6">
-                        <label class="text-[22px] font-semibold text-[var(--presence-card-text)] block mb-3">
-                            Sleep Timeout (minutes)
-                        </label>
-                        <input type="number"
-                               id="sleep-timeout-input"
-                               class="input input-bordered w-full max-w-xs text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
-                               value="${settings.sleepTimeoutMinutes ?? 30}"
-                               min="1"
-                               max="120"
-                               onchange="this.value = Math.max(1, Math.min(120, this.value)); handleSleepTimeoutChange(this.value)">
-                        <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-2" data-i18n-key="Minutes of inactivity before auto-sleep">
+                    <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+                        <div class="flex items-center justify-between gap-[24px] w-full">
+                            <label for="sleep-timeout-input" class="${nameClass}">
+                                Sleep Timeout (minutes)
+                            </label>
+                            <input type="number"
+                                   id="sleep-timeout-input"
+                                   class="w-[140px] flex-shrink-0 text-right ${inputClass}"
+                                   value="${settings.sleepTimeoutMinutes ?? 30}"
+                                   min="1"
+                                   max="120"
+                                   onchange="this.value = Math.max(1, Math.min(120, this.value)); handleSleepTimeoutChange(this.value)">
+                        </div>
+                        <p class="${bodyClass}" data-i18n-key="Minutes of inactivity before auto-sleep">
                             Minutes of inactivity before auto-sleep
                         </p>
                     </div>
-                </div>
 
-                <div class="bg-[var(--presence-card-bg)] rounded-lg p-6">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-[24px] font-semibold text-[var(--presence-card-text)]" data-i18n-key="Wake Schedules">Wake Schedules</h3>
-                        <button class="btn btn-primary" onclick="handleAddSchedule()" data-i18n-key="Add Schedule">
-                            Add Schedule
-                        </button>
-                    </div>
+                    <div class="flex flex-col gap-[30px] w-full py-[60px] first:pt-0 last:pb-0">
+                        <div class="flex items-center justify-between gap-[24px] w-full">
+                            <p class="${nameClass}" data-i18n-key="Wake Schedules">Wake Schedules</p>
+                            <button type="button" class="${primaryPill}" onclick="handleAddSchedule()" data-i18n-key="Add Schedule">
+                                Add Schedule
+                            </button>
+                        </div>
 
-                    <div class="space-y-3">
-                        ${schedules.length > 0 ? schedulesHtml : '<p class="text-[var(--presence-card-text)] opacity-75 text-[18px]" data-i18n-key="No schedules configured">No schedules configured</p>'}
+                        <div class="flex flex-col gap-[12px] w-full">
+                            ${schedules.length > 0 ? schedulesHtml : '<p class="text-[var(--text-secondary)] text-[24px] leading-[1.4]" data-i18n-key="No schedules configured">No schedules configured</p>'}
+                        </div>
                     </div>
                 </div>
 
                 <dialog id="add-schedule-modal" class="modal">
                     <div class="modal-box bg-[var(--presence-card-bg)] max-w-2xl">
-                        <h3 class="font-bold text-[24px] text-[var(--presence-card-text)] mb-4" data-i18n-key="Add Schedule">Add Schedule</h3>
+                        <h3 class="font-semibold text-[30px] text-[var(--presence-card-text)] mb-[24px]" data-i18n-key="Add Schedule">Add Schedule</h3>
 
-                        <div class="space-y-4">
+                        <div class="flex flex-col gap-[24px]">
                             <div>
-                                <label class="text-[20px] text-[var(--presence-card-text)] block mb-2" data-i18n-key="Wake Time">Wake Time</label>
-                                <input type="time" id="schedule-time-input" class="input input-bordered w-full text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]">
+                                <label for="schedule-time-input" class="text-[24px] text-[var(--presence-card-text)] block mb-2" data-i18n-key="Wake Time">Wake Time</label>
+                                <input type="time" id="schedule-time-input" class="w-full ${inputClass}">
                             </div>
 
                             <div>
-                                <label class="text-[20px] text-[var(--presence-card-text)] block mb-2" data-i18n-key="Days of Week">Days of Week</label>
-                                <div class="flex gap-2 flex-wrap">
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="1" class="checkbox checkbox-primary mr-1"> Mon</label>
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="2" class="checkbox checkbox-primary mr-1"> Tue</label>
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="3" class="checkbox checkbox-primary mr-1"> Wed</label>
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="4" class="checkbox checkbox-primary mr-1"> Thu</label>
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="5" class="checkbox checkbox-primary mr-1"> Fri</label>
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="6" class="checkbox checkbox-primary mr-1"> Sat</label>
-                                    <label class="cursor-pointer text-[var(--presence-card-text)]"><input type="checkbox" value="7" class="checkbox checkbox-primary mr-1"> Sun</label>
+                                <label class="text-[24px] text-[var(--presence-card-text)] block mb-2" data-i18n-key="Days of Week">Days of Week</label>
+                                <div class="flex gap-[16px] flex-wrap">
+                                    ${dayCheckbox(1, 'Mon')}
+                                    ${dayCheckbox(2, 'Tue')}
+                                    ${dayCheckbox(3, 'Wed')}
+                                    ${dayCheckbox(4, 'Thu')}
+                                    ${dayCheckbox(5, 'Fri')}
+                                    ${dayCheckbox(6, 'Sat')}
+                                    ${dayCheckbox(7, 'Sun')}
                                 </div>
                             </div>
 
                             <div>
-                                <label class="text-[20px] text-[var(--presence-card-text)] block mb-2" data-i18n-key="Keep Awake For">Keep Awake For</label>
+                                <label class="text-[24px] text-[var(--presence-card-text)] block mb-2" data-i18n-key="Keep Awake For">Keep Awake For</label>
                                 <div class="flex items-center gap-3">
                                     <div class="flex items-center gap-2">
-                                        <input type="number" id="keep-awake-hours-input" class="input input-bordered w-20 text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
+                                        <input type="number" id="keep-awake-hours-input" class="w-[100px] text-right ${inputClass}"
                                                min="0" max="12" placeholder="0" value="0"
                                                onchange="this.value = Math.max(0, Math.min(12, this.value)); if (this.value == 12) { document.getElementById('keep-awake-mins-input').value = 0; } if (this.value > 12) { ui.showToast('Maximum 12 hours', 3000, 'error'); }">
-                                        <span class="text-[var(--presence-card-text)]" data-i18n-key="hr">hr</span>
+                                        <span class="text-[24px] text-[var(--presence-card-text)]" data-i18n-key="hr">hr</span>
                                     </div>
                                     <div class="flex items-center gap-2">
-                                        <input type="number" id="keep-awake-mins-input" class="input input-bordered w-20 text-[20px] bg-[var(--presence-input-bg)] text-[var(--presence-input-text)] border-[var(--presence-input-border)]"
+                                        <input type="number" id="keep-awake-mins-input" class="w-[100px] text-right ${inputClass}"
                                                min="0" max="59" placeholder="0" value="0"
                                                onchange="this.value = Math.max(0, Math.min(59, this.value))">
-                                        <span class="text-[var(--presence-card-text)]" data-i18n-key="min">min</span>
+                                        <span class="text-[24px] text-[var(--presence-card-text)]" data-i18n-key="min">min</span>
                                     </div>
                                 </div>
-                                <p class="text-[18px] text-[var(--presence-card-text)] opacity-75 mt-1" data-i18n-key="Duration to keep machine awake after schedule fires. Max 12 hours.">
+                                <p class="text-[20px] leading-[1.4] text-[var(--presence-card-text)] mt-2" data-i18n-key="Duration to keep machine awake after schedule fires. Max 12 hours.">
                                     Duration to keep machine awake after schedule fires. Max 12 hours.
                                 </p>
                             </div>
                         </div>
 
                         <div class="modal-action">
-                            <button class="btn" onclick="document.getElementById('add-schedule-modal').close()" data-i18n-key="Cancel">Cancel</button>
-                            <button class="btn btn-primary" onclick="handleSaveSchedule()" data-i18n-key="Save">Save</button>
+                            <button type="button" class="${outlinePill}" onclick="document.getElementById('add-schedule-modal').close()" data-i18n-key="Cancel">Cancel</button>
+                            <button type="button" class="${primaryPill}" onclick="handleSaveSchedule()" data-i18n-key="Save">Save</button>
                         </div>
                     </div>
                 </dialog>
@@ -2796,21 +2822,21 @@ async function loadPresenceSettingsAsync() {
 export function renderAppVersionSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="App Version">App Version</p>
             </div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="App Version">App Version</p>
                         </div>
                         <div class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold flex items-center justify-center">
                             1.0.0
                         </div>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Current application version">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Current application version">
                         Current application version
                     </p>
                 </div>
@@ -2823,14 +2849,14 @@ export function renderAppVersionSettings() {
 export function renderUnitsSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Units Settings">Units Settings</p>
             </div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Measurement Units">Measurement Units</p>
                         </div>
                         <select class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[200px] text-white text-[24px] p-2">
@@ -2838,7 +2864,7 @@ export function renderUnitsSettings() {
                             <option data-i18n-key="Imperial">Imperial</option>
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Select measurement units used throughout the application">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Select measurement units used throughout the application">
                         Select measurement units used throughout the application
                     </p>
                 </div>
@@ -2875,21 +2901,23 @@ export function renderFontSizeSettings() {
     ).join('');
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Display Size">Display Size</p>
             </div>
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Display Size">Display Size</p>
                         </div>
                         <select id="text-size-select" class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[220px] text-white text-[24px] p-2">
                             ${options}
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the display size for better readability. Changes apply after saving.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the display size for better readability. Changes apply after saving.">
                         Adjust the display size for better readability. Changes apply after saving.
                     </p>
                 </div>
@@ -2903,14 +2931,14 @@ export function renderFontSizeSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Chart Line Width">Chart Line Width</p>
                         </div>
                         <select id="chart-line-width-select" class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[220px] text-white text-[24px] p-2">
                             ${lineWidthOptions}
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the line thickness on the shot chart and profile previews.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the line thickness on the shot chart and profile previews.">
                         Adjust the line thickness on the shot chart and profile previews.
                     </p>
                 </div>
@@ -2947,14 +2975,15 @@ export function renderTempUnitSettings() {
     const current = getTempUnit();
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Temperature">Temperature</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Temperature">Temperature</p>
                         </div>
                         <select id="temp-unit-select" class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[200px] text-white text-[24px] p-2">
@@ -2979,14 +3008,14 @@ function initTempUnitSettings() {
 export function renderResolutionSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Resolution">Resolution</p>
             </div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Display Resolution">Display Resolution</p>
                         </div>
                         <select class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[200px] text-white text-[24px] p-2">
@@ -2995,7 +3024,7 @@ export function renderResolutionSettings() {
                             <option>1024x768</option>
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set the display resolution">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set the display resolution">
                         Set the display resolution
                     </p>
                 </div>
@@ -3093,7 +3122,7 @@ export function renderSteamSettings() {
     if (!settingsCache.de1 && !settingsCache.workflow) {
         return `
             <div class="content-stretch flex flex-col gap-[45px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
                     <p class="leading-[1.2]">${getTranslation('Steam')} ${getTranslation('Settings')}</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
@@ -3106,8 +3135,7 @@ export function renderSteamSettings() {
     // value outside the range this page advertises into the field (the same
     // class of bug as the out-of-range values reported for hot water), so the
     // stepper keeps showing the temperature we would switch back ON to and
-    // greys out while the master toggle below is off -- exactly what
-    // renderCalibSteamSettings already does with the same remembered value.
+    // greys out while the master toggle below is off.
     const steamHeaterOn = !isSteamOff(steamSettings.targetTemperature ?? 150);
     const targetTemp = steamHeaterOn
         ? steamSettings.targetTemperature
@@ -3136,7 +3164,7 @@ export function renderSteamSettings() {
     // full-width row needed. Separate pills, so no shared seam and no -1px
     // margin trick.
     // A disabled button (Milk Temp with no probe) renders grayed and inert.
-    const SEG_BASE = `w-[200px] h-[72px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[24px] flex items-center justify-center text-center transition-colors duration-200`;
+    const SEG_BASE = `w-[200px] h-[72px] rounded-[10px] font-bold text-[24px] flex items-center justify-center text-center transition-colors duration-200`;
     const SEG_INACTIVE = 'bg-[var(--box-color)] border border-[var(--border-primary)] text-[#b6c3d7]';
     const stopSegBtn = (value, label, disabled = false) => {
         if (disabled) {
@@ -3161,15 +3189,16 @@ export function renderSteamSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[45px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center">
                 <p class="leading-[1.2]">${getTranslation('Steam')} ${getTranslation('Settings')}</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <!-- Steam Temperature -->
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Steam temperature">Steam temperature</p>
                             ${rangeHint(tempInputValue(STEAM_ENABLED_MIN_TEMP), tempInputValue(STEAM_ENABLED_MAX_TEMP), tempUnitLabel(), steamHeaterOn ? tempInputValue(targetTemp) : undefined)}
                         </div>
@@ -3213,19 +3242,21 @@ export function renderSteamSettings() {
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <!-- Eco steam -->
-            <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
-                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                    <p class="leading-[1.2]" data-i18n-key="Eco steam">Eco steam</p>
-                    <p class="text-[20px] font-normal opacity-60 text-[var(--text-primary)] leading-[1.2]" data-i18n-key="After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.">After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.</p>
+            <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
+                <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
+                    <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <p class="leading-[1.2]" data-i18n-key="Eco steam">Eco steam</p>
+                    </div>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="eco-steam-toggle"
+                               class="sr-only peer"
+                               ${isEcoSteamEnabled() ? 'checked' : ''}
+                               onchange="window.setEcoSteam(this.checked)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
                 </div>
-                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                    <input type="checkbox" id="eco-steam-toggle"
-                           class="sr-only peer"
-                           ${isEcoSteamEnabled() ? 'checked' : ''}
-                           onchange="window.setEcoSteam(this.checked)">
-                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                </label>
+                <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.">After ten idle minutes the steam boiler drops to just above its cutoff. Any touch brings it straight back.</p>
             </div>
 
 
@@ -3234,7 +3265,7 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow">Flow</p>
                             ${rangeHint(SETTINGS_NUMPAD_CONFIGS.steamFlowInput.min, SETTINGS_NUMPAD_CONFIGS.steamFlowInput.max, 'ml/s', flow, 1)}
                         </div>
@@ -3271,13 +3302,13 @@ export function renderSteamSettings() {
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
                 <div class="flex items-center justify-between gap-[14px] w-full">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold leading-[1.2] not-italic text-[var(--action-label)] text-[30px]" data-i18n-key="Steam Stop">Steam Stop</p>
+                    <p class="font-semibold leading-[1.2] not-italic text-[var(--action-label)] text-[30px]" data-i18n-key="Steam Stop">Steam Stop</p>
                     <div class="flex gap-[20px] items-center">
                         ${stopSegBtn('time', 'Time')}
                         ${stopSegBtn('temperature', 'Milk Temp', !probe.present)}
                     </div>
                 </div>
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${stopDescriptions[stopMode]}">${getTranslation(stopDescriptions[stopMode])}</p>
+                <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${stopDescriptions[stopMode]}">${getTranslation(stopDescriptions[stopMode])}</p>
             </div>
             ` : ''}
 
@@ -3286,7 +3317,7 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Stop at Milk Temperature (°C)">Stop at Milk Temperature (°C)</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(30)} – ${tempInputValue(80)} ${tempUnitLabel()}</span>
                         </div>
@@ -3314,7 +3345,7 @@ export function renderSteamSettings() {
                     <!-- Probe present (this section is unreachable without it) → show the
                          LIVE reading instead of the old "requires the probe" note; the text
                          node is patched per snapshot by window.onMilkProbeUpdate. -->
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">${getTranslation('Live milk temperature:')} <span id="steam-milk-live-temp" class="font-bold">${probe.temperature.toFixed(1)} °C</span></p>
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">${getTranslation('Live milk temperature:')} <span id="steam-milk-live-temp" class="font-bold">${probe.temperature.toFixed(1)} °C</span></p>
                 </div>
             </div>
             ` : ''}
@@ -3330,7 +3361,7 @@ export function renderSteamSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Duration (seconds)">${getTranslation('Duration (seconds)')}</p>
                             ${rangeHint(MIN_STEAM_DURATION_S, SETTINGS_NUMPAD_CONFIGS.steamDurationInput.max, 's', duration || undefined)}
                         </div>
@@ -3370,10 +3401,11 @@ export function renderSteamSettings() {
 
             <!-- Steam Purge Mode -->
             ${settingsCache.de1 ? `
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Steam Purge Mode">Steam Purge Mode</p>
                         </div>
                         <select class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[200px] text-white text-[24px] p-2"
@@ -3382,7 +3414,7 @@ export function renderSteamSettings() {
                             <option value="1" ${settingsCache.de1.steamPurgeMode === 1 ? 'selected' : ''} data-i18n-key="Two Tap Stop">Two Tap Stop</option>
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set the steam purge mode for the machine">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set the steam purge mode for the machine">
                         Set the steam purge mode for the machine
                     </p>
                 </div>
@@ -3603,22 +3635,22 @@ export function renderCupWarmerSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[48px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Cup Warmer">Cup Warmer</p>
             </div>
 
             <!-- Enable -->
             <div class="flex items-center justify-between gap-[24px] w-full">
                 <div class="flex flex-col gap-[4px]">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Cup Warmer">Cup Warmer</p>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal text-[var(--text-primary)] text-[22px] leading-[1.3]" data-i18n-key="Warm your cups on the top plate">Warm your cups on the top plate</p>
+                    <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Cup Warmer">Cup Warmer</p>
+                    <p class="font-normal text-[var(--text-primary)] text-[24px] leading-[1.3]" data-i18n-key="Warm your cups on the top plate">Warm your cups on the top plate</p>
                 </div>
                 ${toggle('cupWarmerEnableToggle', enabled, "window.toggleCupWarmer(this.checked)")}
             </div>
 
             <!-- Target Temperature -->
             <div class="content-stretch flex items-center justify-between relative w-full">
-                <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Target Temperature (°C)">Target Temperature (°C)</p>
                     <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${tempInputValue(30)} – ${tempInputValue(80)} ${tempUnitLabel()}</span>
                 </div>
@@ -3635,8 +3667,8 @@ export function renderCupWarmerSettings() {
             <!-- Current temperature (read-only; placeholder when no reading) -->
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
                 <div class="flex flex-col gap-[4px]">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--text-primary)] text-[30px] leading-[1.2]" data-i18n-key="Current Temperature (°C)">Current Temperature (°C)</p>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal text-[var(--text-primary)] text-[22px] leading-[1.3]" data-i18n-key="Live temperature of the cup-warming plate">Live temperature of the cup-warming plate</p>
+                    <p class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="Current Temperature (°C)">Current Temperature (°C)</p>
+                    <p class="font-normal text-[var(--text-primary)] text-[24px] leading-[1.3]" data-i18n-key="Live temperature of the cup-warming plate">Live temperature of the cup-warming plate</p>
                 </div>
                 ${currentTempText !== null
                     ? `<p id="cupWarmerCurrentTemp" class="text-[var(--text-primary)] text-[24px] font-bold leading-[1.2] whitespace-nowrap">${formatTemp(cupWarmer.currentTemperature, 1)}</p>`
@@ -3651,20 +3683,20 @@ export function renderCupWarmerSettings() {
             <div class="flex flex-col gap-[24px] w-full">
                 <div class="flex items-center justify-between gap-[24px] w-full">
                     <div class="flex flex-col gap-[4px]">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Pre-warm before wake-up">Pre-warm before wake-up</p>
-                        <p class="font-['Inter:Regular',sans-serif] font-normal text-[var(--text-primary)] text-[22px] leading-[1.3]" data-i18n-key="Warm the cups automatically ahead of a scheduled wake time">Warm the cups automatically ahead of a scheduled wake time</p>
+                        <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Pre-warm before wake-up">Pre-warm before wake-up</p>
+                        <p class="font-normal text-[var(--text-primary)] text-[24px] leading-[1.3]" data-i18n-key="Warm the cups automatically ahead of a scheduled wake time">Warm the cups automatically ahead of a scheduled wake time</p>
                     </div>
                     ${toggle('cupWarmerPrewarmToggle', prewarm.enabled, "window.toggleCupWarmerPrewarm(this.checked)", !prewarm.supported)}
                 </div>
                 ${!prewarm.supported ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-amber-600 text-[22px] w-full" data-i18n-key="This machine's firmware doesn't support pre-warm — update the firmware to use it.">This machine's firmware doesn't support pre-warm — update the firmware to use it.</p>
+                <p class="font-normal leading-[1.4] not-italic text-amber-600 text-[24px] w-full" data-i18n-key="This machine's firmware doesn't support pre-warm — update the firmware to use it.">This machine's firmware doesn't support pre-warm — update the firmware to use it.</p>
                 ` : ''}
                 ${prewarm.supported && prewarm.active ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-[var(--mimoja-blue-v2)] text-[22px] w-full" data-i18n-key="Pre-warming now for a scheduled wake.">Pre-warming now for a scheduled wake.</p>
+                <p class="font-normal leading-[1.4] not-italic text-[var(--mimoja-blue-v2)] text-[24px] w-full" data-i18n-key="Pre-warming now for a scheduled wake.">Pre-warming now for a scheduled wake.</p>
                 ` : ''}
                 ${prewarm.supported && prewarm.enabled ? `
                 <div class="content-stretch flex items-center justify-between relative w-full">
-                    <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
+                    <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Minutes before wake">Minutes before wake</p>
                         <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]">${PREWARM_MIN_MINUTES} – ${PREWARM_MAX_MINUTES} min</span>
                     </div>
@@ -3679,10 +3711,10 @@ export function renderCupWarmerSettings() {
                 </div>
                 ` : ''}
                 ${prewarmWarns.includes('noSchedule') ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-amber-600 text-[22px] w-full" data-i18n-key="No wake schedule set — add one in Presence Detection.">No wake schedule set — add one in Presence Detection.</p>
+                <p class="font-normal leading-[1.4] not-italic text-amber-600 text-[24px] w-full" data-i18n-key="No wake schedule set — add one in Presence Detection.">No wake schedule set — add one in Presence Detection.</p>
                 ` : ''}
                 ${prewarmWarns.includes('noSetpoint') ? `
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-amber-600 text-[22px] w-full" data-i18n-key="Cup warmer is off — pre-warm needs it on to heat the plate.">Cup warmer is off — pre-warm needs it on to heat the plate.</p>
+                <p class="font-normal leading-[1.4] not-italic text-amber-600 text-[24px] w-full" data-i18n-key="Cup warmer is off — pre-warm needs it on to heat the plate.">Cup warmer is off — pre-warm needs it on to heat the plate.</p>
                 ` : ''}
             </div>
         </div>
@@ -3941,7 +3973,7 @@ export function renderLedSettings() {
             <div class="led-picker-side">
                 <button class="led-icon-btn" data-size="lg" aria-label="${getTranslation('Close')}" onclick="window.ledClosePicker()">&times;</button>
                 <div id="led-current-swatch" class="led-picker-current" style="background-color: ${currentHex}"></div>
-                <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[22px]">${isOn ? currentHex : getTranslation('Off')}</span>
+                <span id="led-hex-readout" class="font-['NotoSansMono'] text-[var(--text-primary)] text-[24px]">${isOn ? currentHex : getTranslation('Off')}</span>
                 <label class="flex items-center cursor-pointer">
                     <span class="relative flex items-center flex-shrink-0 w-[76px] h-[38px]">
                         <input type="checkbox" id="ledPowerToggle" class="sr-only peer" aria-label="${getTranslation('Power')}" ${isOn ? 'checked' : ''} onchange="window.ledSetPower(this.checked)">
@@ -3975,7 +4007,7 @@ export function renderLedSettings() {
 
     return `
         <div class="led-page content-stretch flex flex-col gap-[12px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Lighting">Lighting</p>
             </div>
 
@@ -4392,7 +4424,7 @@ export function renderHotWaterSettings() {
     if (!settingsCache.de1 && !settingsCache.workflow) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Hot Water Settings">Hot Water Settings</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load settings">Failed to load settings</div>
@@ -4415,15 +4447,17 @@ export function renderHotWaterSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Hot Water Settings">Hot Water Settings</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
             <!-- Hot Water Duration -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
+            <div class="content-stretch flex flex-col items-start relative w-full py-[60px] first:pt-0 last:pb-0">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Duration (seconds)">Duration (seconds)</p>
                             ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterDurationInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterDurationInput.max, 's', duration)}
                         </div>
@@ -4452,10 +4486,10 @@ export function renderHotWaterSettings() {
             </div>
 
             <!-- Hot Water Flow -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
+            <div class="content-stretch flex flex-col items-start relative w-full py-[60px] first:pt-0 last:pb-0">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow">Flow</p>
                             ${rangeHint(SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.min, SETTINGS_NUMPAD_CONFIGS.hotWaterFlowInput.max, 'ml/s', flow, 1)}
                         </div>
@@ -4484,9 +4518,9 @@ export function renderHotWaterSettings() {
             </div>
 
             <!-- Stop Hot Water at Weight (needs a scale connected to take effect) -->
-            <div class="flex items-center justify-between gap-[24px] w-full">
+            <div class="flex items-center justify-between gap-[24px] w-full py-[60px] first:pt-0 last:pb-0">
                 <div class="flex flex-col gap-[4px]">
-                    <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                    <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                         <p class="leading-[1.2]" data-i18n-key="Stop at Weight">Stop at Weight</p>
                         <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Requires a connected scale">Requires a connected scale</span>
                     </div>
@@ -4503,10 +4537,10 @@ export function renderHotWaterSettings() {
             </div>
 
             <!-- Hot Water Flow Multiplier (stop-at-weight lookahead) -->
-            <div class="content-stretch flex flex-col items-start relative w-full">
+            <div class="content-stretch flex flex-col items-start relative w-full py-[60px] first:pt-0 last:pb-0">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex items-baseline gap-[14px] font-['Inter:Bold',sans-serif] font-bold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow Multiplier">Flow Multiplier</p>
                             <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Higher stops the water sooner">Higher stops the water sooner</span>
                         </div>
@@ -4532,6 +4566,7 @@ export function renderHotWaterSettings() {
                     </div>
                 </div>
             </div>
+            </div>
         </div>
     `;
 }
@@ -4541,7 +4576,7 @@ export function renderWaterTankSettings() {
     if (!settingsCache.de1) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                     <p class="leading-[1.2]" data-i18n-key="Water Tank Settings">Water Tank Settings</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load DE1 settings">Failed to load DE1 settings</div>
@@ -4551,7 +4586,7 @@ export function renderWaterTankSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Water Tank Settings">Water Tank Settings</p>
             </div>
 
@@ -4560,14 +4595,14 @@ export function renderWaterTankSettings() {
                 <hr class="border-t border-[var(--border-primary)] w-full" />
             </div>
 
-            <div class="content-stretch flex flex-col gap-[20px] items-center relative w-full">
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px]">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Tank Temperature (°c)">
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex items-center relative min-w-0">
+                        <p class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Tank Temperature (°c)">
                             Tank Temperature (°c)
                         </p>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="tank-temp-minus" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustTankTemp(-1);">
                             <svg width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -4589,18 +4624,18 @@ export function renderWaterTankSettings() {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Set the water tank temperature (10-40°C)">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2" data-i18n-key="Set the water tank temperature (10-40°C)">
                         Set the water tank temperature (10-40°C)
                     </p>
                 </div>
 
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px]">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Water level">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex items-center relative min-w-0">
+                        <p class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Water level">
                             Water level
                         </p>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="water-alert-minus" aria-label="Decrease water alert level" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustWaterAlert(-5);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -4622,32 +4657,32 @@ export function renderWaterTankSettings() {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Alert when tank water level drops below this height (0, 5, 10, 15, 20, 25, 30 mm)">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2" data-i18n-key="Alert when tank water level drops below this height (0, 5, 10, 15, 20, 25, 30 mm)">
                         Alert when tank water level drops below this height (0, 5, 10, 15, 20, 25, 30 mm)
                     </p>
                 </div>
 
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px]">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Measurement Units">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex items-center relative min-w-0">
+                        <p class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Measurement Units">
                             Measurement Units
                         </p>
                     </div>
-                    <div class="flex items-center gap-[8px]" role="group" aria-label="Water tank display unit">
-                        <button class="h-[80px] w-[200px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[26px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                            ${getWaterTankUnit() === 'mm' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                    <div class="flex items-center" role="group" aria-label="Water tank display unit">
+                        <button class="h-[69px] w-[180px] font-semibold text-[24px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                            ${getWaterTankUnit() === 'mm' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                             aria-pressed="${getWaterTankUnit() === 'mm'}"
                             onclick="window.setWaterTankUnit('mm')" data-i18n-key="mm">
                             mm
                         </button>
-                        <button class="h-[80px] w-[200px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[26px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                            ${getWaterTankUnit() === 'ml' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                        <button class="h-[69px] w-[180px] font-semibold text-[24px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                            ${getWaterTankUnit() === 'ml' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                             aria-pressed="${getWaterTankUnit() === 'ml'}"
                             onclick="window.setWaterTankUnit('ml')" data-i18n-key="mL">
                             mL
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Show tank level on the home screen in millimeters or millilitres">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2" data-i18n-key="Show tank level on the home screen in millimeters or millilitres">
                         Show tank level on the home screen in millimeters or millilitres
                     </p>
                 </div>
@@ -4682,21 +4717,21 @@ function getWaterTankUnit() {
 export function renderQuickAdjustmentsSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Quick Adjustments">Quick Adjustments</p>
             </div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Flow Multiplier">Flow Multiplier</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[26px] font-bold text-center" value="1.0" step="0.1">
+                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[30px] font-semibold text-center" value="1.0" step="0.1">
                         </div>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the flow multiplier for shot timing">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Adjust the flow multiplier for shot timing">
                         Adjust the flow multiplier for shot timing
                     </p>
                 </div>
@@ -4710,14 +4745,14 @@ export function renderQuickAdjustmentsSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Steam">Steam</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[26px] font-bold text-center" value="120" step="1">
+                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[30px] font-semibold text-center" value="120" step="1">
                         </div>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">
                         Set steam temperature
                     </p>
                 </div>
@@ -4731,14 +4766,14 @@ export function renderQuickAdjustmentsSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Water">Water</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[26px] font-bold text-center" value="80" step="1">
+                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[30px] font-semibold text-center" value="80" step="1">
                         </div>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">
                         Set water temperature
                     </p>
                 </div>
@@ -4752,14 +4787,14 @@ export function renderQuickAdjustmentsSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Limit">Limit</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[26px] font-bold text-center" value="30" step="1">
+                            <input type="number" class="bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] h-[72px] rounded-[72px] w-[160px] text-[var(--text-primary)] text-[30px] font-semibold text-center" value="30" step="1">
                         </div>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set brewing time limit">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set brewing time limit">
                         Set brewing time limit
                     </p>
                 </div>
@@ -4826,7 +4861,7 @@ function calStepIndicator() {
         const isActive = i === calStep;
         const dotBg = isDone ? '#0ca581' : (isActive ? 'var(--button-primary-bg)' : 'var(--button-grey)');
         const dotColor = (isDone || isActive) ? '#ffffff' : '#959595';
-        dots += `<div class="rounded-full flex items-center justify-center text-[22px] font-bold shrink-0" style="width:44px;height:44px;background:${dotBg};color:${dotColor}">${isDone ? '&#10003;' : i}</div>`;
+        dots += `<div class="rounded-full flex items-center justify-center text-[24px] font-bold shrink-0" style="width:44px;height:44px;background:${dotBg};color:${dotColor}">${isDone ? '&#10003;' : i}</div>`;
         if (i < 4) dots += `<div class="shrink-0" style="width:40px;height:3px;background:${i < calStep ? '#0ca581' : 'var(--button-grey)'}"></div>`;
     }
     return `
@@ -4837,8 +4872,8 @@ function calStepIndicator() {
 const CAL_PRIMARY_BTN = "bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold";
 const CAL_SECONDARY_BTN = "h-[72px] px-[48px] rounded-[72px] text-[24px] font-bold bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] text-[var(--text-primary)]";
 const CAL_CARD = "border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[30px] items-center px-[60px] py-[30px] relative shrink-0 max-w-full";
-const CAL_HEADING = "font-['Inter:Semi_Bold',sans-serif] font-semibold leading-[1.2] not-italic text-[var(--text-primary)] text-[30px] text-center";
-const CAL_BODY = "font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] w-full text-center";
+const CAL_HEADING = "font-semibold leading-[1.2] not-italic text-[var(--text-primary)] text-[30px] text-center";
+const CAL_BODY = "font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] w-full text-center";
 
 // Fixed-height status line + ONE button that swaps label/action with state
 // (see calActionState in loadcell-cal.js), so the card height stays constant
@@ -4857,7 +4892,7 @@ function calActionArea({ step, runLabel, runOnclick, nextStep, busyLabel }) {
         : st.action === 'cancel' ? 'window.calAbort()'
         : runOnclick;
     return `
-        <div class="text-center text-[22px] flex items-center justify-center px-[20px] w-full" style="min-height:36px">${status}</div>
+        <div class="text-center text-[24px] flex items-center justify-center px-[20px] w-full" style="min-height:36px">${status}</div>
         <button class="${st.primary ? CAL_PRIMARY_BTN : CAL_SECONDARY_BTN}" onclick="${click}" data-i18n-key="${st.label}">${st.label}</button>`;
 }
 
@@ -4939,7 +4974,7 @@ export function renderLoadCellCalibration() {
                 <button class="${CAL_SECONDARY_BTN}" onclick="window.calTare()" data-i18n-key="Tare">Tare</button>
                 <div class="flex flex-col items-center" style="gap:6px">
                     <span id="calib-live-weight" class="text-[var(--text-primary)] font-bold leading-none" style="font-size:64px">&ndash;</span>
-                    <span class="text-[#959595] text-[22px]">Expected: ${calWeightG} g</span>
+                    <span class="text-[#959595] text-[24px]">Expected: ${calWeightG} g</span>
                 </div>
                 <div class="flex gap-[20px] flex-wrap justify-center">
                     <button class="${CAL_PRIMARY_BTN}" onclick="window.calFinish()" data-i18n-key="Looks good — Finish">Looks good &mdash; Finish</button>
@@ -4950,7 +4985,7 @@ export function renderLoadCellCalibration() {
 
     return `
         <div class="content-stretch flex flex-col gap-[30px] items-center relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold text-[var(--text-primary)] text-[36px] text-center w-full">
+            <div class="flex flex-col font-semibold text-[var(--text-primary)] text-[36px] text-center w-full">
                 <p class="leading-[1.2]" data-i18n-key="Load Cell Calibration">Load Cell Calibration</p>
             </div>
             ${calStepIndicator()}
@@ -4967,20 +5002,20 @@ export function renderCalibFanSettings(settings) {
     const fanValue = settings?.fan !== undefined ? settings.fan : 40;
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Fan Threshold Settings">Fan Threshold Settings</p>
             </div>
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <div class="content-stretch flex flex-col items-center relative w-full">
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px]">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Fan Threshold">
+            <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
+                <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
+                    <div class="content-stretch flex items-center relative min-w-0">
+                        <p class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Fan Threshold">
                             Fan Threshold
                         </p>
                     </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
+                    <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
                         <button id="calib-fan-minus" aria-label="Decrease fan threshold"
                                 class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustFanThreshold(-1);">
@@ -5004,7 +5039,7 @@ export function renderCalibFanSettings(settings) {
                             </svg>
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Temperature threshold at which the fan turns on (0–50°C)">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2" data-i18n-key="Temperature threshold at which the fan turns on (0–50°C)">
                         Temperature threshold at which the fan turns on (0–50°C)
                     </p>
                 </div>
@@ -5016,7 +5051,7 @@ export function renderCalibFanSettings(settings) {
 export function renderCalibDefaultLoadSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]">${getTranslation('Default Load Settings')}</p>
             </div>
 
@@ -5025,7 +5060,7 @@ export function renderCalibDefaultLoadSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]">${getTranslation('Default Load Settings')}</p>
                         </div>
                         <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
@@ -5033,7 +5068,7 @@ export function renderCalibDefaultLoadSettings() {
                             Reset
                         </button>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Restores fan threshold, idle temperature, heater warmup and test flow rates, heater test time-out, refill kit mode, flow multiplier, and steam purge to factory defaults.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Restores fan threshold, idle temperature, heater warmup and test flow rates, heater test time-out, refill kit mode, flow multiplier, and steam purge to factory defaults.">
                         Restores fan threshold, idle temperature, heater warmup and test flow rates, heater test time-out, refill kit mode, flow multiplier, and steam purge to factory defaults.
                     </p>
                 </div>
@@ -5051,12 +5086,13 @@ export function renderCalibRefillKitSettings() {
     ];
     const buttons = options.map(o => {
         const active = current === o.value;
-        return `<button class="h-[72px] px-[36px] rounded-[72px] text-[24px] font-bold ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] text-[var(--text-primary)]'}"
+        return `<button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200 ${active ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
+                        aria-pressed="${active}"
                         onclick="window.updateDe1AdvancedSetting('refillKitSetting', ${o.value})" data-i18n-key="${o.label}">${o.label}</button>`;
     }).join('');
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Refill Kit">Refill Kit</p>
             </div>
 
@@ -5064,13 +5100,11 @@ export function renderCalibRefillKitSettings() {
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Refill Kit">Refill Kit</p>
-                        </div>
-                        <div class="flex items-center gap-[12px]">${buttons}</div>
+                    <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                        <p id="refill-kit-label" class="leading-[1.2]" data-i18n-key="Refill Kit">Refill Kit</p>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Auto lets the machine decide. Force On keeps the refill kit always active. Force Off disables it.">
+                    <div class="grid grid-cols-3 w-full" role="group" aria-labelledby="refill-kit-label">${buttons}</div>
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Auto lets the machine decide. Force On keeps the refill kit always active. Force Off disables it.">
                         Auto lets the machine decide. Force On keeps the refill kit always active. Force Off disables it.
                     </p>
                 </div>
@@ -5088,13 +5122,14 @@ export function renderCalibVoltageSettings() {
     ];
     const buttons = options.map(o => {
         const active = current === o.value;
-        return `<button class="h-[72px] px-[48px] rounded-[72px] text-[24px] font-bold ${active ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)]'}"
+        return `<button class="h-[69px] w-[180px] font-semibold text-[24px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200 ${active ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
+                        aria-pressed="${active}"
                         onclick="window.updateHeaterVoltage(${o.value})">${o.label}</button>`;
     }).join('');
-    const unsetNote = current === -1 ? `<p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[22px] w-full" data-i18n-key="No voltage set yet — select your mains voltage.">No voltage set yet — select your mains voltage.</p>` : '';
+    const unsetNote = current === -1 ? `<p class="font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[24px] w-full" data-i18n-key="No voltage set yet — select your mains voltage.">No voltage set yet — select your mains voltage.</p>` : '';
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Voltage">Voltage</p>
             </div>
 
@@ -5103,16 +5138,16 @@ export function renderCalibVoltageSettings() {
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Voltage">Voltage</p>
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                            <p id="heater-voltage-label" class="leading-[1.2]" data-i18n-key="Voltage">Voltage</p>
                         </div>
-                        <div class="flex items-center gap-[12px]">${buttons}</div>
+                        <div class="flex items-center" role="group" aria-labelledby="heater-voltage-label">${buttons}</div>
                     </div>
                     ${unsetNote}
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set to match your local mains voltage. Incorrect setting may affect heater performance.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Set to match your local mains voltage. Incorrect setting may affect heater performance.">
                         Set to match your local mains voltage. Incorrect setting may affect heater performance.
                     </p>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[22px] w-full" data-i18n-key="Restart the machine after changing voltage for the setting to take effect.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-secondary)] text-[24px] w-full" data-i18n-key="Restart the machine after changing voltage for the setting to take effect.">
                         Restart the machine after changing voltage for the setting to take effect.
                     </p>
                 </div>
@@ -5143,73 +5178,18 @@ async function seedRememberedSteamValues() {
     } catch (e) { /* defaults cover it */ }
 }
 
-// Shared "Steam heater" on/off row (Quick Adjustments -> Steam and Calibration -> Steam).
-// Carries no page sizing; each page's container sets the width.
+// "Steam heater" on/off row for Quick Adjustments -> Steam. Carries no page
+// sizing; the page's container sets the width.
 function steamHeaterToggleRow(heaterOn) {
     return `
         <div class="flex items-center justify-between gap-[20px] w-full">
-            <p class="font-bold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="Steam heater">${getTranslation('Steam heater')}</p>
+            <p class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="Steam heater">${getTranslation('Steam heater')}</p>
             <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                 <input type="checkbox" class="sr-only peer" id="steamHeaterToggle" ${heaterOn ? 'checked' : ''}
                        onchange="window.setSteamHeaterOn(this.checked)">
                 <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
                 <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
             </label>
-        </div>
-    `;
-}
-
-export function renderCalibSteamSettings() {
-    const workflowTemp = settingsCache.workflow?.steamSettings?.targetTemperature ?? 155;
-    // isSteamOff, not > 0: a target between 1 and the enabled floor is a heater
-    // the machine has switched off, and the toggle must say so (#1079).
-    const heaterOn = !isSteamOff(workflowTemp);
-    const targetTemp = heaterOn ? workflowTemp : (lastEnabledSteamCalibTemp ?? 150);
-    const dim = heaterOn ? '' : 'opacity-40 cursor-not-allowed';
-    const dis = heaterOn ? '' : 'disabled';
-    return `
-        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                <p class="leading-[1.2]" data-i18n-key="Steam temperature">Steam temperature</p>
-            </div>
-
-            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
-
-            <div class="content-stretch flex flex-col items-center gap-[20px] relative w-full">
-                <div class="border border-[var(--border-primary)] border-solid content-stretch flex flex-col gap-[20px] items-center px-[60px] py-[20px] relative shrink-0 w-[590px] ${dim}">
-                    <div class="content-stretch flex items-center relative shrink-0">
-                        <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.2] not-italic relative shrink-0 text-[var(--text-primary)] text-[30px]" data-i18n-key="Steam temperature">
-                            Steam temperature
-                        </p>
-                    </div>
-                    <div class="content-stretch flex gap-[20px] h-[72px] items-center justify-center relative shrink-0 w-full">
-                        <button id="steam-temp-minus" ${dis} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                onclick="window.flashPlusMinusButton(this); window.adjustSteamCalibTemp(-1);">
-                            <svg width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                        <div class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none flex items-center justify-center"
-                             style="width: 130px;">
-                            <input type="text" inputmode="numeric" pattern="[0-9]*" id="steamCalibTempInput" ${dis} class="text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border-none w-full"
-                                   value="${tempInputValue(targetTemp)}"
-                                   step="1" min="${tempInputValue(135)}" max="${tempInputValue(170)}"
-                                   onchange="window.updateSteamSetting('targetTemperature', Math.round(window.tempInputToCelsius(this.value)))">
-                            <span class="ml-2 text-nowrap">${tempUnitLabel()}</span>
-                        </div>
-                        <button id="steam-temp-plus" ${dis} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
-                                onclick="window.flashPlusMinusButton(this); window.adjustSteamCalibTemp(1);">
-                            <svg width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full text-center" data-i18n-key="Set steam temperature (135-170°C)">
-                        Set steam temperature (135-170°C)
-                    </p>
-                </div>
-                <div class="w-[590px]">${steamHeaterToggleRow(heaterOn)}</div>
-            </div>
         </div>
     `;
 }
@@ -5498,7 +5478,7 @@ export async function warmSensorCalibration() {
 }
 
 const SENSOR_CAL_INPUT = "text-center text-[var(--text-primary)] text-[24px] font-bold bg-transparent border border-[var(--border-primary)] rounded-[10px] h-[60px] w-[130px]";
-const SENSOR_CAL_SMALL_BTN = "h-[56px] px-[28px] rounded-[56px] text-[22px] font-bold";
+const SENSOR_CAL_SMALL_BTN = "h-[56px] px-[28px] rounded-[56px] text-[24px] font-bold";
 
 // The live "DE1 reads" column, repainted off the snapshot socket's last
 // frame while this page is open, and the rolling sample window a capture
@@ -5587,7 +5567,7 @@ function sensorCalRow(target) {
     return `
         <tr class="border-t border-[var(--border-primary)]">
             <td class="py-[20px] pr-[20px] align-middle">
-                <p class="text-[28px] font-bold text-[var(--text-primary)]" data-i18n-key="${target.label}">${target.label}</p>
+                <p class="text-[30px] font-semibold text-[var(--action-label)]" data-i18n-key="${target.label}">${target.label}</p>
             </td>
             <td class="py-[20px] px-[10px] text-center align-middle">
                 <p class="text-[24px] font-bold text-[var(--text-primary)]">${formatCalValue(target.kind, entry.current)}${suffix}</p>
@@ -5607,7 +5587,7 @@ function sensorCalRow(target) {
                            class="${SENSOR_CAL_INPUT}"
                            value="${escapeHtml(entry.measured)}"
                            onchange="window.sensorCalInput('${target.id}', this.value)">
-                    <span class="ml-2 text-nowrap text-[22px] ">${unit}</span>
+                    <span class="ml-2 text-nowrap text-[24px] ">${unit}</span>
                 </div>
             </td>
             <td class="py-[20px] pl-[10px] align-middle">
@@ -5620,7 +5600,7 @@ function sensorCalRow(target) {
             </td>
         </tr>
         <tr>
-            <td colspan="6" class="pb-[20px] text-[22px] leading-[1.4]" style="min-height:32px">${status}</td>
+            <td colspan="6" class="pb-[20px] text-[24px] leading-[1.4]" style="min-height:32px">${status}</td>
         </tr>`;
 }
 
@@ -5635,7 +5615,7 @@ function sensorCalWarningModal() {
     return `
             <dialog id="sensor-cal-warning-modal" class="modal" oncancel="window.sensorCalWarningCancel()">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
-                    <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2" data-i18n-key="Sensor Calibration">Sensor Calibration</h3>
+                    <h3 class="font-semibold text-[30px] text-[var(--action-label)] mb-2" data-i18n-key="Sensor Calibration">Sensor Calibration</h3>
                     <p class="text-[24px] text-[var(--text-primary)] leading-[1.4] break-words" data-i18n-key="Bad calibration settings might make your espresso machine unuseable.  Only proceed if you have been told to or have read the relevant manual sections and know what you are doing.">Bad calibration settings might make your espresso machine unuseable.  Only proceed if you have been told to or have read the relevant manual sections and know what you are doing.</p>
                     <div class="modal-action">
                         <button class="border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[62px] rounded-[67.5px] border px-[32px] text-[24px] font-bold transition-colors duration-200 hover:bg-[var(--button-primary-bg)] hover:text-white"
@@ -5666,9 +5646,9 @@ function sensorCalFlowCard() {
     // normal looks like, which is what someone reads a value they cannot change
     // to find out -- and the plugin's own MinimumMultiplier/MaximumMultiplier are
     // not these bounds, so this stays the DE1's range either way.
-    const hint = `<p ${mutedWhenManaged} class="text-[20px] font-normal leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.">Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.</p>`;
+    const hint = `<p ${mutedWhenManaged} class="text-[24px] font-normal leading-[1.4] text-[var(--text-primary)]" data-i18n-key="Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.">Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.</p>`;
     const notice = managed
-        ? `<p class="text-[20px] font-normal leading-[1.2] text-[var(--text-primary)]" data-i18n-key="Flow calibration is managed automatically by the Auto Flow Calibration plugin.">Flow calibration is managed automatically by the Auto Flow Calibration plugin.</p>
+        ? `<p class="text-[24px] font-normal leading-[1.4] text-[var(--text-primary)]" data-i18n-key="Flow calibration is managed automatically by the Auto Flow Calibration plugin.">Flow calibration is managed automatically by the Auto Flow Calibration plugin.</p>
            <button class="${SENSOR_CAL_SMALL_BTN} bg-[var(--button-primary-bg)] text-white self-start mt-[4px]" data-settings-jump="${escapeHtml(pluginCategoryFor(AUTO_FLOW_CAL_PLUGIN_ID))}" data-i18n-key="Open plugin settings">Open plugin settings</button>`
         : '';
     // Laid out like Quick Adjustments > Steam: a full-width row, label and its
@@ -5677,7 +5657,7 @@ function sensorCalFlowCard() {
     // the middle of it, which read as a stray box rather than a setting.
     return `
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
-                <div class="flex flex-col gap-[10px] font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
+                <div class="flex flex-col gap-[10px] font-semibold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
                     <p id="flow-estimation-multiplier-label" ${mutedWhenManaged} class="leading-[1.2]" data-i18n-key="Flow Estimation Calibration Multiplier">Flow Estimation Calibration Multiplier</p>
                     ${hint}
                     ${notice}
@@ -5725,7 +5705,7 @@ export function renderSensorCalSettings() {
             <div class="w-full" style="overflow-x:auto">
                 <table class="w-full">
                     <thead>
-                        <tr class="text-[22px] text-[var(--text-secondary)] text-left">
+                        <tr class="text-[24px] text-[var(--text-secondary)] text-left">
                             <th class="pb-[10px] font-normal" data-i18n-key="Sensor">Sensor</th>
                             <th class="pb-[10px] font-normal text-center" data-i18n-key="Saved">Saved</th>
                             <th class="pb-[10px] font-normal text-center" data-i18n-key="Previous">Previous</th>
@@ -5740,7 +5720,7 @@ export function renderSensorCalSettings() {
     }
     return `
         <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Sensor Calibration">Sensor Calibration</p>
             </div>
 
@@ -5750,7 +5730,7 @@ export function renderSensorCalSettings() {
 
             <details id="sensor-cal-advanced" class="w-full" ${sensorCalAdvancedOpen ? 'open' : ''}
                      ontoggle="window.sensorCalAdvancedToggle(this.open)">
-                <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[22px] font-bold text-[var(--text-secondary)] py-[8px]">
+                <summary class="list-none [&::-webkit-details-marker]:hidden cursor-pointer select-none text-[24px] font-bold text-[var(--text-secondary)] py-[8px]">
                     <span data-i18n-key="Advanced">Advanced</span> ▾
                 </summary>
                 <div class="w-full pt-[8px]">${body}</div>
@@ -5799,14 +5779,15 @@ function skinUpdateCheckText() {
 export function renderThemeSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Theme Settings">Theme Settings</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Theme">Theme</p>
                         </div>
                         <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
@@ -5815,7 +5796,7 @@ export function renderThemeSettings() {
                             <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
                         </label>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full pr-[220px]" data-i18n-key="Toggle between light and dark themes">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full pr-[220px]" data-i18n-key="Toggle between light and dark themes">
                         Toggle between light and dark themes
                     </p>
                 </div>
@@ -5832,12 +5813,13 @@ export function renderSkinSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Active Skin">Active Skin</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col gap-[24px] items-start relative w-full">
-                <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[22px] w-full" data-i18n-key="Tap a skin to make it active.">
+                <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Tap a skin to make it active.">
                     Tap a skin to make it active.
                 </p>
                 <div class="grid grid-cols-2 gap-[14px] w-full">
@@ -5859,22 +5841,24 @@ export function renderSkinSettings() {
                                     ? 'bg-[var(--button-primary-bg)] border-[var(--mimoja-blue-v2)] text-white cursor-default'
                                     : 'bg-[var(--box-color)] border-[var(--profile-button-outline-color)] text-[var(--text-primary)] cursor-pointer hover:border-[var(--mimoja-blue-v2)]'}">
                             <div class="flex items-start justify-between w-full gap-2">
-                                <span class="font-['Inter:Bold',sans-serif] font-bold text-[24px] leading-tight">${getTranslation(s.i18nKey || s.name)}</span>
-                                ${isActive ? `<span class="text-[14px] font-bold tracking-widest uppercase px-[10px] py-[4px] rounded-full bg-white bg-opacity-20 text-white shrink-0" data-i18n-key="Active">Active</span>` : ''}
+                                <span class="font-semibold text-[24px] leading-tight">${getTranslation(s.i18nKey || s.name)}</span>
+                                ${isActive ? `<span class="text-[20px] font-bold tracking-widest uppercase px-[10px] py-[4px] rounded-full bg-white bg-opacity-20 text-white shrink-0" data-i18n-key="Active">Active</span>` : ''}
                             </div>
                             <div class="flex items-center gap-[10px]">
-                                ${displayVersion ? `<span class="text-[17px] font-['Inter:Regular',sans-serif] opacity-80">v${displayVersion}</span>` : ''}
-                                <span class="text-[14px] font-['Inter:Regular',sans-serif] opacity-60 uppercase tracking-wider">${s.isBundled ? 'Bundled' : 'Installed'}</span>
+                                ${displayVersion ? `<span class="text-[20px] font-normal opacity-80">v${String(displayVersion).replace(/^v/i, '')}</span>` : ''}
+                                <span class="text-[20px] font-normal opacity-60 uppercase tracking-wider">${s.isBundled ? 'Bundled' : 'Installed'}</span>
                             </div>
                         </button>`;
                     }).join('')}
                 </div>
             </div>
 
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+
             <div class="content-stretch flex flex-col items-start relative w-full">
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]">${skinUpdateCheckText()}</p>
                         </div>
                         <button id="skinUpdateBtn" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
@@ -5926,21 +5910,21 @@ export function renderLanguageSettings() {
 
     return `
         <div class="flex flex-col gap-[60px] items-start relative w-full max-w-full overflow-x-hidden">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
+            <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--text-primary)] text-[36px] text-center w-full">
                 <p class="leading-[1.2]" data-i18n-key="Language Settings">Language Settings</p>
             </div>
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
             <div class="flex flex-col items-start relative w-full max-w-full">
                 <div class="flex flex-col gap-[30px] items-start relative w-full max-w-full">
                     <div class="flex items-center justify-between relative w-full max-w-full">
-                        <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                        <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                             <p class="leading-[1.2]" data-i18n-key="Display Language">Display Language</p>
                         </div>
                         <select id="language-switcher" class="bg-[var(--button-primary-bg)] border-2 border-[var(--mimoja-blue-v2)] border-solid h-[62.88px] rounded-[2617.374px] w-[250px] text-white text-[24px] p-2 max-w-[250px]">
                             <option data-i18n-key="Loading...">Loading...</option>
                         </select>
                     </div>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words" data-i18n-key="Choose the language for the application interface.">
+                    <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full max-w-full break-words" data-i18n-key="Choose the language for the application interface.">
                         Choose the language for the application interface.
                     </p>
                 </div>
@@ -6007,8 +5991,8 @@ async function ensurePluginNav() {
 // of one column the length of eight plugins.
 function renderPluginPage(pluginId) {
     return `
-        <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
-            <div id="plugin-page-container" class="flex flex-col gap-[40px] w-full" data-plugin-page="${escapeHtml(pluginId)}">
+        <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
+            <div id="plugin-page-container" class="flex flex-col gap-[60px] w-full" data-plugin-page="${escapeHtml(pluginId)}">
                 <div class="flex items-center justify-center w-full py-[40px]">
                     <span class="loading loading-spinner loading-lg text-[var(--mimoja-blue-v2)]"></span>
                 </div>
@@ -6022,15 +6006,16 @@ function renderPluginPage(pluginId) {
 // rather than as a panel that wandered in from the bridge.
 function renderPluginPageTitle(name) {
     return `
-        <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+        <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
             <p class="leading-[1.2]" data-i18n-key="${escapeHtml(name)}">${escapeHtml(getTranslation(name))}</p>
-        </div>`;
+        </div>
+        <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>`;
 }
 
 export function renderPluginManagerSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Plugins">Plugins</p>
             </div>
 
@@ -6070,9 +6055,10 @@ export function renderShotUploadSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" id="shotupload-title" data-i18n-key="Shot Uploader">Shot Uploader</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                 <p id="shotupload-description" class="text-[24px] text-[var(--text-primary)] leading-[1.4] opacity-75"></p>
@@ -6086,10 +6072,10 @@ export function renderShotUploadSettings() {
                 </div>
 
                 <!-- Filled from the manifest schema by setupShotUploadListeners. -->
-                <div id="shotupload-controls" class="content-stretch flex flex-col gap-[30px] items-start relative w-full"></div>
+                <div id="shotupload-controls" class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)] [&>*]:py-[60px] [&>*:first-child]:pt-0 [&>*:last-child]:pb-0"></div>
 
                 <div class="flex items-center gap-[14px] flex-wrap w-full">
-                    <button id="shotupload-upload-now" class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[22px] font-bold" data-i18n-key="Upload latest shot">Upload latest shot</button>
+                    <button id="shotupload-upload-now" class="bg-[var(--button-primary-bg)] h-[56px] px-[28px] rounded-[64px] text-white text-[24px] font-bold" data-i18n-key="Upload latest shot">Upload latest shot</button>
                     <span id="shotupload-status" class="text-[20px] text-[var(--text-primary)] opacity-60"></span>
                 </div>
             </div>
@@ -6139,37 +6125,38 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
     // Enabled row: a manifest toggle printed in 30px bold blue (as these were)
     // read as a section heading and outranked the switch that turns the whole
     // plugin on.
-    const labelHtml = `<span class="font-['Inter:SemiBold',sans-serif] font-semibold text-[var(--text-primary)] text-[26px] leading-[1.2]">${label}</span>`;
-    // Manifest help text, under the name it explains rather than under the
-    // control, so a long description cannot drift toward the next setting.
+    const labelHtml = `<span class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]">${label}</span>`;
+    // Manifest help text runs full width below the name/control row, as on the
+    // core settings pages -- a narrow column beside the control wrapped long
+    // descriptions into a tall strip that drifted toward the next setting.
     const description = schema?.description
-        ? `<span class="font-['Inter:Regular',sans-serif] leading-[1.4] text-[var(--text-primary)] opacity-70 text-[22px]" data-i18n-key="${escapeHtml(schema.description)}">${escapeHtml(getTranslation(schema.description))}</span>`
+        ? `<p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${escapeHtml(schema.description)}">${escapeHtml(getTranslation(schema.description))}</p>`
         : '';
     const inputClass = 'p-3 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue-v2)]';
 
     if (schema?.type === 'boolean') {
         return `
-            <div class="flex items-center justify-between gap-[24px] w-full">
-                <div class="flex flex-col gap-[4px] max-w-[52ch]">
+            <div class="flex flex-col gap-[30px] w-full">
+                <div class="flex items-center justify-between gap-[24px] w-full">
                     ${labelHtml}
-                    ${description}
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="boolean" class="sr-only peer">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
                 </div>
-                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                    <input type="checkbox" id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="boolean" class="sr-only peer">
-                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                </label>
+                ${description}
             </div>`;
     }
 
     if (schema?.type === 'number') {
         return `
-            <div class="flex items-center justify-between gap-[24px] w-full">
-                <div class="flex flex-col gap-[4px] max-w-[52ch]">
+            <div class="flex flex-col gap-[30px] w-full">
+                <div class="flex items-center justify-between gap-[24px] w-full">
                     <label for="${id}">${labelHtml}</label>
-                    ${description}
+                    <input type="number" id="${id}" min="0" data-setting-key="${escapeHtml(key)}" data-setting-type="number" class="w-[140px] flex-shrink-0 text-right ${inputClass}">
                 </div>
-                <input type="number" id="${id}" min="0" data-setting-key="${escapeHtml(key)}" data-setting-type="number" class="w-[140px] flex-shrink-0 text-right ${inputClass}">
+                ${description}
             </div>`;
     }
 
@@ -6181,28 +6168,27 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
             .map(value => `<option value="${escapeHtml(value)}">${escapeHtml(getTranslation(String(value)))}</option>`)
             .join('');
         return `
-            <div class="flex items-center justify-between gap-[24px] w-full">
-                <div class="flex flex-col gap-[4px] max-w-[52ch]">
+            <div class="flex flex-col gap-[30px] w-full">
+                <div class="flex items-center justify-between gap-[24px] w-full">
                     <label for="${id}">${labelHtml}</label>
-                    ${description}
+                    <select id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="enum" class="flex-shrink-0 max-w-[340px] ${inputClass}">
+                        ${options}
+                    </select>
                 </div>
-                <select id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="enum" class="flex-shrink-0 max-w-[340px] ${inputClass}">
-                    ${options}
-                </select>
+                ${description}
             </div>`;
     }
 
     // `secure` is the manifest's own flag for a value that should not be read off
     // the screen (visualizer's Password sets it) -- honour it rather than
-    // rendering every string in the clear.
+    // rendering every string in the clear. A text field is too wide to share the
+    // name's row, so it runs full width below the name.
     if (schema?.type === 'string') {
         return `
-            <div class="flex flex-col gap-[10px] w-full">
-                <div class="flex flex-col gap-[4px] max-w-[62ch]">
-                    <label for="${id}">${labelHtml}</label>
-                    ${description}
-                </div>
-                <input type="${schema.secure ? 'password' : 'text'}" id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="${schema.secure ? 'secure' : 'string'}" class="w-full max-w-[560px] ${inputClass}">
+            <div class="flex flex-col gap-[30px] w-full">
+                <label for="${id}">${labelHtml}</label>
+                <input type="${schema.secure ? 'password' : 'text'}" id="${id}" data-setting-key="${escapeHtml(key)}" data-setting-type="${schema.secure ? 'secure' : 'string'}" class="w-full ${inputClass}">
+                ${description}
             </div>`;
     }
 
@@ -6321,14 +6307,14 @@ function setupShotUploadListeners() {
     const notice = (title, body) => `
         <div class="flex flex-col gap-[24px] p-[36px] rounded-[20px] border-2 border-dashed border-[var(--profile-button-outline-color)] bg-[var(--box-color)] items-center text-center">
             <div class="flex flex-col gap-[8px]">
-                <p class="text-[26px] font-bold text-[var(--text-primary)]">${title}</p>
-                <p class="text-[22px] text-[var(--low-contrast-white)] max-w-[500px] leading-[1.4]">${body}</p>
+                <p class="text-[30px] font-semibold text-[var(--text-primary)]">${title}</p>
+                <p class="text-[24px] text-[var(--low-contrast-white)] max-w-[500px] leading-[1.4]">${body}</p>
             </div>
         </div>`;
 
     const linkedBadge = `
         <div class="flex items-center p-[20px] rounded-[14px] bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] gap-[14px]">
-            <div class="w-[40px] h-[40px] rounded-full bg-[var(--button-primary-bg)] flex items-center justify-center text-white text-[18px] font-bold">D</div>
+            <div class="w-[40px] h-[40px] rounded-full bg-[var(--button-primary-bg)] flex items-center justify-center text-white text-[20px] font-bold">D</div>
             <div>
                 <p class="text-[20px] font-semibold text-[var(--text-primary)]" data-i18n-key="Decent account linked">Decent account linked</p>
             </div>
@@ -6522,8 +6508,8 @@ function renderDye2Extra() {
     return `
         <div class="flex items-center justify-between gap-[24px] w-full">
             <div class="flex flex-col gap-[4px] max-w-[52ch]">
-                <span class="font-['Inter:SemiBold',sans-serif] font-semibold text-[var(--text-primary)] text-[26px] leading-[1.2]" data-i18n-key="DYE2">DYE2</span>
-                <span class="font-['Inter:Regular',sans-serif] leading-[1.4] text-[var(--text-primary)] opacity-70 text-[22px]" data-i18n-key="Show DYE auto-favourites and recipes on the dashboard header.">
+                <span class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="DYE2">DYE2</span>
+                <span class="font-normal leading-[1.4] text-[var(--text-primary)] opacity-70 text-[24px]" data-i18n-key="Show DYE auto-favourites and recipes on the dashboard header.">
                     Show DYE auto-favourites and recipes on the dashboard header.
                 </span>
             </div>
@@ -6639,18 +6625,18 @@ function renderPluginVersionInfo(el, pluginId, info, override) {
     // new permissions; the approval itself happens in Decaid.
     const pendingBlock = info.pending ? `
         <div class="flex flex-col gap-[12px] w-full rounded-[16px] bg-amber-500/10 border border-amber-500/30 p-[24px]">
-            <span class="text-[22px] text-[var(--text-primary)]">
+            <span class="text-[24px] text-[var(--text-primary)]">
                 v${escapeHtml(info.pending.version || '?')} ${getTranslation('is available but asks for new permissions')}:
             </span>
-            <span class="text-[22px] font-bold text-[var(--text-primary)] break-words">
+            <span class="text-[24px] font-bold text-[var(--text-primary)] break-words">
                 ${(info.pending.addedPermissions || []).map(escapeHtml).join(', ') || '—'}
             </span>
         </div>` : '';
 
     const errorBlock = src?.lastError ? `
         <div class="flex flex-col gap-[8px] w-full rounded-[16px] bg-amber-500/10 border border-amber-500/30 p-[24px]">
-            <span class="text-[22px] font-bold text-[var(--text-primary)]" data-i18n-key="Last error">${getTranslation('Last error')}</span>
-            <span class="text-[22px] text-[var(--text-primary)] break-words">${escapeHtml(src.lastError)}</span>
+            <span class="text-[24px] font-bold text-[var(--text-primary)]" data-i18n-key="Last error">${getTranslation('Last error')}</span>
+            <span class="text-[24px] text-[var(--text-primary)] break-words">${escapeHtml(src.lastError)}</span>
         </div>` : '';
 
     el.innerHTML = `
@@ -6711,17 +6697,17 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     const description = vm.plugin ? pluginDescription(vm.plugin) : (override.fallbackDescription ? getTranslation(override.fallbackDescription) : '');
     const uiUrl = vm.plugin ? pluginUiUrl(vm.plugin, API_BASE_URL, window.location.href) : null;
 
-    const rule = `<div class="h-px w-full bg-[var(--profile-button-outline-color)] opacity-40"></div>`;
+    const rule = `<div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>`;
 
     const heading = asPage ? '' : `
-        <div class="flex items-center gap-[12px] flex-wrap font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">
+        <div class="flex items-center gap-[12px] flex-wrap font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">
             <span data-i18n-key="${escapeHtml(titleKey)}">${escapeHtml(title)}</span>
         </div>`;
 
-    // Reads at arm's length on a tablet, so it is capped near 70 characters
-    // rather than run the full width of the settings pane.
+    // Body text at the same size, weight and width as every core settings
+    // description.
     const descriptionHtml = description ? `
-        <p class="font-['Inter:Regular',sans-serif] leading-[1.45] text-[var(--text-primary)] opacity-80 text-[24px] max-w-[62ch]"
+        <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full"
            data-i18n-key="${escapeHtml(description)}">${escapeHtml(getTranslation(description))}</p>` : '';
 
     // Sits on the description's own line, right-aligned in the same column as
@@ -6735,7 +6721,7 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     // when the plugin asks for nothing.
     const openHtml = uiUrl ? `
         <button type="button" data-role="plugin-open" data-plugin-url="${escapeHtml(uiUrl)}"
-           class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[22px] font-bold inline-flex items-center justify-center flex-shrink-0"
+           class="bg-[var(--button-primary-bg)] h-[56px] px-[32px] rounded-[64px] text-white text-[24px] font-bold inline-flex items-center justify-center flex-shrink-0"
            data-i18n-key="Open">Open</button>` : '';
 
     // Turning a plugin on or off, installing, updating and saving its settings
@@ -6745,9 +6731,9 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     const canExit = !!window.__DECENT_HOST__ && typeof window.decentApp?.exitToDashboard === 'function';
     const manageRow = `
         <div class="flex items-center justify-between gap-[24px] w-full">
-            <span class="text-[22px] text-[var(--text-secondary)]" data-i18n-key="Manage this plugin in the Decaid dashboard.">${getTranslation('Manage this plugin in the Decaid dashboard.')}</span>
+            <span class="text-[24px] text-[var(--text-secondary)]" data-i18n-key="Manage this plugin in the Decaid dashboard.">${getTranslation('Manage this plugin in the Decaid dashboard.')}</span>
             ${canExit ? `<button type="button" data-role="plugin-manage"
-                class="h-[56px] px-[28px] rounded-[64px] border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] text-[22px] font-bold flex-shrink-0"
+                class="h-[56px] px-[28px] rounded-[64px] border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] text-[24px] font-bold flex-shrink-0"
                 data-i18n-key="Manage in Decaid">${getTranslation('Manage in Decaid')}</button>` : ''}
         </div>`;
 
@@ -6758,7 +6744,7 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
     }).join('');
 
     return `
-        <div class="flex flex-col gap-[30px] w-full py-[10px]" data-plugin-card="${escapeHtml(pluginId)}">
+        <div class="flex flex-col gap-[60px] w-full py-[10px]" data-plugin-card="${escapeHtml(pluginId)}">
             ${heading || descriptionHtml || openHtml ? `
             <div class="flex flex-col gap-[16px] w-full">
                 ${heading}
@@ -6771,7 +6757,7 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
             ${rule}
 
             <div class="flex flex-col gap-[24px] w-full">
-                <div data-role="plugin-version-info" class="w-full text-[22px] text-[var(--text-secondary)]">${getTranslation('Checking')}…</div>
+                <div data-role="plugin-version-info" class="w-full text-[24px] text-[var(--text-secondary)]">${getTranslation('Checking')}…</div>
                 ${manageRow}
             </div>
 
@@ -6781,7 +6767,7 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
 
             ${schemaControls ? `
             ${rule}
-            <div class="flex flex-col gap-[30px] w-full [&_:disabled]:opacity-50 [&_label:has(input:disabled)]:opacity-50">${schemaControls}</div>` : ''}
+            <div class="flex flex-col w-full divide-y divide-[var(--border-primary)] [&>*]:py-[60px] [&>*:first-child]:pt-0 [&>*:last-child]:pb-0 [&_:disabled]:opacity-50 [&_label:has(input:disabled)]:opacity-50">${schemaControls}</div>` : ''}
         </div>`;
 }
 
@@ -6894,8 +6880,8 @@ export function renderMachineInformationSettings() {
             const val = typeof value === 'boolean' ? (value ? getTranslation('Enabled') : getTranslation('Disabled')) : String(value);
             return `
             <div class="flex items-center justify-between py-[16px] border-t border-[var(--border-primary)]">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation(label)}</span>
-                <span class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${val}</span>
+                <span class="font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation(label)}</span>
+                <span class="font-normal text-[24px] text-[var(--text-primary)]">${val}</span>
             </div>`;
         }).join('')
         : '';
@@ -6904,42 +6890,42 @@ export function renderMachineInformationSettings() {
         <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] flex flex-col gap-0">
 
             <div class="flex items-center justify-between py-[16px]">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation('Model')}</span>
-                <span class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${machineInfo.model}</span>
+                <span class="font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation('Model')}</span>
+                <span class="font-normal text-[24px] text-[var(--text-primary)]">${machineInfo.model}</span>
             </div>
 
             <div class="flex items-center justify-between py-[16px] border-t border-[var(--border-primary)]">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation('Firmware')} ${getTranslation('Version')}</span>
-                <span class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${machineInfo.version}</span>
+                <span class="font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation('Firmware')} ${getTranslation('Version')}</span>
+                <span class="font-normal text-[24px] text-[var(--text-primary)]">${machineInfo.version}</span>
             </div>
 
             <div class="flex items-center justify-between py-[16px] border-t border-[var(--border-primary)]">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[24px] text-[var(--text-primary)]" data-i18n-key="Serial number:">Serial number:</span>
+                <span class="font-semibold text-[24px] text-[var(--text-primary)]" data-i18n-key="Serial number:">Serial number:</span>
                 <div class="flex items-center gap-3">
                     <button onclick="navigator.clipboard.writeText('${machineInfo.serialNumber}').then(()=>{ this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500); })"
-                            class="text-[18px] font-semibold text-[var(--mimoja-blue-v2)] px-3 py-1 rounded-[8px] border border-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white transition-colors">
+                            class="text-[20px] font-semibold text-[var(--mimoja-blue-v2)] px-3 py-1 rounded-[8px] border border-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white transition-colors">
                         ${getTranslation('Copy')}
                     </button>
-                    <span class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${machineInfo.serialNumber}</span>
+                    <span class="font-normal text-[24px] text-[var(--text-primary)]">${machineInfo.serialNumber}</span>
                 </div>
             </div>
 
             <div class="flex items-center justify-between py-[16px] border-t border-[var(--border-primary)]">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation('Group Head Controller')}</span>
-                <span class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${machineInfo.GHC ? getTranslation('Enabled') : getTranslation('Disabled')}</span>
+                <span class="font-semibold text-[24px] text-[var(--text-primary)]">${getTranslation('Group Head Controller')}</span>
+                <span class="font-normal text-[24px] text-[var(--text-primary)]">${machineInfo.GHC ? getTranslation('Enabled') : getTranslation('Disabled')}</span>
             </div>
 
             ${extraRows}
         </div>
     ` : `
         <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)]">
-            <p class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]" data-i18n-key="Fetching machine info...">Fetching machine info...</p>
+            <p class="font-normal text-[24px] text-[var(--text-primary)]" data-i18n-key="Fetching machine info...">Fetching machine info...</p>
         </div>
     `;
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Machine Info">Machine Info</p>
             </div>
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
@@ -6976,11 +6962,11 @@ function renderFirmwareCheckBlock(summary) {
     // machine token in the middle of a sentence, untranslated and unexplained,
     // and the tracker below says the same thing properly once we are driving.
     if (operationState && operationState !== 'idle') {
-        return `<p class="text-[30px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] leading-[1.2]">${getTranslation('Updating')}…</p>`;
+        return `<p class="text-[30px] font-semibold text-[var(--mimoja-blue-v2)] leading-[1.2]">${getTranslation('Updating')}…</p>`;
     }
 
     const pill = (text, cls) =>
-        `<span class="text-[22px] font-bold px-[20px] py-[8px] rounded-full ${cls}">${text}</span>`;
+        `<span class="text-[24px] font-bold px-[20px] py-[8px] rounded-full ${cls}">${text}</span>`;
 
     // Installed build is already shown next to "Firmware Version" above (the
     // #de1-firmware-version row) — this block only needs to say what's new.
@@ -6997,29 +6983,26 @@ function renderFirmwareCheckBlock(summary) {
                         <!-- Bare number, matching the installed one in the Version row
                              directly above: two build numbers on one screen read as a
                              before/after without a word in front of either. -->
-                        <span class="text-[24px] font-['Inter:Regular',sans-serif] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
+                        <span class="text-[24px] font-normal text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</span>
                     </div>
                     <button id="firmware-apply-btn" class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                             ${artifactId ? `onclick="window.applyFirmwareUpdate('${escapeHtml(artifactId)}')"` : 'disabled'}>
                         ${getTranslation('Update')}
                     </button>
                 </div>
-                <!-- What the build about to be installed changes, in the page's own
-                     card treatment rather than loose prose: it is the one thing on
-                     screen that argues for pressing Update, and under the status row
-                     it used to read as a caption to the pill. Headed with the build
-                     it describes, so it cannot be mistaken for notes about the
-                     installed version in the Version card above.
-                     max-w-[70ch]: prose, and at this font size the settings pane is
-                     wide enough to run a line past 100 characters, which is where it
-                     stops being easy to track back from. -->
+                <!-- What the build about to be installed changes, under its own heading
+                     rather than as loose prose: it is the one thing on screen that
+                     argues for pressing Update, and under the status row it used to
+                     read as a caption to the pill. Headed with the build it describes,
+                     so it cannot be mistaken for notes about the installed version in
+                     the Version row above. -->
                 ${releaseNotes ? `
-                    <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] w-full flex flex-col gap-[16px]">
+                    <div class="w-full flex flex-col gap-[16px] pt-[14px]">
                         <div class="flex items-center justify-between gap-[20px] w-full">
-                            <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">${getTranslation('Update')} ${getTranslation('Notes')}</p>
-                            <p class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</p>
+                            <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">${getTranslation('Update')} ${getTranslation('Notes')}</p>
+                            <p class="font-normal text-[24px] text-[var(--text-primary)]">${escapeHtml(String(latestLabel ?? latestBuild ?? '—'))}</p>
                         </div>
-                        <p class="text-[22px] font-['Inter:Regular',sans-serif] text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${escapeHtml(releaseNotes)}</p>
+                        <p class="text-[24px] font-normal text-[var(--text-primary)] leading-[1.4] w-full">${escapeHtml(releaseNotes)}</p>
                     </div>` : ''}
             </div>`;
     }
@@ -7034,7 +7017,7 @@ function renderFirmwareCheckBlock(summary) {
     const why = FIRMWARE_REASON_TEXT[reason];
     return `<div class="flex items-center gap-[16px] flex-wrap">
                 ${pill(getTranslation('Could not check'), 'bg-[var(--muted-pill-bg)] text-[var(--text-primary)] opacity-70')}
-                ${why ? `<span class="text-[24px] font-['Inter:Regular',sans-serif] text-[var(--text-secondary)]">${getTranslation(why)}</span>` : ''}
+                ${why ? `<span class="text-[24px] font-normal text-[var(--text-secondary)]">${getTranslation(why)}</span>` : ''}
             </div>`;
 }
 
@@ -7249,8 +7232,8 @@ function renderFirmwareSteps(progress, { failed = false, cancelled = false } = {
         return `
             <div class="relative flex-1 flex flex-col items-center gap-[8px]">
                 ${i < last ? `<div class="absolute top-[17px] left-1/2 w-full h-[3px] ${lineCls}"></div>` : ''}
-                <div class="relative z-10 flex items-center justify-center size-[36px] rounded-full text-[18px] font-bold ${circleCls}">${glyph}</div>
-                <p class="text-[18px] font-bold ${labelCls}">${getTranslation(key)}</p>
+                <div class="relative z-10 flex items-center justify-center size-[36px] rounded-full text-[20px] font-bold ${circleCls}">${glyph}</div>
+                <p class="text-[20px] font-bold ${labelCls}">${getTranslation(key)}</p>
             </div>`;
     }).join('')}</div>`;
 }
@@ -7264,21 +7247,22 @@ export function renderFirmwareUpdateSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Firmware Update">Firmware Update</p>
             </div>
 
             <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
+            <!-- The installed build as a plain setting row, aligned with the page's
+                 left edge like every other row; sections below are divided, not boxed. -->
+            <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
+                <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Version">Version</p>
+                <p id="de1-firmware-version" class="font-normal text-[24px] text-[var(--text-primary)]">${de1Version || '—'}</p>
+            </div>
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+
             <div class="content-stretch flex flex-col gap-[30px] relative w-full">
-                <!-- The installed build in the same card Machine Info shows it in, so
-                     the one fact both pages report looks like one object. -->
-                <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] w-full">
-                    <div class="content-stretch flex items-center justify-between relative w-full">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Version">Version</p>
-                        <p id="de1-firmware-version" class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">${de1Version || '—'}</p>
-                    </div>
-                </div>
                 <!-- Filled by initFirmwareCheck from GET /machine/firmware. Seeded from
                      the cache so returning to the page doesn't flash "Checking...". -->
                 <div id="firmware-check-section">${renderFirmwareCheckBlock(settingsCache.firmwareCheck)}</div>
@@ -7292,11 +7276,11 @@ export function renderFirmwareUpdateSettings() {
                      running, runFirmwareOperation swaps in the safety half alone — the
                      duration claim is then the wrong one to make (the live clock beside
                      the tracker is more specific), but "do not power off" is at its most
-                     load-bearing exactly while the flash is in progress.
-                     max-w-[70ch]: prose, and the pane is wide enough at this font size
-                     to run a line past where it stops being easy to track back from. -->
-                <p id="firmware-duration-note" class="text-[22px] font-bold text-[var(--text-primary)] leading-[1.4] max-w-[70ch]">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : firmwareDurationNoteText())}</p>
+                     load-bearing exactly while the flash is in progress. -->
+                <p id="firmware-duration-note" class="text-[24px] font-normal text-[var(--text-primary)] leading-[1.4] w-full">${getTranslation(firmwareUploadInFlight ? FIRMWARE_POWER_NOTE : firmwareDurationNoteText())}</p>
             </div>
+
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
             <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                 <!-- Filled by window.uploadFirmware from the NDJSON progress stream. Hidden
@@ -7350,17 +7334,17 @@ export function renderFirmwareUpdateSettings() {
                         <!-- No heading: the card below is the only thing behind "Advanced"
                              on a page already titled Firmware Update, and "No file
                              selected" next to Select File says what it is.
-                             The file and the buttons that act on it live in one card so the
+                             The file and the buttons that act on it share one row so the
                              "what did I pick" state reads as a unit with "what happens to it".
                              Select File and Upload stay paired on the same row/level — they're
                              the two steps of one action, in reading order. -->
-                        <div class="rounded-[10px] border border-[var(--border-primary)] p-6 bg-[var(--box-color)] flex items-center justify-between gap-[20px] flex-wrap w-full">
+                        <div class="flex items-center justify-between gap-[20px] flex-wrap w-full">
                             <div class="min-w-0">
-                                <p id="firmware-filename" class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
+                                <p id="firmware-filename" class="font-normal text-[24px] text-[var(--text-primary)] truncate" data-i18n-key="No file selected">No file selected</p>
                                 <!-- Filled by onFirmwareFileSelected: size in KB/MB, plus a plain-
                                      language flag once it's bigger than any real DE1 image — a toast
                                      fades, this stays on screen next to the file it's about. -->
-                                <p id="firmware-filename-hint" class="text-[18px] text-[var(--text-secondary)]"></p>
+                                <p id="firmware-filename-hint" class="text-[20px] text-[var(--text-secondary)]"></p>
                             </div>
                             <div class="flex items-center gap-[16px] flex-shrink-0">
                                 <!-- Picking a file is the step before the one that matters, so it
@@ -7401,7 +7385,7 @@ function renderAppUpdateBlock(state) {
     const { available: needsUpdate, latest: latestPlain, releaseUrl } =
         appUpdateAvailability(state, settingsCache.appInfo?.version);
 
-    const base = 'text-[16px] font-semibold px-[8px] py-[2px] rounded-full';
+    const base = 'text-[20px] font-semibold px-[8px] py-[2px] rounded-full';
     const badge = needsUpdate
         ? `<span class="${base} bg-[#da515e]/15 text-[#da515e]" data-i18n-key="Update available">Update available</span>`
         : '';
@@ -7409,7 +7393,7 @@ function renderAppUpdateBlock(state) {
     const phase = state?.phase;
     const busy = phase === 'downloading' || phase === 'installing';
     const pct = Math.round((state?.progress || 0) * 100);
-    const btn = 'inline-flex items-center justify-center h-[40px] px-[20px] rounded-[40px] text-[16px] font-bold';
+    const btn = 'inline-flex items-center justify-center h-[40px] px-[20px] rounded-[40px] text-[20px] font-bold';
 
     // In-app install is Android-only (AppUpdateState.installable is `_isAndroid &&
     // hasUpdate`). Everywhere else the release page is the only way through, so
@@ -7432,10 +7416,10 @@ function renderAppUpdateBlock(state) {
     // Card *contents* only -- this renders into #app-update-section, which carries
     // the same box classes as the Version card it sits beside.
     return `
-        <p class="text-[20px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Update">Update</p>
+        <p class="text-[20px] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Update">Update</p>
         <div class="flex items-center gap-[10px] flex-wrap">
             ${badge}
-            ${needsUpdate ? `<span class="text-[24px] font-['Inter:Regular',sans-serif]">${latestPlain}</span>` : ''}
+            ${needsUpdate ? `<span class="text-[24px] font-normal">${latestPlain}</span>` : ''}
             ${action}
         </div>
         ${progressBar}
@@ -7476,28 +7460,28 @@ export function renderUpdatesSettings() {
     const appInfoDetails = infoAvailable ? `
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div class="rounded-[10px] border border-[var(--border-primary)] p-4 bg-[var(--box-color)]">
-                        <p class="text-[20px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Version">Version</p>
-                        <p class="text-[24px] font-['Inter:Regular',sans-serif]">${appInfo.version} (${appInfo.buildNumber})</p>
-                        <p class="text-[16px] text-[var(--text-secondary)]">Full: ${appInfo.fullVersion}</p>
-                        <p class="text-[16px] text-[var(--text-secondary)]">${formatBuildTimestamp(appInfo.buildTime)}</p>
+                        <p class="text-[20px] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Version">Version</p>
+                        <p class="text-[24px] font-normal">${appInfo.version} (${appInfo.buildNumber})</p>
+                        <p class="text-[20px] text-[var(--text-secondary)]">Full: ${appInfo.fullVersion}</p>
+                        <p class="text-[20px] text-[var(--text-secondary)]">${formatBuildTimestamp(appInfo.buildTime)}</p>
                     </div>
                     <div class="rounded-[10px] border border-[var(--border-primary)] p-4 bg-[var(--box-color)]">
-                        <p class="text-[20px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Source">Source</p>
-                        <p class="text-[24px] font-['Inter:Regular',sans-serif]">${appInfo.branch}</p>
-                        <p class="text-[16px] text-[var(--text-secondary)]">Commit: ${appInfo.commitShort}</p>
-                        <p class="text-[16px] text-[var(--text-secondary)]">App Store: ${appInfo.appStore ? 'Yes' : 'No'}</p>
+                        <p class="text-[20px] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Source">Source</p>
+                        <p class="text-[24px] font-normal">${appInfo.branch}</p>
+                        <p class="text-[20px] text-[var(--text-secondary)]">Commit: ${appInfo.commitShort}</p>
+                        <p class="text-[20px] text-[var(--text-secondary)]">App Store: ${appInfo.appStore ? 'Yes' : 'No'}</p>
                     </div>
                 </div>
             ` : `
                 <div class="rounded-[10px] border border-[var(--border-primary)] p-4 bg-[var(--box-color)]">
-                    <p class="text-[20px] font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Update info">Update info</p>
-                    <p class="text-[24px] font-['Inter:Regular',sans-serif]" data-i18n-key="Fetching build metadata...">Fetching build metadata...</p>
+                    <p class="text-[20px] font-bold text-[var(--mimoja-blue-v2)]" data-i18n-key="Update info">Update info</p>
+                    <p class="text-[24px] font-normal" data-i18n-key="Fetching build metadata...">Fetching build metadata...</p>
                 </div>
             `;
 
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Updates Settings">Updates Settings</p>
             </div>
 
@@ -7505,7 +7489,7 @@ export function renderUpdatesSettings() {
                 <div class="flex flex-col gap-[30px] w-full">
                     <div class="flex flex-col gap-3">
                         <div class="flex items-center justify-between">
-                            <div class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="Firmware Update">Firmware Update</div>
+                            <div class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="Firmware Update">Firmware Update</div>
                             <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"Check></button>
                         </div>
                         <p class="text-[24px] text-[var(--text-primary)]" data-i18n-key="Check for firmware updates">Check for firmware updates</p>
@@ -7513,7 +7497,7 @@ export function renderUpdatesSettings() {
 
                     <div class="flex flex-col gap-3">
                         <div class="flex items-center justify-between">
-                            <div class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px]">App Update</div>
+                            <div class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px]">App Update</div>
                             <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold" data-i18n-key="Check">Check</button>
                         </div>
                         <p class="text-[24px] text-[var(--text-primary)]" data-i18n-key="Check for application updates">Check for application updates</p>
@@ -7522,7 +7506,7 @@ export function renderUpdatesSettings() {
 
                 <div class="w-full flex flex-col gap-4">
                     <div class="flex flex-col gap-4">
-                        <p class="font-['Inter:Bold',sans-serif] font-bold text-[var(--mimoja-blue-v2)] text-[30px]">Decaid Information</p>
+                        <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px]">Decaid Information</p>
                         ${appInfoDetails}
                     </div>
                 </div>
@@ -7535,7 +7519,7 @@ export function renderUpdatesSettings() {
 export function renderGeneralSettings() {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="General Settings">General Settings</p>
             </div>
 
@@ -7699,7 +7683,7 @@ async function _preloadSettingsInternal() {
             if (contentArea) {
                 contentArea.innerHTML = `
                     <div class="flex flex-col items-center justify-center h-full gap-[40px] p-8">
-                        <p class="text-[var(--text-primary)] text-[30px] font-bold text-center">Unable to reach De1</p>
+                        <p class="text-[var(--text-primary)] text-[30px] font-semibold text-center">Unable to reach De1</p>
                         <p class="text-[var(--text-primary)] text-[24px] text-center opacity-60" data-i18n-key="Retrying automatically every 3 seconds...">Retrying automatically every 3 seconds...</p>
                         <button class="bg-[var(--button-primary-bg)] h-[72px] px-[48px] rounded-[72px] text-white text-[24px] font-bold"
                                 onclick="window.retryLoadSettings()">${getTranslation('Retry')} ${getTranslation('Now')}</button>
@@ -8181,7 +8165,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             });
         } catch (err) {
             logger.error(`Failed to load plugin ${pluginId}:`, err);
-            container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugin: ${escapeHtml(err.message)}</p>`;
+            container.innerHTML = `<p class="text-[24px] text-red-500">Failed to load plugin: ${escapeHtml(err.message)}</p>`;
         }
     };
 
@@ -8219,7 +8203,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             });
         } catch (err) {
             logger.error('Failed to load plugins:', err);
-            container.innerHTML = `<p class="text-[22px] text-red-500">Failed to load plugins: ${escapeHtml(err.message)}</p>`;
+            container.innerHTML = `<p class="text-[24px] text-red-500">Failed to load plugins: ${escapeHtml(err.message)}</p>`;
         }
     };
 
@@ -8266,10 +8250,10 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             return;
         }
         let html = '';
-        if (subject) html += `<p class="text-[19px] font-semibold text-[var(--text-primary)] leading-tight mb-[6px]">${escapeHtml(subject)}</p>`;
+        if (subject) html += `<p class="text-[20px] font-semibold text-[var(--text-primary)] leading-tight mb-[6px]">${escapeHtml(subject)}</p>`;
         if (body) {
             const snippet = body.length > 120 ? body.substring(0, 120) + '…' : body;
-            html += `<p class="text-[18px] text-[var(--low-contrast-white)] leading-snug whitespace-pre-wrap">${escapeHtml(snippet)}</p>`;
+            html += `<p class="text-[20px] text-[var(--low-contrast-white)] leading-snug whitespace-pre-wrap">${escapeHtml(snippet)}</p>`;
         }
         tile.innerHTML = html;
     }
@@ -8335,14 +8319,14 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             if (!res.ok || text === '0') throw new Error('Message could not be delivered. Check your connection.');
 
             if (statusEl) statusEl.innerHTML = `
-                <span class="text-green-600 font-bold text-[22px]">Message sent!</span>
+                <span class="text-green-600 font-bold text-[24px]">Message sent!</span>
                 <span class="text-[20px] text-[var(--low-contrast-white)] ml-[8px]" data-i18n-key="Decent support will reply to your email.">Decent support will reply to your email.</span>`;
             document.getElementById('talkdecent-subject').value = '';
             document.getElementById('talkdecent-message').value = '';
             updateTalkDecentComposePreview('', '');
             window.talkDecentFetchEmails();
         } catch (err) {
-            if (statusEl) statusEl.innerHTML = `<span class="text-red-500 text-[22px]">Error: ${err.message}</span>`;
+            if (statusEl) statusEl.innerHTML = `<span class="text-red-500 text-[24px]">Error: ${err.message}</span>`;
         } finally {
             if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send Message'; }
         }
@@ -8404,7 +8388,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
 
         if (!emails.length) {
-            container.innerHTML = '<p class="text-center text-[18px] text-[var(--low-contrast-white)] py-[24px]">No messages yet. Send one below to start!</p>';
+            container.innerHTML = '<p class="text-center text-[20px] text-[var(--low-contrast-white)] py-[24px]">No messages yet. Send one below to start!</p>';
             return;
         }
 
@@ -8425,16 +8409,16 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
                              onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
                              class="w-[40px] h-[40px] rounded-full flex-shrink-0 object-cover"
                              alt="${escapeHtml(name)}">
-                        <div style="display:none" class="w-[40px] h-[40px] rounded-full bg-[var(--button-primary-bg)] flex-shrink-0 items-center justify-center text-white text-[16px] font-bold">${escapeHtml(name[0].toUpperCase())}</div>
+                        <div style="display:none" class="w-[40px] h-[40px] rounded-full bg-[var(--button-primary-bg)] flex-shrink-0 items-center justify-center text-white text-[20px] font-bold">${escapeHtml(name[0].toUpperCase())}</div>
                         <div class="flex flex-col gap-[4px] max-w-[80%]">
                             <div class="flex items-center gap-[8px] flex-wrap">
-                                <span class="text-[16px] font-semibold text-[var(--mimoja-blue-v2)]">${escapeHtml(name)}</span>
-                                ${msg.automsg ? '<span class="text-[12px] px-[6px] py-[1px] rounded-full bg-[var(--button-grey)] text-[var(--low-contrast-white)]">auto</span>' : ''}
-                                <span class="text-[14px] text-[var(--low-contrast-white)] opacity-60">${date}</span>
+                                <span class="text-[20px] font-semibold text-[var(--mimoja-blue-v2)]">${escapeHtml(name)}</span>
+                                ${msg.automsg ? '<span class="text-[20px] px-[6px] py-[1px] rounded-full bg-[var(--button-grey)] text-[var(--low-contrast-white)]">auto</span>' : ''}
+                                <span class="text-[20px] text-[var(--low-contrast-white)] opacity-60">${date}</span>
                             </div>
                             <div class="bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] rounded-[16px] rounded-tl-[4px] overflow-hidden">
-                                ${subjectText ? `<div class="px-[16px] pt-[10px] pb-[8px] border-b border-[var(--profile-button-outline-color)]"><p class="text-[15px] font-semibold text-[var(--low-contrast-white)]">${subjectText}</p></div>` : ''}
-                                <div class="px-[16px] py-[12px] text-[19px] text-[var(--text-primary)] whitespace-pre-wrap leading-[1.5]">${bodyText}</div>
+                                ${subjectText ? `<div class="px-[16px] pt-[10px] pb-[8px] border-b border-[var(--profile-button-outline-color)]"><p class="text-[20px] font-semibold text-[var(--low-contrast-white)]">${subjectText}</p></div>` : ''}
+                                <div class="px-[16px] py-[12px] text-[20px] text-[var(--text-primary)] whitespace-pre-wrap leading-[1.5]">${bodyText}</div>
                             </div>
                         </div>
                     </div>`;
@@ -8442,10 +8426,10 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
                 return `
                     <div class="flex gap-[12px] items-start justify-end">
                         <div class="flex flex-col gap-[4px] max-w-[80%] items-end">
-                            <span class="text-[14px] text-[var(--low-contrast-white)] opacity-60">${date}</span>
+                            <span class="text-[20px] text-[var(--low-contrast-white)] opacity-60">${date}</span>
                             <div class="bg-[var(--button-primary-bg)] rounded-[16px] rounded-tr-[4px] overflow-hidden">
-                                ${subjectText ? `<div class="px-[16px] pt-[10px] pb-[8px] border-b border-white/20"><p class="text-[15px] font-semibold text-white/70">${subjectText}</p></div>` : ''}
-                                <div class="px-[16px] py-[12px] text-[19px] text-white whitespace-pre-wrap leading-[1.5]">${bodyText}</div>
+                                ${subjectText ? `<div class="px-[16px] pt-[10px] pb-[8px] border-b border-white/20"><p class="text-[20px] font-semibold text-white/70">${subjectText}</p></div>` : ''}
+                                <div class="px-[16px] py-[12px] text-[20px] text-white whitespace-pre-wrap leading-[1.5]">${bodyText}</div>
                             </div>
                         </div>
                     </div>`;
@@ -8567,7 +8551,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             statusEl.innerHTML = `
                 <span class="text-green-600 font-bold text-[24px]" data-i18n-key="Submitted!">Submitted!</span>
                 ${data.issueUrl ? `<a href="${data.issueUrl}"
-                   class="text-[var(--mimoja-blue-v2)] underline text-[22px]">View issue</a>` : ''}`;
+                   class="text-[var(--mimoja-blue-v2)] underline text-[24px]">View issue</a>` : ''}`;
             document.getElementById('feedback-title').value = '';
             document.getElementById('feedback-description').value = '';
             const preview = document.getElementById('feedback-description-preview');
@@ -8577,7 +8561,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             }
         } catch (err) {
             logger.error('Feedback submit error:', err);
-            statusEl.innerHTML = `<span class="text-red-500 text-[22px]">Error: ${err.message}</span>`;
+            statusEl.innerHTML = `<span class="text-red-500 text-[24px]">Error: ${err.message}</span>`;
         } finally {
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = getTranslation('Submit'); }
         }
@@ -8915,7 +8899,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             if (label) label.textContent = file.name;
             if (hint) {
                 hint.textContent = `${formatFileSize(file.size)} — ${getTranslation('too large for a DE1 firmware image')}`;
-                hint.className = 'text-[18px] font-bold text-[#da515e]';
+                hint.className = 'text-[20px] font-bold text-[#da515e]';
             }
             if (uploadBtn) uploadBtn.disabled = true;
             ui.showToast(
@@ -8929,7 +8913,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
             if (label) label.textContent = file.name;
             if (hint) {
                 hint.textContent = formatFileSize(file.size);
-                hint.className = 'text-[18px] text-[var(--text-secondary)]';
+                hint.className = 'text-[20px] text-[var(--text-secondary)]';
             }
             if (uploadBtn) uploadBtn.disabled = false;
         } else {
@@ -9551,17 +9535,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         }
     };
 
-    window.adjustSteamCalibTemp = function(change) {
-        const input = document.getElementById('steamCalibTempInput');
-        if (input) {
-            let newValue = parseInt(input.value, 10) + change;
-            newValue = Math.max(tempInputValue(135), Math.min(tempInputValue(170), newValue));
-            input.value = newValue;
-            input.dispatchEvent(new Event('change'));
-        }
-    };
-
-    // Heater switch for Settings > Calibration > Steam. Staged like the
+    // Heater switch for Settings > Quick Adjustments > Steam. Staged like the
     // temperature input beside it (Save writes it, flushPendingChanges
     // remembers enabled values) -- api.setSteamHeaterEnabled writes at once and
     // would fight this page's Save model.
@@ -9843,7 +9817,7 @@ function setupSettingsSearch(activateResult) {
                     const label = getTranslation(subcategory.i18nKey || subcategory.name.replace(/^\d+\.\s*/, ''));
                     const button = document.createElement('button');
                     button.type = 'button';
-                    button.className = 'settings-search-result w-full text-left px-4 py-3 rounded-lg text-[22px] text-[var(--text-primary)] hover:bg-[#2c4a7a] hover:text-white';
+                    button.className = 'settings-search-result w-full text-left px-4 py-3 rounded-lg text-[24px] text-[var(--text-primary)] hover:bg-[#2c4a7a] hover:text-white';
                     button.dataset.mainCategory = mainCategory;
                     button.dataset.category = subcategory.settingsCategory;
                     button.textContent = `${mainLabel} \u203a ${label}`;
@@ -9852,7 +9826,7 @@ function setupSettingsSearch(activateResult) {
         });
         if (!fragment.childNodes.length) {
             const empty = document.createElement('p');
-            empty.className = 'p-4 text-center text-[22px] text-[var(--text-primary)] opacity-60';
+            empty.className = 'p-4 text-center text-[24px] text-[var(--text-primary)] opacity-60';
             empty.textContent = getTranslation('No settings match your search');
             fragment.appendChild(empty);
         }
@@ -9955,6 +9929,7 @@ function handleDisplayState(data) {
         }
         if (brightnessNumber) brightnessNumber.value = data.brightness;
     }
+    syncBrightnessAutoToggle(data.requestedBrightness ?? data.brightness);
     // A frame means the socket is open, so any queued write has been flushed.
     brightnessWriteQueued = false;
     const frameBrightness = data.brightness ?? data.requestedBrightness;
@@ -10131,6 +10106,7 @@ window.handleBrightnessChange = async function(value) {
             syncBrightnessSliderFill(slider, brightnessValue);
         }
         if (number) number.value = brightnessValue;
+        syncBrightnessAutoToggle(brightnessValue);
 
         const sendResult = sendDisplayCommand({
             command: 'setBrightness',
@@ -10315,7 +10291,7 @@ export function renderBluetoothMachineSettings() {
             <!-- Header -->
             <div class="flex items-center w-full">
                 <div class="w-[139px] shrink-0"></div>
-                <p class="flex-1 text-center font-['Inter:Semi_Bold',sans-serif] font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Espresso Machine">Espresso Machine</p>
+                <p class="flex-1 text-center font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Espresso Machine">Espresso Machine</p>
                 <button id="scan-machine-btn"
                         class="w-[139px] shrink-0 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[62px] rounded-[67.5px] border text-[24px] transition-colors duration-200 hover:bg-[var(--button-primary-bg)] hover:text-white"
                         onclick="window.scanForMachines()" data-i18n-key="Search">
@@ -10330,7 +10306,7 @@ export function renderBluetoothMachineSettings() {
 
             <!-- Connected Device -->
             <div class="flex flex-col gap-[20px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Connected Device">Connected Device</p>
                 </div>
                 <div id="bluetooth-machine-devices-container" class="w-full">
@@ -10346,8 +10322,8 @@ function renderScalePopupToggle(title, description, enabled, inputAttributes) {
     return `
         <div class="flex items-center justify-between gap-[24px] py-[16px]">
             <div class="flex flex-col gap-[6px]">
-                <p class="font-['Inter:Bold',sans-serif] font-bold text-[#385a92] text-[26px] leading-[1.2]" data-i18n-key="${title}">${escapeHtml(getTranslation(title))}</p>
-                <p class="font-['Inter:Regular',sans-serif] text-[var(--text-primary)] text-[20px] leading-[1.4]" data-i18n-key="${description}">${escapeHtml(getTranslation(description))}</p>
+                <p class="font-semibold text-[#385a92] text-[30px] leading-[1.2]" data-i18n-key="${title}">${escapeHtml(getTranslation(title))}</p>
+                <p class="font-normal text-[var(--text-primary)] text-[20px] leading-[1.4]" data-i18n-key="${description}">${escapeHtml(getTranslation(description))}</p>
             </div>
             <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
                 <input type="checkbox" class="sr-only peer" aria-label="${escapeHtml(getTranslation(title))}" ${enabled ? 'checked' : ''}
@@ -10375,7 +10351,7 @@ export function renderBluetoothScaleSettings(settings) {
             <!-- Header -->
             <div class="flex items-center w-full">
                 <div class="w-[139px] shrink-0"></div>
-                <p class="flex-1 text-center font-['Inter:Semi_Bold',sans-serif] font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Scale">Scale</p>
+                <p class="flex-1 text-center font-semibold not-italic text-[var(--text-primary)] text-[36px] leading-[1.2]" data-i18n-key="Scale">Scale</p>
                 <button id="scan-scale-btn"
                         class="w-[139px] shrink-0 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] h-[62px] rounded-[67.5px] border text-[24px] transition-colors duration-200 hover:bg-[var(--button-primary-bg)] hover:text-white"
                         onclick="window.scanForScales()" data-i18n-key="Search">
@@ -10387,7 +10363,7 @@ export function renderBluetoothScaleSettings(settings) {
 
             <!-- Connected Device -->
             <div class="flex flex-col gap-[16px] items-start relative w-full">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                     <p class="leading-[1.2]" data-i18n-key="Connected Device">Connected Device</p>
                 </div>
                 <div id="bluetooth-scale-devices-container" class="w-full">
@@ -10397,51 +10373,49 @@ export function renderBluetoothScaleSettings(settings) {
 
             <hr class="border-t border-[var(--border-primary)] w-full" />
 
-            <!-- Scale Power Mode -->
-            <div class="flex flex-col gap-[16px] items-start relative w-full">
-                <div class="flex items-baseline gap-[14px] w-full">
-                    <p id="scale-power-management-label" class="font-['Inter:Bold',sans-serif] font-bold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2] shrink-0" data-i18n-key="Scale Power Mode">Scale Power Mode</p>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] break-words" data-i18n-key="Controls scale behaviour when machine sleeps.">
-                        Controls scale behaviour when machine sleeps.
-                    </p>
-                </div>
-                <div class="flex items-center gap-[8px]" role="group" aria-labelledby="scale-power-management-label">
-                    <button class="h-[100px] w-[280px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                        ${scalePowerMode === 'disabled' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+            <!-- Scale Power Mode: three options, so joined tabs full width below the name -->
+            <div class="flex flex-col gap-[30px] items-start relative w-full">
+                <p id="scale-power-management-label" class="font-semibold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]" data-i18n-key="Scale Power Mode">Scale Power Mode</p>
+                <div class="grid grid-cols-3 w-full" role="group" aria-labelledby="scale-power-management-label">
+                    <button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                        ${scalePowerMode === 'disabled' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                         aria-pressed="${scalePowerMode === 'disabled'}"
                         onclick="window.updateReaSetting('scalePowerMode', 'disabled')" data-i18n-key="Nothing">
                         Nothing
                     </button>
-                    <button class="h-[100px] w-[280px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                        ${scalePowerMode === 'displayOff' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                    <button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                        ${scalePowerMode === 'displayOff' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                         aria-pressed="${scalePowerMode === 'displayOff'}"
                         onclick="window.updateReaSetting('scalePowerMode', 'displayOff')" data-i18n-key="Display Off">
                         Display Off
                     </button>
-                    <button class="h-[100px] w-[280px] rounded-[10px] font-['Inter:Bold',sans-serif] font-bold text-[28px] flex items-center justify-center cursor-pointer transition-colors duration-200
-                        ${scalePowerMode === 'disconnect' ? 'bg-[var(--button-primary-bg)] text-white' : 'bg-[var(--box-color)] border border-[var(--profile-button-outline-color)] text-[#b6c3d7]'}"
+                    <button class="h-[120px] w-full font-semibold text-[30px] -ml-px first:ml-0 flex items-center justify-center cursor-pointer transition-colors duration-200
+                        ${scalePowerMode === 'disconnect' ? 'bg-[var(--button-primary-bg)] border border-[var(--button-primary-bg)] text-white' : 'bg-[var(--bg-secondary)] border border-[var(--border-primary)] text-[#b6c3d7]'}"
                         aria-pressed="${scalePowerMode === 'disconnect'}"
                         onclick="window.updateReaSetting('scalePowerMode', 'disconnect')" data-i18n-key="Disconnect">
                         Disconnect
                     </button>
                 </div>
+                <p class="font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] w-full break-words" data-i18n-key="Controls scale behaviour when machine sleeps.">
+                    Controls scale behaviour when machine sleeps.
+                </p>
             </div>
 
             <hr class="border-t border-[var(--border-primary)] w-full" />
 
             <!-- Block Shot on No Scale -->
-            <div class="flex items-center justify-between w-full">
-                <div class="flex items-baseline gap-[14px]">
-                    <p class="font-['Inter:Bold',sans-serif] font-bold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2] shrink-0">Scale Required</p>
-                    <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px]" data-i18n-key="Prevent shots from starting when no scale is connected.">
-                        Prevent shots from starting when no scale is connected.
-                    </p>
+            <div class="flex flex-col gap-[30px] items-start relative w-full">
+                <div class="flex items-center justify-between gap-[24px] w-full">
+                    <p class="font-semibold not-italic text-[var(--mimoja-blue-v2)] text-[30px] leading-[1.2]">Scale Required</p>
+                    <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                        <input type="checkbox" id="block-on-no-scale-toggle" class="sr-only peer" ${blockOnNoScale ? 'checked' : ''} onchange="window.updateReaSetting('blockOnNoScale', this.checked, false)">
+                        <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                        <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                    </label>
                 </div>
-                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
-                    <input type="checkbox" id="block-on-no-scale-toggle" class="sr-only peer" ${blockOnNoScale ? 'checked' : ''} onchange="window.updateReaSetting('blockOnNoScale', this.checked, false)">
-                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
-                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
-                </label>
+                <p class="font-normal leading-[1.4] not-italic text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Prevent shots from starting when no scale is connected.">
+                    Prevent shots from starting when no scale is connected.
+                </p>
             </div>
 
             <!-- Manual WiFi scale: rarely needed, so a small link at the bottom that
@@ -10455,7 +10429,7 @@ export function renderBluetoothScaleSettings(settings) {
 
             <dialog id="wifi-scale-modal" class="modal">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
-                    <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2">Add WiFi Scale</h3>
+                    <h3 class="font-semibold text-[30px] text-[var(--text-primary)] mb-2">Add WiFi Scale</h3>
                     <p class="text-[20px] text-[var(--text-primary)] opacity-80 mb-4 break-words">
                         Most WiFi scales are found automatically. Enter an IP address or hostname only if yours isn't discovered (e.g. on networks that block mDNS).
                     </p>
@@ -10473,17 +10447,17 @@ export function renderBluetoothScaleSettings(settings) {
                         <!-- Manually-added WiFi endpoints populated by renderManualWifiEndpoints() -->
                     </div>
                     <div class="modal-action">
-                        <button class="btn" onclick="document.getElementById('wifi-scale-modal').close()">Close</button>
+                        <button class="btn text-[24px] font-semibold" onclick="document.getElementById('wifi-scale-modal').close()">Close</button>
                     </div>
                 </div>
             </dialog>
 
             <dialog id="scale-device-settings-modal" class="modal" aria-labelledby="scale-device-settings-title">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
-                    <h3 id="scale-device-settings-title" class="font-bold text-[28px] text-[var(--text-primary)] mb-2"></h3>
+                    <h3 id="scale-device-settings-title" class="font-semibold text-[30px] text-[var(--text-primary)] mb-2"></h3>
                     <div id="scale-device-settings-content"></div>
                     <div class="modal-action">
-                        <button class="btn" onclick="document.getElementById('scale-device-settings-modal').close()" data-i18n-key="Close">${escapeHtml(getTranslation('Close'))}</button>
+                        <button class="btn text-[24px] font-semibold" onclick="document.getElementById('scale-device-settings-modal').close()" data-i18n-key="Close">${escapeHtml(getTranslation('Close'))}</button>
                     </div>
                 </div>
             </dialog>
@@ -10522,7 +10496,7 @@ function renderBatteryBadge(level) {
             <rect x="23" y="4" width="3" height="6" rx="1" fill="${color}"/>
             <rect x="2" y="2" width="${fill}" height="10" rx="1.5" fill="${color}"/>
         </svg>
-        <span class="text-[18px] font-mono" style="color:${color}">${pct}%</span>
+        <span class="text-[20px] font-mono" style="color:${color}">${pct}%</span>
     </div>`;
 }
 
@@ -10559,7 +10533,7 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
         const safeName = (device.name || '').replace(/'/g, "\\'");
         const safeSettingKey = settingKey.replace(/'/g, "\\'");
         const firmware = deviceInfo.firmwareVersion
-            ? `<span class="text-[18px] text-[var(--text-primary)] opacity-60"><span data-i18n-key="Firmware">${getTranslation('Firmware')}</span> ${escapeHtml(deviceInfo.firmwareVersion)}</span>`
+            ? `<span class="text-[20px] text-[var(--text-primary)] opacity-60"><span data-i18n-key="Firmware">${getTranslation('Firmware')}</span> ${escapeHtml(deviceInfo.firmwareVersion)}</span>`
             : '';
         const liveBattery = type === 'Scale' && isConnected &&
             typeof window.getLatestScaleBattery === 'function'
@@ -10591,15 +10565,15 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
             // discovery — not a direct connect, which would fail with no
             // transport). Forget removes it from the remembered registry.
             actions = `
-                <button class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200"
+                <button class="border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200"
                         onclick="window.handleDeviceRescan()" data-i18n-key="Reconnect">Reconnect</button>
-                <button class="border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200"
+                <button class="border-2 border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-[62px] px-[28px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200"
                         onclick="window.handleForgetDevice('${safeId}', '${safeName}')">Forget</button>`;
         } else {
             const buttonText = isConnected ? 'Disconnect' : 'Connect';
             const buttonAction = isConnected ? 'disconnect' : 'connect';
             actions = `
-                <button class="${isConnected ? 'border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white' : 'bg-[var(--button-primary-bg)] text-white hover:bg-[#2c4a7a]'} h-[62px] px-[32px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200"
+                <button class="${isConnected ? 'border-2 border-[var(--mimoja-blue-v2)] text-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white' : 'bg-[var(--button-primary-bg)] text-white hover:bg-[#2c4a7a]'} h-[62px] px-[32px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200"
                         onclick="window.handleDeviceConnection('${safeId}', '${buttonAction}')" data-i18n-key="${buttonText}">${buttonText}</button>`;
         }
 
@@ -10612,8 +10586,8 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                         ${isConnected ? '<div class="absolute inset-0 rounded-full bg-green-500 animate-ping opacity-40"></div>' : ''}
                     </div>
                     <div class="flex flex-col gap-[4px] min-w-0">
-                        <span class="text-[26px] font-bold text-[var(--text-primary)] truncate leading-tight">${device.name}</span>
-                        <span class="text-[18px] text-[var(--text-primary)] opacity-40 font-mono truncate">${device.id || 'N/A'}</span>
+                        <span class="text-[30px] font-semibold text-[var(--text-primary)] truncate leading-tight">${device.name}</span>
+                        <span class="text-[20px] text-[var(--text-primary)] opacity-40 font-mono truncate">${device.id || 'N/A'}</span>
                         ${firmware}
                     </div>
                 </div>
@@ -10622,7 +10596,7 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                     ${usbBadge}
                     ${settingKey ? `
                     <div class="flex flex-col items-center gap-[4px]">
-                        <span class="text-[16px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
+                        <span class="text-[20px] text-[var(--text-primary)] opacity-50" data-i18n-key="Preferred">Preferred</span>
                         <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[72px] h-[36px]">
                             <input type="checkbox" class="sr-only peer"
                                    aria-label="${escapeHtml(getTranslation('Preferred'))}"
@@ -10636,7 +10610,7 @@ function renderSingleDeviceList(devices, preferredId = '', settingKey = '', type
                     ${type === 'Scale' && hasSkaleUsbSetting(settingsCache.rea, device) ? `
                     <button aria-label="${escapeHtml(getTranslation('Settings'))}: ${escapeHtml(device.name)}"
                             data-device-id="${escapeHtml(device.id || '')}"
-                            class="border-2 border-[#385a92] text-[#385a92] hover:bg-[#385a92] hover:text-white h-[62px] px-[24px] rounded-[67.5px] text-[22px] font-bold transition-colors duration-200"
+                            class="border-2 border-[#385a92] text-[#385a92] hover:bg-[#385a92] hover:text-white h-[62px] px-[24px] rounded-[67.5px] text-[24px] font-bold transition-colors duration-200"
                             onclick="window.openScaleDeviceSettings(this.dataset.deviceId)" data-i18n-key="Settings">${escapeHtml(getTranslation('Settings'))}</button>
                     ` : ''}
                     ${badge}
@@ -10836,13 +10810,13 @@ export function renderKeyboardShortcutsSettings() {
         const currentKey = saved[state] ?? defaultKey;
         return `
             <div class="content-stretch flex items-center justify-between relative w-full py-[10px] border-b border-[var(--box-color)]">
-                <div class="flex flex-col font-['Inter:Bold',sans-serif] font-bold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[28px]">
+                <div class="flex flex-col font-semibold justify-center leading-[0] not-italic relative text-[var(--mimoja-blue-v2)] text-[30px]">
                     <p class="leading-[1.2]">${getTranslation(label)}</p>
                 </div>
                 <div class="flex items-center gap-[20px]">
-                    <span id="kb-current-${state}" class="font-['Inter:Regular',sans-serif] font-normal text-[var(--text-primary)] text-[24px] w-[80px] text-center">${keyDisplayName(currentKey)}</span>
+                    <span id="kb-current-${state}" class="font-normal text-[var(--text-primary)] text-[24px] w-[80px] text-center">${keyDisplayName(currentKey)}</span>
                     <button id="kb-btn-${state}" onclick="window.startKeyRebind('${state}')"
-                        class="bg-[var(--button-primary-bg)] rounded-[10px] px-[20px] h-[52px] text-white text-[22px] font-bold min-w-[140px]" data-i18n-key="Rebind">
+                        class="bg-[var(--button-primary-bg)] rounded-[10px] px-[20px] h-[52px] text-white text-[24px] font-bold min-w-[140px]" data-i18n-key="Rebind">
                         Rebind
                     </button>
                 </div>
@@ -10851,17 +10825,18 @@ export function renderKeyboardShortcutsSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[40px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Keyboard Shortcuts">Keyboard Shortcuts</p>
             </div>
-            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[22px] w-full">
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
+            <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full">
                 Click <strong data-i18n-key="Rebind">Rebind</strong> next to an action, then press any key to assign it.
             </p>
             <div class="content-stretch flex flex-col items-start relative w-full">
                 ${rows}
             </div>
             <button onclick="window.resetKeyboardBindings()"
-                class="border border-[var(--mimoja-blue-v2)] rounded-[10px] px-[30px] h-[52px] text-[var(--mimoja-blue-v2)] text-[22px] font-bold">
+                class="border border-[var(--mimoja-blue-v2)] rounded-[10px] px-[30px] h-[52px] text-[var(--mimoja-blue-v2)] text-[24px] font-bold">
                 ${getTranslation('Reset to default')}
             </button>
         </div>`;
@@ -10943,13 +10918,13 @@ function haBlockHtml(id, title, yaml) {
     return `
         <div class="w-full flex flex-col gap-[10px]">
             <div class="flex items-center justify-between w-full">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[26px] text-[var(--text-primary)]">${title}</span>
+                <span class="font-semibold text-[30px] text-[var(--action-label)]">${title}</span>
                 <button onclick="window.haCopyYaml('${id}', this)"
                         class="text-[20px] font-semibold text-[var(--mimoja-blue-v2)] px-4 py-1 rounded-[8px] border border-[var(--mimoja-blue-v2)] hover:bg-[var(--button-primary-bg)] hover:text-white transition-colors">
                     ${getTranslation('Copy')}
                 </button>
             </div>
-            <pre id="${id}" class="w-full overflow-x-auto rounded-[10px] border border-[var(--border-primary)] bg-[var(--box-color)] p-4 text-[18px] leading-[1.4] text-[var(--text-primary)] whitespace-pre">${escapeHtml(yaml)}</pre>
+            <pre id="${id}" class="w-full overflow-x-auto rounded-[10px] border border-[var(--border-primary)] bg-[var(--box-color)] p-4 text-[20px] leading-[1.4] text-[var(--text-primary)] whitespace-pre">${escapeHtml(yaml)}</pre>
         </div>`;
 }
 
@@ -10959,24 +10934,25 @@ export function renderHomeAssistantSettings() {
 
     return `
         <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
-            <div class="flex flex-col font-['Inter:Semi_Bold',sans-serif] font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
+            <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
                 <p class="leading-[1.2]" data-i18n-key="Home Assistant">Home Assistant</p>
             </div>
+            <div class="h-0 relative w-full"><hr class="border-t border-[var(--border-primary)] w-full" /></div>
 
-            <p class="font-['Inter:Regular',sans-serif] font-normal leading-[1.4] text-[var(--text-primary)] text-[22px] w-full">
+            <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full">
                 ${getTranslation('Copy the blocks below into your Home Assistant configuration, restart Home Assistant, then add the DE1 Machine switch and sensors to a dashboard. No MQTT broker is needed.')}
             </p>
 
             <div class="flex items-center gap-[20px] w-full">
-                <span class="font-['Inter:Semi_Bold',sans-serif] font-semibold text-[24px] text-[var(--text-primary)] whitespace-nowrap">
+                <span class="font-semibold text-[30px] leading-[1.2] text-[var(--action-label)] whitespace-nowrap">
                     ${getTranslation('Tablet address')}
                 </span>
                 <input id="haHostInput" type="text" value="${escapeHtml(host)}" placeholder="192.168.1.50"
                        oninput="window.haSetHost(this.value)"
                        class="flex-1 rounded-[10px] border border-[var(--border-primary)] bg-[var(--box-color)] px-4 h-[52px] text-[24px] text-[var(--text-primary)]" />
-                <span class="font-['Inter:Regular',sans-serif] text-[24px] text-[var(--text-primary)]">:${port}</span>
+                <span class="font-normal text-[24px] text-[var(--text-primary)]">:${port}</span>
             </div>
-            <p class="font-['Inter:Regular',sans-serif] leading-[1.4] text-[var(--text-primary)] text-[20px] w-full opacity-70">
+            <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[20px] w-full opacity-70">
                 ${getTranslation('Use the IP address or hostname Home Assistant can reach this tablet on. A static IP or DHCP reservation is recommended so the address does not change.')}
             </p>
 

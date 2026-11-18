@@ -11,6 +11,7 @@ import {
 } from './settings-data.js';
 import { SETTINGS_TREE as CANONICAL_SETTINGS_TREE } from './settings-tree.js';
 import { timeNav } from '../modules/perf-probe.js';
+import { observeSelects } from '../modules/custom-select.js';
 
 // [name, category, bengleOnly?] tuples for the pre-legacy-load nav and search,
 // derived from the canonical tree (settings-tree.js) so the two can't drift —
@@ -43,6 +44,7 @@ const CATEGORY_LOADERS = Object.freeze({
 
 let currentRoot = null;
 let currentCleanup = null;
+let selectCleanup = null;
 let activeMainCategory = 'quickadjustments';
 let renderSequence = 0;
 let legacyMounted = false;
@@ -143,7 +145,7 @@ function selectMainCategory(button, requestedCategory = null) {
         target.click();
     } else {
         const content = document.getElementById('settings-content-area');
-        if (content) content.innerHTML = '<div class="flex items-center justify-center h-full text-[28px] text-[var(--text-primary)]">No matching settings</div>';
+        if (content) content.innerHTML = '<div class="flex items-center justify-center h-full text-[24px] text-[var(--text-primary)]">No matching settings</div>';
     }
 }
 
@@ -196,7 +198,7 @@ function renderSearchResults(searchTerm) {
                 && !label.toLocaleLowerCase().includes(term)) return;
             const button = document.createElement('button');
             button.type = 'button';
-            button.className = 'settings-search-result w-full text-left px-4 py-3 rounded-lg text-[22px] text-[var(--text-primary)] hover:bg-[#2c4a7a] hover:text-white flex items-center gap-[10px]';
+            button.className = 'settings-search-result w-full text-left px-4 py-3 rounded-lg text-[24px] text-[var(--text-primary)] hover:bg-[#2c4a7a] hover:text-white flex items-center gap-[10px]';
             button.dataset.mainCategory = mainCategory;
             button.dataset.category = category;
             button.textContent = `${mainLabel} \u203a ${label}`;
@@ -205,7 +207,7 @@ function renderSearchResults(searchTerm) {
     });
     if (!fragment.childNodes.length) {
         const empty = document.createElement('p');
-        empty.className = 'p-4 text-center text-[22px] text-[var(--text-primary)] opacity-60';
+        empty.className = 'p-4 text-center text-[24px] text-[var(--text-primary)] opacity-60';
         empty.textContent = getTranslation('No settings match your search');
         fragment.appendChild(empty);
     }
@@ -366,6 +368,9 @@ export async function initializeSettingsShell() {
     startSettingsData();
     warmSensorCalibrationInBackground();
     bindShell(root);
+    selectCleanup?.();
+    // Every category, extracted or legacy, renders into this one area.
+    selectCleanup = observeSelects(document.getElementById('settings-content-area'));
     initResizableSeparators();
     const saved = readSettingsLocation();
     const first = document.getElementById(`${saved?.mainCategory || 'quickadjustments'}-btn`)
@@ -377,6 +382,8 @@ export async function initializeSettingsShell() {
 export function cleanupSettingsShell() {
     currentCleanup?.();
     currentCleanup = null;
+    selectCleanup?.();
+    selectCleanup = null;
     currentRoot = null;
     legacyMounted = false;
     renderSequence += 1;

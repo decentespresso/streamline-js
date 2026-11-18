@@ -51,7 +51,7 @@ function stepDots(milestone, labels) {
         const isActive = i === milestone;
         const background = isDone ? STEP_DONE : (isActive ? STEP_ACTIVE : STEP_PENDING);
         const color = (isDone || isActive) ? '#ffffff' : '#959595';
-        const dot = `<div class="rounded-full flex items-center justify-center text-[22px] font-bold shrink-0" style="width:44px;height:44px;background:${background};color:${color}" title="${getTranslation(label)}">${isDone ? '&#10003;' : i + 1}</div>`;
+        const dot = `<div class="rounded-full flex items-center justify-center text-[24px] font-bold shrink-0" style="width:44px;height:44px;background:${background};color:${color}" title="${getTranslation(label)}">${isDone ? '&#10003;' : i + 1}</div>`;
         const bar = i < labels.length - 1
             ? `<div class="shrink-0" style="width:40px;height:3px;background:${i < milestone ? STEP_DONE : STEP_PENDING}"></div>`
             : '';
@@ -71,10 +71,10 @@ function procedureView({ title, action, description, confirmation, extra = '' })
             <hr class="border-t border-[var(--border-primary)] w-full">
             <div class="flex flex-col gap-[30px] w-full">
                 <div class="flex items-center justify-between w-full">
-                    <p class="font-bold text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="${title}">${title}</p>
+                    <p class="font-semibold text-[var(--mimoja-blue-v2)] text-[30px]" data-i18n-key="${title}">${title}</p>
                     <button type="button" data-action="${action}" data-procedure-start class="${PRIMARY_BTN}" data-i18n-key="Start">Start</button>
                 </div>
-                <p class="text-[var(--text-primary)] text-[24px] pr-[220px]" data-i18n-key="${description}">${description}</p>
+                <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="${description}">${description}</p>
                 ${extra}
                 <div class="flex flex-col gap-[16px] w-full" role="status" aria-live="polite" data-procedure-progress hidden>
                     <div class="flex items-center justify-center w-full" style="gap:10px" data-procedure-dots></div>
@@ -83,7 +83,7 @@ function procedureView({ title, action, description, confirmation, extra = '' })
             </div>
             <dialog data-procedure-confirm class="modal">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
-                    <h3 class="font-bold text-[28px] text-[var(--text-primary)] mb-2" data-i18n-key="${title}">${title}</h3>
+                    <h3 class="font-semibold text-[30px] text-[var(--action-label)] mb-2" data-i18n-key="${title}">${title}</h3>
                     <p class="text-[20px] text-[var(--text-primary)] opacity-80 mb-4" data-i18n-key="${confirmation}">${confirmation}</p>
                     <div class="modal-action">
                         <button type="button" data-action="cancel" class="${DIALOG_CANCEL_BTN}" data-i18n-key="Cancel">Cancel</button>

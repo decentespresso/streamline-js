@@ -29,7 +29,6 @@ export const SETTINGS_TREE = {
             { id: 'refillkit',           name: 'Refill Kit',            settingsCategory: 'calib_refillkit' },
             { id: 'voltage',             name: 'Voltage',               settingsCategory: 'calib_voltage' },
             { id: 'fan',                 name: 'Fan',                   settingsCategory: 'calib_fan' },
-            { id: 'steam',               name: 'Steam',                 settingsCategory: 'calib_steam' },
             { id: 'sensors',             name: 'Sensor Calibration',    settingsCategory: 'calib_sensors' },
             { id: 'loadcell',            name: 'Load Cells',            settingsCategory: 'calib_loadcell', i18nKey: 'Load Cells', bengleOnly: true }
         ]
