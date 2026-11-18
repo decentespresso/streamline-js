@@ -282,3 +282,17 @@ test('a plain PUT keeps its title unconditionally', () => {
         sourceId: 'p1', sourceTitle: 'Londinium', asNew: false, target: 'put', isDefault: false,
     }), 'Londinium v2');
 });
+
+test('every step card reserves all three Maximum lines, so card height never depends on its limits', () => {
+    assert.match(source, /const MAX_FIELD_COUNT = 3;/);
+    assert.match(source, /mCell\.style\.height = `\$\{MAX_BLOCK_H\}px`;/);
+    assert.doesNotMatch(source, /maxLinesFor|isTight|rowMinH/);
+});
+
+test('the per-profile stop controls use the Shot control names from Settings', () => {
+    assert.match(source, /spinnerBox\('weightFlowMultiplier', 'Weight Look-ahead'/);
+    assert.match(source, /spinnerBox\('volumeFlowMultiplier', 'Volume Look-ahead'/);
+    assert.match(source, /label\.textContent = getTranslation\('Shot control'\)/);
+    const csv = readFileSync(new URL('../src/ui/de1 gui translation - Sheet1.csv', import.meta.url), 'utf8');
+    assert.ok(csv.split('\r\n').some(line => line.startsWith('Use this profile\u2019s own shot control,')));
+});
