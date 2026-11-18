@@ -30,15 +30,15 @@ function render(container) {
     container.innerHTML = `
         <div class="flex flex-col gap-[60px] items-start w-full">
             <div class="font-semibold text-[var(--text-primary)] text-[36px] text-center w-full">
-                <p class="leading-[1.2]" data-i18n-key="Flow Multiplier Settings">Flow Multiplier Settings</p>
+                <p class="leading-[1.2]" data-i18n-key="Shot control">Shot control</p>
             </div>
             <div class="h-0 w-full"><hr class="border-t border-[var(--border-primary)] w-full"></div>
             <div class="flex flex-col items-start w-full divide-y divide-[var(--border-primary)]">
                 ${multiplierCard({
                     key: 'weightFlowMultiplier',
-                    label: 'Weight Flow Multiplier',
+                    label: 'Weight Look-ahead',
                     step: 0.1,
-                    description: 'Multiplier factor applied to weight flow for projected weight calculation when stopping shots by weight. Default is 1.0. Higher values stop the shot earlier, lower values stop later.'
+                    description: 'Used when a scale is connected. Sets how far ahead the shot stop is anticipated, to allow for coffee still dripping after the stop. Default is 1.0. Higher values stop earlier, lower values stop later. Ignored on Bengle, which stops at weight on its own.'
                 })}
                 ${multiplierCard({
                     key: 'volumeFlowMultiplier',

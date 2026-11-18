@@ -5,7 +5,7 @@ export const SETTINGS_TREE = {
     'quickadjustments': {
         name: 'Quick Adjustments',
         subcategories: [
-            { id: 'flowmultiplier', name: 'Flow calibration', settingsCategory: 'flowmultiplier', i18nKey: 'Flow calibration' },
+            { id: 'flowmultiplier', name: 'Shot control', settingsCategory: 'flowmultiplier', i18nKey: 'Shot control' },
             { id: 'steam', name: 'Steam', settingsCategory: 'steam' },
             { id: 'hotwater', name: 'Hot Water', settingsCategory: 'hotwater' },
             { id: 'watertank', name: 'Water Tank', settingsCategory: 'watertank' },

@@ -1087,7 +1087,7 @@ export function renderFlowMultiplierSettings(settings) {
         return `
             <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
                 <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                    <p class="leading-[1.2]" data-i18n-key="Flow Multiplier Settings">Flow Multiplier Settings</p>
+                    <p class="leading-[1.2]" data-i18n-key="Shot control">Shot control</p>
                 </div>
                 <div class="text-red-500 p-4 text-[24px]" data-i18n-key="Failed to load flow multiplier settings">Failed to load flow multiplier settings</div>
             </div>
@@ -1097,7 +1097,7 @@ export function renderFlowMultiplierSettings(settings) {
     return `
         <div class="content-stretch flex flex-col gap-[60px] items-start relative w-full">
             <div class="flex flex-col font-semibold justify-center leading-[0] min-w-full not-italic relative text-[var(--text-primary)] text-[36px] text-center w-[min-content]">
-                <p class="leading-[1.2]" data-i18n-key="Flow Multiplier Settings">Flow Multiplier Settings</p>
+                <p class="leading-[1.2]" data-i18n-key="Shot control">Shot control</p>
             </div>
 
             <!-- Divider -->
@@ -1108,12 +1108,12 @@ export function renderFlowMultiplierSettings(settings) {
             <div class="content-stretch flex flex-col items-start relative w-full divide-y divide-[var(--border-primary)]">
                 <div class="grid grid-cols-[1fr_auto] items-center gap-x-[24px] gap-y-[30px] relative w-full py-[60px] first:pt-0 last:pb-0">
                     <div class="content-stretch flex items-center relative min-w-0">
-                        <p id="weight-flow-multiplier-label" class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Weight Flow Multiplier">
-                            Weight Flow Multiplier
+                        <p id="weight-flow-multiplier-label" class="font-semibold leading-[1.2] not-italic relative text-[var(--action-label)] text-[30px]" data-i18n-key="Weight Look-ahead">
+                            Weight Look-ahead
                         </p>
                     </div>
                     <div class="content-stretch flex gap-[20px] items-center justify-end relative shrink-0">
-                        <button id="weight-flow-mult-minus" aria-label="Decrease weight flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                        <button id="weight-flow-mult-minus" aria-label="Decrease weight look-ahead" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustWeightFlowMultiplier(-0.1);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1126,7 +1126,7 @@ export function renderFlowMultiplierSettings(settings) {
                                    step="0.1" min="0"
                                    onchange="window.updateReaSetting('weightFlowMultiplier', parseFloat(this.value))">
                         </div>
-                        <button id="weight-flow-mult-plus" aria-label="Increase weight flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                        <button id="weight-flow-mult-plus" aria-label="Increase weight look-ahead" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                 onclick="window.flashPlusMinusButton(this); window.adjustWeightFlowMultiplier(0.1);">
                             <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
                                 <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1134,7 +1134,7 @@ export function renderFlowMultiplierSettings(settings) {
                         </button>
                     </div>
                     <p class="font-normal leading-[1.4] not-italic relative text-[var(--text-primary)] text-[24px] w-full col-span-2">
-                        Multiplier factor applied to weight flow for projected weight calculation when stopping shots by weight. Default is 1.0. Higher values stop the shot earlier, lower values stop later.
+                        Used when a scale is connected. Sets how far ahead the shot stop is anticipated, to allow for coffee still dripping after the stop. Default is 1.0. Higher values stop earlier, lower values stop later. Ignored on Bengle, which stops at weight on its own.
                     </p>
                 </div>
 
@@ -4503,11 +4503,10 @@ export function renderHotWaterSettings() {
                 <div class="content-stretch flex flex-col gap-[30px] items-start relative w-full">
                     <div class="content-stretch flex items-center justify-between relative w-full">
                         <div class="flex items-baseline gap-[14px] font-semibold leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                            <p class="leading-[1.2]" data-i18n-key="Flow Multiplier">Flow Multiplier</p>
-                            <span class="text-[20px] font-normal opacity-60 text-[var(--text-primary)]" data-i18n-key="Higher stops the water sooner">Higher stops the water sooner</span>
+                            <p class="leading-[1.2]" data-i18n-key="Hot Water Look-ahead">Hot Water Look-ahead</p>
                         </div>
                         <div class="flex gap-[20px] h-[72px] items-center">
-                            <button aria-label="Decrease hot water flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                            <button aria-label="Decrease hot water look-ahead" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHotWaterFlowMultiplier(-0.05);">
                                 <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -4518,7 +4517,7 @@ export function renderHotWaterSettings() {
                                        value="${hwFlowMult}" step="0.05" min="0"
                                        onchange="window.updateReaSetting('hotWaterFlowMultiplier', parseFloat(this.value))">
                             </div>
-                            <button aria-label="Increase hot water flow multiplier" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                            <button aria-label="Increase hot water look-ahead" class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                                     onclick="window.flashPlusMinusButton(this); window.adjustHotWaterFlowMultiplier(0.05);">
                                 <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
                                     <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -4526,6 +4525,7 @@ export function renderHotWaterSettings() {
                             </button>
                         </div>
                     </div>
+                    <p class="font-normal leading-[1.4] text-[var(--text-primary)] text-[24px] w-full" data-i18n-key="Used when Stop at Weight is on and a scale is connected. Higher values stop the water sooner.">Used when Stop at Weight is on and a scale is connected. Higher values stop the water sooner.</p>
                 </div>
             </div>
             </div>
@@ -5606,7 +5606,7 @@ function sensorCalFlowCard() {
     // normal looks like, which is what someone reads a value they cannot change
     // to find out -- and the plugin's own MinimumMultiplier/MaximumMultiplier are
     // not these bounds, so this stays the DE1's range either way.
-    const hint = `<p ${mutedWhenManaged} class="text-[24px] font-normal leading-[1.4] text-[var(--text-primary)]" data-i18n-key="Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.">Corrects the DE1's own flow estimate. Default is 1.0. Range 0.13 to 2.0.</p>`;
+    const hint = `<p ${mutedWhenManaged} class="text-[24px] font-normal leading-[1.4] text-[var(--text-primary)]" data-i18n-key="The machine's own flow calibration, the same setting as the De1App's Flow multiplier. The DE1 estimates flow rather than measuring it; this scales that estimate. 1.0 leaves it unchanged. Range 0.13 to 2.0.">The machine's own flow calibration, the same setting as the De1App's Flow multiplier. The DE1 estimates flow rather than measuring it; this scales that estimate. 1.0 leaves it unchanged. Range 0.13 to 2.0.</p>`;
     const notice = managed
         ? `<p class="text-[24px] font-normal leading-[1.4] text-[var(--text-primary)]" data-i18n-key="Flow calibration is managed automatically by the Auto Flow Calibration plugin.">Flow calibration is managed automatically by the Auto Flow Calibration plugin.</p>
            <button class="${SENSOR_CAL_SMALL_BTN} bg-[var(--button-primary-bg)] text-white self-start mt-[4px]" data-settings-jump="${escapeHtml(pluginCategoryFor(AUTO_FLOW_CAL_PLUGIN_ID))}" data-i18n-key="Open plugin settings">Open plugin settings</button>`
@@ -5618,13 +5618,13 @@ function sensorCalFlowCard() {
     return `
             <div class="content-stretch flex items-center justify-between gap-[24px] relative w-full">
                 <div class="flex flex-col gap-[10px] font-semibold justify-center leading-[0] not-italic relative text-[var(--action-label)] text-[30px]">
-                    <p id="flow-estimation-multiplier-label" ${mutedWhenManaged} class="leading-[1.2]" data-i18n-key="Flow Estimation Calibration Multiplier">Flow Estimation Calibration Multiplier</p>
+                    <p id="flow-estimation-multiplier-label" ${mutedWhenManaged} class="leading-[1.2]" data-i18n-key="Flow calibration">Flow calibration</p>
                     ${hint}
                     ${notice}
                     ${sensorCalFlowError ? `<p class="text-[20px] font-normal leading-[1.2] text-red-500">${escapeHtml(sensorCalFlowError)}</p>` : ''}
                 </div>
                 <div class="flex gap-[20px] h-[72px] items-center shrink-0">
-                    <button id="flow-estimation-mult-minus" aria-label="Decrease flow estimation calibration multiplier" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                    <button id="flow-estimation-mult-minus" aria-label="Decrease flow calibration" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                             onclick="window.flashPlusMinusButton(this); window.sensorCalFlowAdjust(-1);">
                         <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M10.416 25H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -5635,7 +5635,7 @@ function sensorCalFlowCard() {
                                value="${sensorCalFlow === null ? '' : sensorCalFlow.toFixed(2)}"
                                onchange="window.sensorCalFlowInput(this.value)">
                     </div>
-                    <button id="flow-estimation-mult-plus" aria-label="Increase flow estimation calibration multiplier" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
+                    <button id="flow-estimation-mult-plus" aria-label="Increase flow calibration" ${btnState} class="w-[69px] h-[69px] bg-[var(--button-grey)] rounded-[10px] flex items-center justify-center"
                             onclick="window.flashPlusMinusButton(this); window.sensorCalFlowAdjust(1);">
                         <svg aria-hidden="true" width="36" height="36" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
                             <path d="M24.9993 10.4165V39.5832M10.416 24.9998H39.5827" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
@@ -7690,7 +7690,7 @@ function getCategoryTitle(category) {
     switch(category) {
         case 'rea': return 'Decaid Settings';
         case 'quickadjustments': return 'Quick Adjustments';
-        case 'flowmultiplier': return 'Flow Multiplier Settings';
+        case 'flowmultiplier': return 'Shot control';
         case 'steam': return 'Steam Settings';
         case 'hotwater': return 'Hot Water Settings';
         case 'watertank': return 'Water Tank Settings';
