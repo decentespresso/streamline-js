@@ -1,7 +1,7 @@
 import { streamDerekAnswer, shareDerekAnswer } from './api.js';
 import { getTranslation, getCurrentLanguage } from './i18n.js';
 import { loadStyle } from './vendor-loader.js';
-import { buildShotQuery, buildFollowUpQuery, splitBold, buildTranscript, buildShareUrl, DEREK_WEB_ORIGIN } from './derek-stream.js';
+import { buildShotQuery, buildFollowUpQuery, splitBold, buildTranscript, buildShareUrl, createStallWatchdog, DEREK_WEB_ORIGIN } from './derek-stream.js';
 import { logger } from './logger.js';
 
 // In-app Derek chat. Opens, sends the shot summary immediately, streams the
@@ -153,9 +153,32 @@ export function openDerekModal(summaryMd, { onCopyText } = {}) {
         const entry = { label: 'Derek', text: '' };
         transcript.push(entry);
         let answer = '';
+        let lastStage = 'request';
+        const showFailure = () => {
+            const failure = getTranslation('Could not reach Derek');
+            if (entry.text) {
+                addMsg('derek-msg-derek derek-msg-status', failure);
+                return;
+            }
+            reply.classList.add('derek-msg-status');
+            reply.textContent = failure;
+        };
+        const giveUp = (reason) => {
+            if (ctl.signal.aborted) return;
+            logger.warn?.(`Derek ${reason} during ${lastStage}`);
+            showFailure();
+            ctl.abort();
+        };
+        const watchdog = createStallWatchdog(() => giveUp('stream stalled'));
         try {
             await streamDerekAnswer(query, ({ event, data }) => {
                 if (ctl.signal.aborted) return;
+                watchdog.touch();
+                if (event === 'error') {
+                    giveUp('reported an error');
+                    return;
+                }
+                lastStage = data?.phase || event;
                 if (event === 'delta' && data.text) {
                     answer += data.text;
                     entry.text = answer;
@@ -169,13 +192,13 @@ export function openDerekModal(summaryMd, { onCopyText } = {}) {
                 }
                 log.scrollTop = log.scrollHeight;
             }, ctl.signal);
-            if (!answer && reply.classList.contains('derek-msg-status')) reply.textContent = getTranslation('No answer received');
+            if (!ctl.signal.aborted && !answer && reply.classList.contains('derek-msg-status')) reply.textContent = getTranslation('No answer received');
         } catch (e) {
             if (ctl.signal.aborted) return;
             logger.error?.('Derek request failed', e);
-            reply.classList.add('derek-msg-status');
-            reply.textContent = getTranslation('Could not reach Derek');
+            showFailure();
         } finally {
+            watchdog.stop();
             if (abortCtl === ctl) { send.disabled = false; abortCtl = null; }
         }
     }

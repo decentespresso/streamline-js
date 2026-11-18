@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSse, buildFollowUpQuery, splitBold, buildTranscript, buildShareUrl } from '../src/modules/derek-stream.js';
+import { parseSse, buildFollowUpQuery, splitBold, buildTranscript, buildShareUrl, createStallWatchdog } from '../src/modules/derek-stream.js';
+
+test('stall watchdog fires only after a full quiet period and never once stopped', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    let stalls = 0;
+    const watchdog = createStallWatchdog(() => { stalls += 1; }, 100);
+    t.mock.timers.tick(99);
+    watchdog.touch();
+    t.mock.timers.tick(99);
+    assert.equal(stalls, 0);
+    t.mock.timers.tick(1);
+    assert.equal(stalls, 1);
+
+    watchdog.touch();
+    watchdog.stop();
+    t.mock.timers.tick(1000);
+    assert.equal(stalls, 1);
+});
 
 test('parseSse yields complete events and keeps the partial tail', () => {
     const { events, rest } = parseSse('event: delta\ndata: {"text":"Hi"}\n\nevent: delta\ndata: {"te');

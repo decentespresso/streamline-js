@@ -48,6 +48,19 @@ export function buildTranscript(entries) {
 
 export const DEREK_WEB_ORIGIN = 'https://derek.decentespresso.com';
 
+export const DEREK_STALL_MS = 45000;
+
+export function createStallWatchdog(onStall, stallMs = DEREK_STALL_MS) {
+    let timer;
+    const stop = () => clearTimeout(timer);
+    const touch = () => {
+        stop();
+        timer = setTimeout(onStall, stallMs);
+    };
+    touch();
+    return { touch, stop };
+}
+
 // A share_path comes back from a server, so treat it as untrusted: only
 // "/share/<id>" becomes a URL, anything else (absolute URL, traversal, empty)
 // returns '' and the caller stays on the plain Derek page.
