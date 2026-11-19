@@ -19,7 +19,7 @@ Keep transport in `api.js`, data ownership in `profileManager.js` or editor stat
 
 The current source loads profile records from Decaid and builds an in-memory map keyed by profile ID. Deleted and superseded/hidden records are excluded from the visible list. The map is cached in IndexedDB as an offline fallback.
 
-Do not assume a title is unique or that a profile ID is permanent after an edit.
+Do not assume a title is unique or that a profile ID is permanent after an edit. Decaid's profile ID hashes execution content only, so a user record can carry a bundled profile's exact title - a de1app import is the common source, since de1app's own copy of a bundled profile differs in its frames and so cannot collide on the ID. Rows whose visible title is shared get a saved-time stamp (`profile-look-alike.js`), counted across the whole visible list: the look-alike pair usually straddles Built-In and Your Profiles, so keying the count by `isDefault` hid it from exactly the case it is for.
 
 Per-profile tile values do not live in the profile's server-side metadata. Decaid rewrites that metadata whenever it re-seeds a bundled profile, which silently discarded the user's dose, yield, and grind. They are stored in the `streamlineProfileOverrides` KV record instead, and `loadAvailableProfiles()` folds them onto each record's `metadata` after loading, so existing `record.metadata.targetDoseWeight` reads keep working. Write a tile edit through `profile-overrides.js`, not back into profile metadata.
 

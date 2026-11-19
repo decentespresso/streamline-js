@@ -1,4 +1,5 @@
 import { profileChanges, stepsDiffer } from './profile-version-diff.js';
+import { countLookAlikeTitles, isLookAlike } from './profile-look-alike.js';
 import { init as initProfileManager, unhideProfile,availableProfiles, assignProfile, setActiveProfile, getActiveProfileId, translateProfileTitle, deleteOrHideProfile, loadAssignments, verifyProfileChange, applyWorkflowToMainPageUI, withSavedBrewTemp, duplicateProfileAsDraft, deleteProfileDraft, applySavedSteamSettings } from './profileManager.js';
 import { resolveProfileKeyByTitle } from './active-profile.js';
 import { openDB } from './idb.js';
@@ -128,6 +129,15 @@ function summarizeProfileDiff(current, other) {
         if ((current[field] ?? null) !== (other[field] ?? null)) parts.push(label);
     }
     return parts.length ? parts.join(', ') : 'No changes';
+}
+
+function appendLookAlikeStamp(leftSide, profileRecord) {
+    const saved = new Date(profileRecord.updatedAt ?? profileRecord.createdAt);
+    if (isNaN(saved.getTime())) return;
+    const stamp = document.createElement('span');
+    stamp.className = 'text-[18px] text-[var(--low-contrast-white)] whitespace-nowrap';
+    stamp.textContent = saved.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    leftSide.appendChild(stamp);
 }
 
 function el(tag, className, text) {
@@ -667,20 +677,17 @@ function renderProfiles() {
             const sep = t.match(/^(.*?)\s*[/•:]\s*\S.*$/);
             return sep ? sep[1].trim() : t.trim();
         };
-        const lookAlikeKey = (rec, title) => `${rec.isDefault === true}|${title.replace(/\s*\(\d+\)\s*$/, '').trim()}`;
         const familyGroups = new Map();
-        const titleCounts = new Map();
+        const visibleTitles = [];
         for (const [key, rec] of sortedProfiles) {
             const title = translateProfileTitle(rec.profile?.title) || rec.profile?.title || '';
             const base = familyBaseTitle(title);
             const groupKey = `${rec.isDefault === true}|${base}`;
             if (!familyGroups.has(groupKey)) familyGroups.set(groupKey, { base, members: [] });
             familyGroups.get(groupKey).members.push([key, rec, title]);
-            if (isProfileVisible(rec)) {
-                const titleKey = lookAlikeKey(rec, title);
-                titleCounts.set(titleKey, (titleCounts.get(titleKey) || 0) + 1);
-            }
+            if (isProfileVisible(rec)) visibleTitles.push(title);
         }
+        const titleCounts = countLookAlikeTitles(visibleTitles);
         // Headed family: one member's own title IS the bare base name, so it
         // renders normally at depth 0 and the rest nest under it (existing
         // profile as head). Headless family (no member is titled just the
@@ -765,15 +772,7 @@ function renderProfiles() {
             titleSpan.textContent = displayTitle;
             leftSide.appendChild(titleSpan);
 
-            if (titleCounts.get(lookAlikeKey(profileRecord, displayTitle)) > 1) {
-                const saved = new Date(profileRecord.updatedAt ?? profileRecord.createdAt);
-                if (!isNaN(saved.getTime())) {
-                    const stamp = document.createElement('span');
-                    stamp.className = 'text-[18px] text-[var(--low-contrast-white)] whitespace-nowrap';
-                    stamp.textContent = saved.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                    leftSide.appendChild(stamp);
-                }
-            }
+            if (isLookAlike(titleCounts, displayTitle)) appendLookAlikeStamp(leftSide, profileRecord);
 
             const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
             const parentTitle = parentRecord?.profile?.title;
@@ -1516,6 +1515,10 @@ function filterProfiles(searchTerm) {
         return;
     }
 
+    const titleCounts = countLookAlikeTitles(
+        sortedProfiles.map(([, rec]) => translateProfileTitle(rec.profile?.title) || rec.profile?.title || '')
+    );
+
     // Add filtered profiles to the container
     for (const [key, profileRecord] of sortedProfiles) {
         const profile = profileRecord.profile;
@@ -1539,6 +1542,8 @@ function filterProfiles(searchTerm) {
         const titleSpan = document.createElement('span');
         titleSpan.innerHTML = highlightTitle(displayTitle, searchTerm);
         leftSide.appendChild(titleSpan);
+
+        if (isLookAlike(titleCounts, displayTitle)) appendLookAlikeStamp(leftSide, profileRecord);
 
         const parentRecord = profileRecord.parentId ? availableProfiles[profileRecord.parentId] : null;
         const parentTitle = parentRecord?.profile?.title;
