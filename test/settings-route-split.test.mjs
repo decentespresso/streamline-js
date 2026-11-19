@@ -99,6 +99,12 @@ test('the settings nav lists its categories in the canonical order, numbered fro
     assert.deepEqual(buttons.map(match => match[1]), Object.keys(SETTINGS_TREE));
     assert.deepEqual(buttons.map(match => Number(match[2])), Object.keys(SETTINGS_TREE).map((_, index) => index + 1));
     assert.ok(buttons.every(match => !/\bflex\b/.test(match[0])), 'a flex button drops the space after the number');
+
+    for (const path of ['src/settings/settings-shell.js', 'src/settings/settings.js']) {
+        const subnav = read(path).match(/class="settings-subnav-btn[^"]*"/)[0];
+        assert.doesNotMatch(subnav, /\bflex\b/, `${path}: a flex sub-category button drops the space after its number`);
+        assert.match(read(path), /const prefix = `\$\{index \+ 1\}\. `;/, `${path}: sub-category pages are numbered by position`);
+    }
 });
 
 test('settings labels show celsius in lowercase, whichever symbol the translation uses', () => {

@@ -85,10 +85,10 @@ function renderSubcategories(mainCategory) {
     const panel = document.getElementById('sub-categories-panel');
     if (!panel) return;
     const items = availableSubcategories(mainCategory);
-    panel.innerHTML = `<ul class="space-y-1">${items.map(([name, category]) => {
-        const prefix = name.match(/^(\d+\.\s*)/)?.[1] || '';
-        const label = prefix ? name.slice(prefix.length) : name;
-        return `<li><button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center" data-category="${category}">${prefix}<span data-i18n-key="${label}">${label}</span></button></li>`;
+    panel.innerHTML = `<ul class="space-y-1">${items.map(([name, category], index) => {
+        const label = name.replace(/^\d+\.\s*/, '');
+        const prefix = `${index + 1}. `;
+        return `<li><button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]" data-category="${category}">${prefix}<span data-i18n-key="${label}">${label}</span></button></li>`;
     }).join('')}</ul>`;
     translatePage();
 }

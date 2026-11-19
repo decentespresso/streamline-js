@@ -8,17 +8,9 @@ export const SETTINGS_TREE = {
             { id: 'flowmultiplier', name: 'Shot control', settingsCategory: 'flowmultiplier', i18nKey: 'Shot control' },
             { id: 'steam', name: 'Steam', settingsCategory: 'steam' },
             { id: 'hotwater', name: 'Hot Water', settingsCategory: 'hotwater' },
-            { id: 'flush', name: 'Flush', settingsCategory: 'flush' },
             { id: 'watertank', name: 'Water Tank', settingsCategory: 'watertank' },
+            { id: 'flush', name: 'Flush', settingsCategory: 'flush' },
             { id: 'machineadvancedsettings', name: 'Machine Advanced Settings', settingsCategory: 'de1advanced' }
-        ]
-    },
-    'maintenance': {
-        name: 'Maintenance',
-        subcategories: [
-            { id: 'machinecleaning',  name: 'Clean',             settingsCategory: 'maint_cleaning' },
-            { id: 'machinedescaling', name: 'Machine Descaling', settingsCategory: 'maint_descaling' },
-            { id: 'transportmode',    name: 'Transport Mode',    settingsCategory: 'maint_airpurge' }
         ]
     },
     'bluetooth': {
@@ -30,24 +22,32 @@ export const SETTINGS_TREE = {
             { id: 'ble_grinder', name: '3. Grinder', settingsCategory: 'ble_grinder' }
         ]
     },
-    'machine': {
-        name: 'Machine',
-        subcategories: [
-            { id: 'machineinfo', name: 'Machine Information', settingsCategory: 'machineinfo', i18nKey: 'Machine Info' },
-            { id: 'usbchargermode', name: 'Smart Charging', settingsCategory: 'usbchargermode' },
-            { id: 'cupwarmer', name: 'Cup Warmer', settingsCategory: 'cupwarmer', i18nKey: 'Cup Warmer', bengleOnly: true },
-            { id: 'ledstrip', name: 'Lighting', settingsCategory: 'ledstrip', i18nKey: 'Lighting', bengleOnly: true }
-        ]
-    },
     'calibration': {
         name: 'Calibration',
         subcategories: [
-            { id: 'sensors',             name: 'Sensor Calibration',    settingsCategory: 'calib_sensors' },
-            { id: 'loadcell',            name: 'Load Cells',            settingsCategory: 'calib_loadcell', i18nKey: 'Load Cells', bengleOnly: true },
-            { id: 'fan',                 name: 'Fan',                   settingsCategory: 'calib_fan' },
-            { id: 'voltage',             name: 'Voltage',               settingsCategory: 'calib_voltage' },
+            { id: 'defaultloadsettings', name: 'Default load settings', settingsCategory: 'calib_defaultload' },
             { id: 'refillkit',           name: 'Refill Kit',            settingsCategory: 'calib_refillkit' },
-            { id: 'defaultloadsettings', name: 'Default load settings', settingsCategory: 'calib_defaultload' }
+            { id: 'voltage',             name: 'Voltage',               settingsCategory: 'calib_voltage' },
+            { id: 'fan',                 name: 'Fan',                   settingsCategory: 'calib_fan' },
+            { id: 'sensors',             name: 'Sensor Calibration',    settingsCategory: 'calib_sensors' },
+            { id: 'loadcell',            name: 'Load Cells',            settingsCategory: 'calib_loadcell', i18nKey: 'Load Cells', bengleOnly: true }
+        ]
+    },
+    'machine': {
+        name: 'Machine',
+        subcategories: [
+            { id: 'usbchargermode', name: 'Smart Charging', settingsCategory: 'usbchargermode' },
+            { id: 'cupwarmer', name: 'Cup Warmer', settingsCategory: 'cupwarmer', i18nKey: 'Cup Warmer', bengleOnly: true },
+            { id: 'ledstrip', name: 'Lighting', settingsCategory: 'ledstrip', i18nKey: 'Lighting', bengleOnly: true },
+            { id: 'machineinfo', name: 'Machine Information', settingsCategory: 'machineinfo', i18nKey: 'Machine Info' }
+        ]
+    },
+    'maintenance': {
+        name: 'Maintenance',
+        subcategories: [
+            { id: 'machinecleaning',  name: 'Clean',             settingsCategory: 'maint_cleaning' },
+            { id: 'machinedescaling', name: 'Machine Descaling', settingsCategory: 'maint_descaling' },
+            { id: 'transportmode',    name: 'Transport Mode',    settingsCategory: 'maint_airpurge' }
         ]
     },
     'skin': {

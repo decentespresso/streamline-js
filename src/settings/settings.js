@@ -7543,15 +7543,14 @@ export function renderSubcategories(mainCategoryKey) {
     }
 
     let subcategoryItems = '';
-    subcategories.forEach((subcat) => {
-        const prefixMatch = subcat.name.match(/^(\d+\.\s*)/);
-        const prefix = prefixMatch ? prefixMatch[1] : '';
-        const label = prefix ? subcat.name.slice(prefix.length) : subcat.name;
+    subcategories.forEach((subcat, index) => {
+        const label = subcat.name.replace(/^\d+\.\s*/, '');
+        const prefix = `${index + 1}. `;
         // A plugin row's label is its manifest name -- third-party text, so it is
         // escaped here like every other manifest string that reaches innerHTML.
         subcategoryItems += `
             <li>
-                <button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center"
+                <button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]"
                         data-category="${escapeHtml(subcat.settingsCategory)}">
                     ${prefix}<span data-i18n-key="${escapeHtml(subcat.i18nKey || label)}">${escapeHtml(label)}</span>
                 </button>
