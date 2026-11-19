@@ -1,9 +1,9 @@
-// Pure helpers for the DE1 sensor calibration page (temperature, pressure,
-// flow), which drives Decaid's GET|PUT /api/v1/machine/calibration/{target}.
+// Pure helpers for the DE1 sensor calibration page (temperature and pressure),
+// which drives Decaid's GET|PUT /api/v1/machine/calibration/{target}.
 //
 // The one thing that has to be right here: A WRITE IS A CORRECTION, NOT A
 // SET. The firmware folds the write into the value it already holds —
-// flow/pressure multiply the stored calibration by
+// pressure multiplies the stored calibration by
 // measuredValue / de1ReportedValue, temperature adds
 // measuredValue - de1ReportedValue. Send the same pair twice and the
 // correction lands twice, so the page previews the outcome before writing
@@ -15,8 +15,8 @@
 export const SENSOR_CAL_MIN = -32768;
 export const SENSOR_CAL_MAX = 32767.9999;
 
-// `kind` is how the firmware folds a write in: 'ratio' multiplies (flow,
-// pressure), 'offset' adds (temperature). It also says how to read the
+// `kind` is how the firmware folds a write in: 'ratio' multiplies (pressure),
+// 'offset' adds (temperature). It also says how to read the
 // stored value — a multiplier around 1.0, or a °C offset around 0.0.
 //
 // `readingKey` is the snapshot field the DE1's OWN SENSOR reports, which is
@@ -40,13 +40,6 @@ export const SENSOR_CAL_TARGETS = [
         kind: 'ratio',
         unit: 'bar',
         readingKey: 'pressure',
-    },
-    {
-        id: 'flow',
-        label: 'Flow',
-        kind: 'ratio',
-        unit: 'ml/s',
-        readingKey: 'flow',
     },
 ];
 
@@ -132,7 +125,7 @@ export function averageReadings(samples, now, windowMs = SENSOR_CAL_SAMPLE_WINDO
     return fresh.reduce((sum, s) => sum + s.value, 0) / fresh.length;
 }
 
-// ponytail: one hard band, no warn-then-confirm tier. A DE1 pressure or flow
+// ponytail: one hard band, no warn-then-confirm tier. A DE1 pressure
 // sensor that is out by a third is broken hardware or a mis-capture, not a
 // calibration job, and the arithmetic would write the number regardless.
 // Widen it if a real sensor is ever found outside — do not remove it.
@@ -144,7 +137,7 @@ export const SENSOR_CAL_RATIO_MAX = 1.33;
  * divides by de1ReportedValue and multiplies the stored calibration by the
  * measured one, so a zero on either side is either a division by zero or a
  * calibration of zero that nothing can be corrected away from afterwards —
- * and capturing an idle machine reads exactly 0.00 bar / 0.00 ml/s.
+ * and capturing an idle machine reads exactly 0.00 bar.
  */
 export function correctionBlocked(kind, de1ReportedValue, measuredValue) {
     // An idle machine reports nothing, so a capture there reads 0. Correcting
@@ -161,7 +154,7 @@ export function correctionBlocked(kind, de1ReportedValue, measuredValue) {
 }
 
 // The DE1's flow-estimation calibration (Decaid GET|POST
-// /api/v1/machine/calibration). Unlike the three targets above this is an
+// /api/v1/machine/calibration). Unlike the targets above this is an
 // ABSOLUTE set, bounded by the MMR's 130..2000 at 0.001 scale.
 export const FLOW_MULTIPLIER_MIN = 0.13;
 export const FLOW_MULTIPLIER_MAX = 2.0;

@@ -1,6 +1,7 @@
 import { isEcoSteamEnabled, setEcoSteamEnabled } from '../modules/eco-steam.js';
 import {  getReaSettings, getDe1Settings, getDe1AdvancedSettings, setReaSettings, setDe1Settings, setDe1AdvancedSettings, resetDe1Settings, setMachineState, connectScaleDevice, connectDeviceWebSocket, sendDeviceCommand, awaitDeviceConnectResult, dimDisplay, restoreDisplay, isBlackScreenSaver, setBlackScreenSaver as apiSetBlackScreenSaver, rememberBrightness, getLastDisplayState, currentMachineState, signalHeartbeat, MachineState, getDeviceWebSocket, initDeviceWebSocketWithCallback, saveScaleDeviceId, getScaleDeviceId, connectDisplayWebSocket, sendDisplayCommand, connectUpdateWebSocket, sendUpdateCommand, enableWakeLock, disableWakeLock, isWakeLockEnabled, isWakeProfileEnabled, getWakeProfileId, getPresenceSettings, setPresenceSettings, getPresenceSchedules, createPresenceSchedule, updatePresenceSchedule, deletePresenceSchedule, getAppInfo, getMachineInfo, getWorkflow, updateWorkflow, getAllSkins, getDefaultSkin, setDefaultSkin, updateSkins, stopWebuiServer, startWebuiServer, getWebuiServerStatus, uploadFirmware, applyFirmware, cancelFirmwareUpdate, getFirmwareCatalog, setWaterLevels, API_BASE_URL, listWifiScales, addWifiScale, removeWifiScale, forgetDevice, getLedStrip, setLedStrip, commitLedStrip, previewLedStrip, clearLedStripPreview, getCupWarmer, setCupWarmer, setCupWarmerPrewarm, calibrateScale, tareScale, getSensorCalibration, setSensorCalibration, getMachineCalibration, setMachineCalibration, getLastMachineSnapshot, ensureMachineSnapshotSocket, connectScaleWebSocket, setFirmwareFlashInFlight, persistSharedValue, readSharedValue, MILK_STOP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, getPlugins, getDecentAccountStatus, getPluginSettings, setPluginSettings, callPluginEndpoint, enablePlugin, getScaleInfo, getDevices } from '../modules/api.js';
 import { isCustomSaverBrightness, setCustomSaverBrightnessEnabled, getSaverBrightness, setSaverBrightness, SAVER_BRIGHTNESS_DEFAULT } from '../modules/api.js';
+import { disablePlugin, getMachineState, probePluginManagement } from '../modules/api.js';
 import * as ui from '../modules/ui.js';
 import { availableProfiles, translateProfileTitle, loadAvailableProfiles } from '../modules/profileManager.js';
 import { initScaling } from '../modules/scaling.js';
@@ -34,6 +35,7 @@ import { adoptFromMachine, diffUserSettings, isOutOfRange, normalizeSettingValue
 import { escapeHtml, pluginViewModel, pluginStatusLabel, pluginNavEntries,
          pluginIdFromCategory, pluginCategoryFor, pluginStatus, isManagedPluginSource,
          minutesSince, isPluginSettingVisible, pluginUiUrl,
+         pluginManagementAllowed, pluginChangeBlockedByMachine,
          AUTO_FLOW_CAL_PLUGIN_ID, isFlowCalPluginManaging } from './plugin-view.js';
 import { createScaleInfoLifecycle, getScaleDeviceSetting, hasSkaleUsbSetting,
          shouldInvalidateScaleInfoAfterWrite } from './scale-device-details.js';
@@ -64,7 +66,6 @@ const SETTINGS_NUMPAD_CONFIGS = {
     // min/max), flow and pressure have no alternate unit.
     'sensor-cal-temperature-measured': { title: 'MEASURED TEMP',     unit: '°C',   min: 0, max: 200, fieldType: 'settings-sensor-cal-temp-measured' },
     'sensor-cal-pressure-measured':    { title: 'MEASURED BAR',      unit: 'bar',  min: 0, max: 20,  fieldType: 'settings-sensor-cal-pressure-measured' },
-    'sensor-cal-flow-measured':        { title: 'MEASURED FLOW',     unit: 'ml/s', min: 0, max: 20,  fieldType: 'settings-sensor-cal-flow-measured' },
     // min 0 so the numpad can express Off; anything typed below
     // STEAM_ENABLED_MIN_TEMP lands as Off rather than as a temperature.
     steamTempInput:          { title: 'STEAM TEMPERATURE',   unit: '°C',   min: 0,   max: 170,  fieldType: 'settings-steam-temp' },
@@ -116,7 +117,7 @@ function tempInputToCelsius(raw) {
     return fromDisplayTemp(parseFloat(raw));
 }
 function tempUnitLabel() {
-    return getTempUnit() === 'F' ? '°F' : '°C';
+    return getTempUnit() === 'F' ? '°F' : '°c';
 }
 // Inline onchange="..." attributes execute in the global scope, not this
 // module's — expose the Celsius conversion the same way updateXSetting is.
@@ -5154,14 +5155,14 @@ function steamHeaterToggleRow(heaterOn) {
     `;
 }
 
-// ── DE1 sensor calibration (temperature / pressure / flow) ──────────────────
+// ── DE1 sensor calibration (temperature / pressure) ──────────────────
 // Decaid: GET|PUT /api/v1/machine/calibration/{target}, de1app's calibration
 // page. A write is a CORRECTION, not a set (the firmware folds it into the
 // value it already holds — see sensor-cal.js), so every leg here is
 // read -> preview -> write -> re-read, and a successful write clears the two
 // inputs: they are one observation, and re-sending them corrects twice.
 let sensorCal = {};             // target id -> {current, previous, captured, capturedAt, samples, measured, busy, error}
-let sensorCalLoading = false;   // the initial three-target read is in flight
+let sensorCalLoading = false;   // the initial target read is in flight
 let sensorCalLoaded = false;    // ponytail: read once per session, refreshed
                                 // after each write. Re-read on reconnect if
                                 // anyone ever calibrates across a swap.
@@ -6148,6 +6149,15 @@ export function renderPluginSettingControl(key, schema, idPrefix = 'shotupload')
     return '';
 }
 
+async function machineBlocksPluginChange() {
+    try {
+        const snapshot = await getMachineState();
+        return pluginChangeBlockedByMachine(snapshot?.state?.state);
+    } catch {
+        return false;
+    }
+}
+
 // Fill a rendered schema form with its stored values and wire each control to
 // write straight through to the plugin. Shared by the Shot Uploader page and
 // the generic plugin card: two copies of this is how one of them ended up
@@ -6215,7 +6225,19 @@ export function bindPluginSettingControls(rootEl, {
                 }
             }
 
+            const restorePrevious = () => {
+                if (type === 'boolean') this.checked = previous === true;
+                else if (type === 'secure') markSecure(this, pluginSecureIsSet(previous));
+                else this.value = previous ?? '';
+            };
+
             this.disabled = true;
+            if (await machineBlocksPluginChange()) {
+                restorePrevious();
+                ui.showToast(getTranslation('Wait until this shot is saved'), 4000, 'info');
+                this.disabled = false;
+                return;
+            }
             try {
                 if (value === true) await ensureLoaded();
                 await setPluginSettings(pluginId, { [key]: value });
@@ -6233,9 +6255,7 @@ export function bindPluginSettingControls(rootEl, {
             } catch (e) {
                 logger.error(`Failed to change ${logLabel} setting ${key}`, e);
                 ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 4000, 'error');
-                if (type === 'boolean') this.checked = previous === true;
-                else if (type === 'secure') markSecure(this, pluginSecureIsSet(previous));
-                else this.value = previous ?? '';
+                restorePrevious();
             }
             this.disabled = false;
         });
@@ -6337,10 +6357,14 @@ function setupShotUploadListeners() {
         accountEl.innerHTML = linkedBadge;
 
         let settings;
+        let managementStatus;
         try {
             // Strict: the lenient default returns {} for a failed read, which would
             // paint the controls at their defaults while uploads are in fact running.
-            settings = await getPluginSettings(PLUGIN_ID, { strict: true }) || {};
+            [settings, managementStatus] = await Promise.all([
+                getPluginSettings(PLUGIN_ID, { strict: true }).then(stored => stored || {}),
+                probePluginManagement(),
+            ]);
         } catch (e) {
             logger.warn('Shot upload settings unavailable:', e);
             accountEl.innerHTML = notice(
@@ -6373,6 +6397,7 @@ function setupShotUploadListeners() {
             idPrefix: 'shotupload',
             schema, keys, settings,
             logLabel: 'shot upload',
+            readOnly: !pluginManagementAllowed(managementStatus),
             ensureLoaded: async () => {
                 if (plugin.loaded) return;
                 await enablePlugin(PLUGIN_ID);
@@ -6648,12 +6673,26 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
 
     const canExit = !!window.__DECENT_HOST__ && typeof window.decentApp?.exitToDashboard === 'function';
     const manageRow = `
-        <div class="flex items-center justify-between gap-[24px] w-full">
-            <span class="text-[24px] text-[var(--text-secondary)]" data-i18n-key="Manage this plugin in the Decaid dashboard.">${getTranslation('Manage this plugin in the Decaid dashboard.')}</span>
-            ${canExit ? `<button type="button" data-role="plugin-manage"
-                class="h-[56px] px-[28px] rounded-[64px] border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] text-[24px] font-bold flex-shrink-0"
-                data-i18n-key="Manage in Decaid">${getTranslation('Manage in Decaid')}</button>` : ''}
+        <div data-role="plugin-manage-row">
+            <div class="flex items-center justify-between gap-[24px] w-full">
+                <span class="text-[24px] text-[var(--text-secondary)]" data-i18n-key="Manage this plugin in the Decaid dashboard.">${getTranslation('Manage this plugin in the Decaid dashboard.')}</span>
+                ${canExit ? `<button type="button" data-role="plugin-manage"
+                    class="h-[56px] px-[28px] rounded-[64px] border-2 border-[var(--button-primary-bg)] text-[var(--mimoja-blue-v2)] text-[24px] font-bold flex-shrink-0"
+                    data-i18n-key="Manage in Decaid">${getTranslation('Manage in Decaid')}</button>` : ''}
+            </div>
         </div>`;
+
+    const enableRow = vm.plugin && !override.replacesToggle ? `
+        <div data-role="plugin-enable-row" hidden>
+            <div class="flex items-center justify-between gap-[24px] w-full">
+                <span class="font-semibold text-[var(--action-label)] text-[30px] leading-[1.2]" data-i18n-key="Enabled">${getTranslation('Enabled')}</span>
+                <label class="relative flex items-center cursor-pointer flex-shrink-0 w-[100px] h-[50px]">
+                    <input type="checkbox" data-role="plugin-enable-toggle" class="sr-only peer" ${vm.loaded ? 'checked' : ''}>
+                    <div class="absolute inset-0 rounded-full border-2 transition-colors duration-200 bg-[var(--toggle-off-bg)] border-[var(--toggle-off-border)] peer-checked:bg-[var(--button-primary-bg)] peer-checked:border-[var(--button-primary-bg)]"></div>
+                    <div class="absolute top-1/2 left-[5px] -translate-y-1/2 peer-checked:translate-x-[46px] size-[40px] rounded-full transition-[transform,background-color] duration-200 bg-[var(--toggle-off-knob)] peer-checked:bg-white"></div>
+                </label>
+            </div>
+        </div>`.trim() : '';
 
     const schemaControls = vm.settingsKeys.map(key => {
         const html = renderPluginSettingControl(key, vm.settingsSchema[key], `plugin-${pluginId}`);
@@ -6675,6 +6714,7 @@ function renderPluginCard(pluginId, plugins, { asPage = false } = {}) {
             ${rule}
 
             <div class="flex flex-col gap-[24px] w-full">
+                ${enableRow}
                 <div data-role="plugin-version-info" class="w-full text-[24px] text-[var(--text-secondary)]">${getTranslation('Checking')}…</div>
                 ${manageRow}
             </div>
@@ -6741,6 +6781,31 @@ function bindPluginOpenButton(cardEl, plugin) {
     });
 }
 
+function bindPluginEnableToggle(cardEl, pluginId, refreshVersion) {
+    const row = cardEl.querySelector('[data-role="plugin-enable-row"]');
+    const toggle = row?.querySelector('[data-role="plugin-enable-toggle"]');
+    if (!toggle) return;
+    row.hidden = false;
+    toggle.addEventListener('change', async function () {
+        const on = this.checked;
+        this.disabled = true;
+        try {
+            if (await machineBlocksPluginChange()) {
+                this.checked = !on;
+                ui.showToast(getTranslation('Wait until this shot is saved'), 4000, 'info');
+            } else {
+                await (on ? enablePlugin(pluginId) : disablePlugin(pluginId));
+            }
+        } catch (e) {
+            logger.error(`Failed to ${on ? 'enable' : 'disable'} ${pluginId}`, e);
+            ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 4000, 'error');
+            this.checked = !on;
+        }
+        this.disabled = false;
+        Promise.resolve(refreshVersion()).catch(e => logger.warn(`Could not refresh ${pluginId} status`, e));
+    });
+}
+
 function setupPluginCard(cardEl, pluginId, plugins) {
     const override = pluginCardOverride(pluginId);
     const vm = pluginViewModel(plugins, pluginId);
@@ -6763,14 +6828,25 @@ function setupPluginCard(cardEl, pluginId, plugins) {
 
     bindPluginOpenButton(cardEl, vm.plugin);
 
+    const managementAllowed = probePluginManagement().then(pluginManagementAllowed);
+    managementAllowed.then(allowed => {
+        if (!allowed || !vm.plugin || !cardEl.isConnected) return;
+        cardEl.querySelector('[data-role="plugin-manage-row"]').hidden = true;
+        bindPluginEnableToggle(cardEl, pluginId, () => refreshVersion());
+    });
+
     const schema = vm.settingsSchema;
     const keys = vm.settingsKeys;
     if (keys.length === 0) return;
 
     (async () => {
         let settings;
+        let allowed;
         try {
-            settings = await getPluginSettings(pluginId, { strict: true }) || {};
+            [settings, allowed] = await Promise.all([
+                getPluginSettings(pluginId, { strict: true }).then(stored => stored || {}),
+                managementAllowed,
+            ]);
         } catch (e) {
             logger.warn(`Plugin settings unavailable for ${pluginId}:`, e);
             return;
@@ -6781,7 +6857,7 @@ function setupPluginCard(cardEl, pluginId, plugins) {
             pluginId,
             idPrefix: `plugin-${pluginId}`,
             schema, keys, settings,
-            readOnly: true,
+            readOnly: !allowed,
         });
     })();
 }

@@ -12,6 +12,7 @@ import {
 import { SETTINGS_TREE as CANONICAL_SETTINGS_TREE } from './settings-tree.js';
 import { timeNav } from '../modules/perf-probe.js';
 import { observeSelects } from '../modules/custom-select.js';
+import { observeCelsiusLabels } from './celsius-label.js';
 
 // [name, category, bengleOnly?] tuples for the pre-legacy-load nav and search,
 // derived from the canonical tree (settings-tree.js) so the two can't drift —
@@ -45,6 +46,7 @@ const CATEGORY_LOADERS = Object.freeze({
 let currentRoot = null;
 let currentCleanup = null;
 let selectCleanup = null;
+let celsiusCleanup = null;
 let activeMainCategory = 'quickadjustments';
 let renderSequence = 0;
 let legacyMounted = false;
@@ -370,6 +372,8 @@ export async function initializeSettingsShell() {
     bindShell(root);
     selectCleanup?.();
     selectCleanup = observeSelects(document.getElementById('settings-content-area'));
+    celsiusCleanup?.();
+    celsiusCleanup = observeCelsiusLabels(root);
     initResizableSeparators();
     const saved = readSettingsLocation();
     const first = document.getElementById(`${saved?.mainCategory || 'quickadjustments'}-btn`)
@@ -383,6 +387,8 @@ export function cleanupSettingsShell() {
     currentCleanup = null;
     selectCleanup?.();
     selectCleanup = null;
+    celsiusCleanup?.();
+    celsiusCleanup = null;
     currentRoot = null;
     legacyMounted = false;
     renderSequence += 1;

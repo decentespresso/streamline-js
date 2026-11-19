@@ -13,7 +13,7 @@
     </div>
 
     <div id="settings-body" class="flex h-[1088px]">
-        <div id="left-panel" class="h-full flex flex-col border-r border-[var(--border-primary)] bg-[var(--box-color)]" style="width: 796px; flex-shrink: 0;">
+        <div id="left-panel" class="h-full flex flex-col bg-[var(--box-color)]" style="width: 796px; flex-shrink: 0;">
             <div class="p-6 border-b border-[var(--border-primary)]">
                 <div class="relative">
                     <input type="search" enterkeyhint="search" id="settings-search" placeholder="Search settings..." class="w-full p-3 pl-12 rounded-lg border border-[var(--border-color)] bg-[var(--profile-button-background-color)] text-[var(--text-primary)] text-[24px] focus:outline-none focus:ring-2 focus:ring-[var(--mimoja-blue-v2)]" aria-label="Search settings">
@@ -27,28 +27,28 @@
                 <div id="main-categories-panel" class="h-full overflow-y-auto p-2 flex-shrink-0" style="width: 405px;" aria-label="Settings Categories">
                     <nav>
                         <ul class="space-y-1">
-                            <li><button id="quickadjustments-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">1. <span data-i18n-key="Quick Adjustments">Quick Adjustments</span></button></li>
-                            <li><button id="bluetooth-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">2. <span data-i18n-key="Connection">Connections</span></button></li>
-                            <li><button id="calibration-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">3. <span data-i18n-key="Calibration">Calibration</span></button></li>
-                            <li><button id="machine-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">4. <span data-i18n-key="Machine">Machine</span></button></li>
-                            <li><button id="maintenance-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">5. <span data-i18n-key="Maintenance">Maintenance</span></button></li>
-                            <li><button id="skin-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">6. <span data-i18n-key="Skin">Skin</span></button></li>
-                            <li><button id="language-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">7. <span data-i18n-key="Language">Language</span></button></li>
-                            <li><button id="extensions-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">8. <span data-i18n-key="Extensions">Extensions</span></button></li>
-                            <li><button id="miscellaneous-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">9. <span data-i18n-key="Miscellaneous">Miscellaneous</span></button></li>
-                            <li><button id="updates-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">10. <span data-i18n-key="Updates">Updates</span></button></li>
-                            <li><button id="usermanual-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a] flex items-center">11. <span data-i18n-key="User Manual">User Manual</span></button></li>
+                            <li><button id="quickadjustments-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">1. <span data-i18n-key="Quick Adjustments">Quick Adjustments</span></button></li>
+                            <li><button id="maintenance-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">2. <span data-i18n-key="Maintenance">Maintenance</span></button></li>
+                            <li><button id="bluetooth-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">3. <span data-i18n-key="Connection">Connections</span></button></li>
+                            <li><button id="machine-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">4. <span data-i18n-key="Machine">Machine</span></button></li>
+                            <li><button id="calibration-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">5. <span data-i18n-key="Calibration">Calibration</span></button></li>
+                            <li><button id="skin-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">6. <span data-i18n-key="Skin">Skin</span></button></li>
+                            <li><button id="language-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">7. <span data-i18n-key="Language">Language</span></button></li>
+                            <li><button id="extensions-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">8. <span data-i18n-key="Extensions">Extensions</span></button></li>
+                            <li><button id="miscellaneous-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">9. <span data-i18n-key="Miscellaneous">Miscellaneous</span></button></li>
+                            <li><button id="updates-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">10. <span data-i18n-key="Updates">Updates</span></button></li>
+                            <li><button id="usermanual-btn" class="settings-nav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]">11. <span data-i18n-key="User Manual">User Manual</span></button></li>
                         </ul>
                     </nav>
                 </div>
-                <div id="sub-categories-separator" class="cursor-col-resize w-px bg-gray-400 hover:bg-blue-500 h-full" aria-hidden="true"></div>
+                <div id="sub-categories-separator" class="cursor-col-resize w-px bg-[var(--border-color)] hover:bg-blue-500 h-full" aria-hidden="true"></div>
                 <div id="sub-categories-panel" class="h-full overflow-y-auto p-2 flex-1 min-w-0" style="background-color: var(--box-color-alt);" aria-label="Subcategories">
                     <!-- Subcategories will be dynamically loaded here -->
                 </div>
             </div>
         </div>
 
-        <div id="separator" class="cursor-col-resize w-px bg-gray-300 hover:bg-blue-500 transition-colors z-10 h-full" aria-hidden="true"></div>
+        <div id="separator" class="cursor-col-resize w-px bg-[var(--border-color)] hover:bg-blue-500 transition-colors z-10 h-full" aria-hidden="true"></div>
 
         <div id="right-panel" class="w-[1124px] flex-grow h-full flex flex-col bg-[var(--box-color)] p-6 overflow-y-auto" role="main" aria-label="Settings Content">
             <div id="settings-content-area" class="flex-grow">

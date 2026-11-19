@@ -335,7 +335,7 @@ function updateDoseValue(type, newValue) {
 // workflow-refresh event repaints the tiles through app.js's normal path.
 function tileWriteFailed(what, error) {
     logger.error(`Failed to update ${what} via workflow:`, error);
-    showToast(getTranslation('Change did not reach the machine. Restoring the previous value.'), 4000, 'error');
+    showToast(getTranslation('Update failed'), 4000, 'error');
     document.dispatchEvent(new Event('streamline:workflow-refresh'));
 }
 

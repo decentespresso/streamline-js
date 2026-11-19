@@ -13,7 +13,21 @@ import {
     isPluginSettingVisible,
     isFlowCalPluginManaging,
     AUTO_FLOW_CAL_PLUGIN_ID,
+    pluginManagementAllowed,
+    pluginChangeBlockedByMachine,
 } from '../src/settings/plugin-view.js';
+
+test('plugin management opens only when the probe gets past the auth gate', () => {
+    for (const status of [200, 400, 404, 500]) assert.equal(pluginManagementAllowed(status), true, String(status));
+    for (const status of [401, 403, null, undefined]) assert.equal(pluginManagementAllowed(status), false, String(status));
+});
+
+test('plugin changes wait for espresso and nothing else', () => {
+    assert.equal(pluginChangeBlockedByMachine('espresso'), true);
+    for (const state of ['idle', 'steam', 'flush', 'sleeping', null, undefined]) {
+        assert.equal(pluginChangeBlockedByMachine(state), false, String(state));
+    }
+});
 
 // plugin-view.js is the pure metadata -> view-model layer the generic plugin
 // settings card (settings.js renderPluginCard/setupPluginCard) is built on.

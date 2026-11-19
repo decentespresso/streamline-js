@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { SETTINGS_TREE } from '../src/settings/settings-tree.js';
+import { lowercaseCelsius } from '../src/settings/celsius-label.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -90,4 +91,20 @@ test('maintenance screens exist once, mounted from the extracted module by both 
     assert.doesNotMatch(legacy, /window\.startAirPurge|window\.startDescaling/);
     // A mount left running after navigating away keeps polling the machine.
     assert.match(legacy, /maintenanceCleanup\?\.\(\)/);
+});
+
+test('the settings nav lists its categories in the canonical order, numbered from 1', () => {
+    const html = read('src/settings/settings.html');
+    const buttons = [...html.matchAll(/<button id="(\w+)-btn" class="settings-nav-btn[^"]*">(\d+)\. <span/g)];
+    assert.deepEqual(buttons.map(match => match[1]), Object.keys(SETTINGS_TREE));
+    assert.deepEqual(buttons.map(match => Number(match[2])), Object.keys(SETTINGS_TREE).map((_, index) => index + 1));
+    assert.ok(buttons.every(match => !/\bflex\b/.test(match[0])), 'a flex button drops the space after the number');
+});
+
+test('settings labels show celsius in lowercase, whichever symbol the translation uses', () => {
+    assert.equal(lowercaseCelsius('Celsius (°C)'), 'Celsius (°c)');
+    assert.equal(lowercaseCelsius('Température (ºC)'), 'Température (°c)');
+    assert.equal(lowercaseCelsius('水箱溫度（℃）'), '水箱溫度（°c）');
+    assert.equal(lowercaseCelsius('Fahrenheit (°F)'), 'Fahrenheit (°F)');
+    assert.equal(lowercaseCelsius('°Celsius'), '°Celsius');
 });

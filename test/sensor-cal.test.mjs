@@ -100,9 +100,10 @@ test('formatCalValue: multipliers get 4 decimals, offsets get a sign', () => {
     assert.equal(formatCalValue('ratio', null), '—');
 });
 
-test('sensorCalTarget: the three firmware targets, and nothing else', () => {
-    assert.deepEqual(SENSOR_CAL_TARGETS.map((t) => t.id), ['temperature', 'pressure', 'flow']);
-    assert.equal(sensorCalTarget('flow').kind, 'ratio');
+test('sensorCalTarget: temperature and pressure, and no flow row', () => {
+    assert.deepEqual(SENSOR_CAL_TARGETS.map((t) => t.id), ['temperature', 'pressure']);
+    assert.equal(sensorCalTarget('flow'), null);
+    assert.equal(sensorCalTarget('pressure').kind, 'ratio');
     assert.equal(sensorCalTarget('temperature').kind, 'offset');
     assert.equal(sensorCalTarget('nope'), null);
 });
@@ -118,7 +119,6 @@ test('snapshotReading: reads the sensor, never the frame setpoint', () => {
                     pressure: 6.1, targetPressure: 10, flow: 2.1, targetFlow: 8 };
     assert.equal(snapshotReading(sensorCalTarget('temperature'), frame), 90.3);
     assert.equal(snapshotReading(sensorCalTarget('pressure'), frame), 6.1);
-    assert.equal(snapshotReading(sensorCalTarget('flow'), frame), 2.1);
 });
 
 test('snapshotReading: no target* field is ever the source', () => {
@@ -130,10 +130,10 @@ test('snapshotReading: no target* field is ever the source', () => {
 // No frame yet = machine asleep or disconnected. Capture has to say so
 // rather than quietly hand a correction a 0 for what the DE1 reported.
 test('snapshotReading: no frame or missing field reads null, never 0', () => {
-    assert.equal(snapshotReading(sensorCalTarget('flow'), null), null);
-    assert.equal(snapshotReading(sensorCalTarget('flow'), {}), null);
-    assert.equal(snapshotReading(sensorCalTarget('flow'), { flow: null }), null);
-    assert.equal(snapshotReading(null, { flow: 2 }), null);
+    assert.equal(snapshotReading(sensorCalTarget('pressure'), null), null);
+    assert.equal(snapshotReading(sensorCalTarget('pressure'), {}), null);
+    assert.equal(snapshotReading(sensorCalTarget('pressure'), { pressure: null }), null);
+    assert.equal(snapshotReading(null, { pressure: 2 }), null);
 });
 
 // One 1 Hz frame lands wherever the pump was in its cycle, so a capture

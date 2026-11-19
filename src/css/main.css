@@ -380,6 +380,12 @@ body {
     cursor: pointer;
 }
 
+#app-toast .alert-info:not(.toast-tappable) {
+    background-color: var(--mimoja-blue-v2);
+    border-color: var(--mimoja-blue-v2);
+    color: #fff;
+}
+
 #app-toast {
     min-width: 0;
     width: max-content;

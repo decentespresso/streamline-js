@@ -192,10 +192,10 @@ button.has-context-menu.long-press-active,
         left: 50%;
         width: 48px;
         box-sizing: border-box;
-        border-right: 23.5px solid transparent;
-        border-left: 23.5px solid transparent;
+        border-right: 24px solid transparent;
+        border-left: 23px solid transparent;
         transform: translateX(-50%);
-        background: var(--fallback-b3, oklch(var(--b3) / 1));
+        background: var(--border-color);
         background-clip: content-box;
     }
 }

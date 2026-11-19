@@ -199,12 +199,14 @@ test('emptied history puts the translated placeholders and their keys back', () 
     const pick = (name) => code.match(new RegExp(`(?:export )?function ${name}\\([\\s\\S]*?\\n\\}`))[0].replace(/^export /, '');
     const element = () => ({ attrs: {}, textContent: 'stale', setAttribute(name, value) { this.attrs[name] = value; } });
     const elements = { 'shot-history-label': element(), 'history-dose-in': element(), 'history-grind-size': element() };
+    const deletedShot = { 'history-date': element(), 'history-profile-name': element() };
     new Function('document', 'getTranslation', `${pick('setHistoryLabel')}\n${pick('showEmptyHistoryPlaceholders')}\nshowEmptyHistoryPlaceholders();`)(
-        { getElementById: (id) => elements[id] ?? null },
+        { getElementById: (id) => elements[id] ?? deletedShot[id] ?? null },
         (key) => `t:${key}`,
     );
     const painted = Object.values(elements).map((el) => [el.attrs['data-i18n-key'], el.textContent]);
     assert.deepEqual(painted, [['SHOT HISTORY', 't:SHOT HISTORY'], ['Dose In', 't:Dose In'], ['Grind Size', 't:Grind Size']]);
+    assert.deepEqual(Object.values(deletedShot).map((el) => el.textContent), ['', ''], 'the deleted shot leaves no date or profile name');
 
     const emptyBranches = code.match(/clearShotData\(\);\s*showEmptyHistoryPlaceholders\(\);/g) ?? [];
     assert.equal(emptyBranches.length, 3, 'DYE2 delete, clear history and delete current shot');

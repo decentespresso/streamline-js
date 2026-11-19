@@ -50,6 +50,24 @@ test('a machine command that cannot reach Decaid says so once and still rejects'
     assert.deepEqual(toasts, [['Disconnected', 4000, 'error']]);
 });
 
+test('a shot blocked for having no scale tells the user why and still rejects', async () => {
+    const { setMachineState, toasts } = loadSetMachineState(async () => ({
+        ok: false,
+        status: 400,
+        json: async () => ({ type: 'block_no_scale', details: 'No scale detected, blocking espresso request' }),
+    }));
+    await assert.rejects(setMachineState('espresso'), /Failed to set machine state to espresso/);
+    assert.deepEqual(toasts, [['No scale connected — shot blocked', 4000, 'error']]);
+});
+
+test('any other 400, readable or not, stays quiet', async () => {
+    for (const json of [async () => ({ type: 'other' }), async () => { throw new SyntaxError('not json'); }]) {
+        const { setMachineState, toasts } = loadSetMachineState(async () => ({ ok: false, status: 400, json }));
+        await assert.rejects(setMachineState('espresso'), /Failed to set machine state to espresso/);
+        assert.deepEqual(toasts, []);
+    }
+});
+
 test('a machine command Decaid refuses rejects without claiming a disconnect', async () => {
     const { setMachineState, toasts } = loadSetMachineState(async () => ({ ok: false }));
     await assert.rejects(setMachineState('espresso'), /Failed to set machine state to espresso/);

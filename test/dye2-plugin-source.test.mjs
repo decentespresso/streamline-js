@@ -1,5 +1,5 @@
 import { currentBeanContext } from '../src/modules/bean-selection.js';
-import { isSteamOff } from '../src/modules/steam-mode.js';
+import { isSteamOff, recipeSteamPatch } from '../src/modules/steam-mode.js';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -577,10 +577,11 @@ function lift(module, patterns) {
     const heaterOn = { steamSettings: { targetTemperature: 165 } };
     const heaterOff = { steamSettings: { targetTemperature: 0 } };
     let autoSteamActive = false;
+    let rememberedSteamTemp = 160;
     const mergeRecipeLiveSettings = new Function(
         'isSteamOff', 'isAutoSteamActive', 'persistSharedValue', 'STEAM_DURATION_LAST_VALUE_KEY', 'STEAM_FLOW_LAST_VALUE_KEY',
         'MILK_STOP_LAST_VALUE_KEY', 'HOT_WATER_VOLUME_LAST_VALUE_KEY', 'HOT_WATER_TEMP_LAST_VALUE_KEY',
-        'FLUSH_DURATION_LAST_VALUE_KEY',
+        'FLUSH_DURATION_LAST_VALUE_KEY', 'recipeSteamPatch', 'readSharedValue', 'STEAM_TEMP_LAST_VALUE_KEY',
         `${readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8')
             .match(/async function mergeRecipeLiveSettings\(dv, live\) \{[\s\S]*?\r?\n\}/)[0]}\nreturn mergeRecipeLiveSettings;`
     )(
@@ -589,7 +590,75 @@ function lift(module, patterns) {
         async (key, value) => { persisted.push([key, value]); },
         'last-steam-duration', 'last-steam-flow', 'last-milk-stop',
         'last-hot-water-volume', 'last-hot-water-temp', 'last-flush-duration',
+        recipeSteamPatch, async (key) => (key === 'last-steam-temp' ? rememberedSteamTemp : null), 'last-steam-temp',
     );
+
+    test('a time-mode recipe turns a heater that is off back on at the remembered temperature', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25 }, heaterOff);
+        assert.deepEqual(patch, { steamSettings: { targetTemperature: 160, duration: 25 } });
+        assert.deepEqual(persisted, [['last-steam-temp', 160], ['last-steam-duration', 25]]);
+    });
+
+    test('the recipe\'s own steam temperature wins, and nothing remembered still heats', async () => {
+        const held = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25, steamTempC: 145 }, heaterOff);
+        assert.equal(held.steamSettings.targetTemperature, 145);
+        rememberedSteamTemp = null;
+        try {
+            const fallback = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25 }, heaterOff);
+            assert.equal(fallback.steamSettings.targetTemperature, 150);
+        } finally {
+            rememberedSteamTemp = 160;
+        }
+    });
+
+    test('a recipe holding a steam time turns the heater on whichever unit it displays', async () => {
+        for (const recipe of [{ steamMode: 'flow', steamTimeS: 25 }, { steamTimeS: 25, steamFlowMls: 1.2 }]) {
+            const patch = await mergeRecipeLiveSettings(recipe, heaterOff);
+            assert.equal(patch.steamSettings.targetTemperature, 160, JSON.stringify(recipe));
+            assert.equal(patch.steamSettings.duration, 25, JSON.stringify(recipe));
+        }
+    });
+
+    test('a recipe holding only a steam temperature never heats with a time of 0', async () => {
+        const patch = await mergeRecipeLiveSettings({ steamTempC: 145 }, heaterOff);
+        assert.deepEqual(patch, { steamSettings: { targetTemperature: 145, duration: 30 } });
+    });
+
+    test('a recipe saved with steam off switches both halves off and keeps what to return to', async () => {
+        const live = { steamSettings: { targetTemperature: 165, duration: 40 } };
+        for (const recipe of [{ steamMode: 'time', steamTimeS: 0 }, { steamMode: 'time', steamTimeS: 25, steamTempC: 0 }]) {
+            persisted.length = 0;
+            const patch = await mergeRecipeLiveSettings(recipe, live);
+            assert.deepEqual(patch, { steamSettings: { targetTemperature: 0, duration: 0 } }, JSON.stringify(recipe));
+            assert.deepEqual(persisted, [['last-steam-temp', 165], ['last-steam-duration', 40]]);
+        }
+    });
+
+    test('a heater already on takes the recipe temperature', async () => {
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25, steamTempC: 145 }, heaterOn);
+        assert.deepEqual(patch, { steamSettings: { targetTemperature: 145, duration: 25 } });
+    });
+
+    test('a recipe holding only a flow leaves a heater that is off alone', async () => {
+        assert.deepEqual(await mergeRecipeLiveSettings({ steamMode: 'flow', steamFlowMls: 1.2 }, heaterOff), { steamSettings: { flow: 1.2 } });
+    });
+
+    test('an active Auto session keeps its steam time, flow and temperature', async () => {
+        autoSteamActive = true;
+        try {
+            assert.deepEqual(await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25, steamFlowMls: 1.2, steamTempC: 145 }, heaterOff), {});
+        } finally {
+            autoSteamActive = false;
+        }
+    });
+
+    test('every flush setting the recipe holds is applied', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ flushS: 12, flushTempC: 88, flushFlowMls: 6 });
+        assert.deepEqual(patch, { rinseData: { duration: 12, targetTemperature: 88, flow: 6 } });
+        assert.deepEqual(persisted, [['last-flush-duration', 12]]);
+    });
 
     test('a recipe\'s milk stop reaches the machine and is remembered', async () => {
         persisted.length = 0;
@@ -632,14 +701,6 @@ function lift(module, patterns) {
         const patch = await mergeRecipeLiveSettings({ steamMode: 'flow', steamTimeS: 0, steamFlowMls: 1.2 }, heaterOn);
         assert.deepEqual(patch, { steamSettings: { flow: 1.2 } });
         assert.deepEqual(persisted, [['last-steam-flow', 1.2]]);
-    });
-
-    test('a heater that is off takes the recipe flow but no inactive-mode time', async () => {
-        persisted.length = 0;
-        assert.deepEqual(await mergeRecipeLiveSettings({ steamTimeS: 25, steamFlowMls: 1.2 }, heaterOff), { steamSettings: { flow: 1.2 } });
-        assert.deepEqual(persisted, [['last-steam-flow', 1.2]]);
-        const patch = await mergeRecipeLiveSettings({ steamMode: 'flow', steamTimeS: 25, steamFlowMls: 1.2 }, heaterOff);
-        assert.deepEqual(patch, { steamSettings: { flow: 1.2 } });
     });
 
     test('an active Auto steam session keeps its duration and flow', async () => {

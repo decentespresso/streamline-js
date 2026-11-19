@@ -19,8 +19,8 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { isSteamOff } from './steam-mode.js';
-import { API_BASE_URL, isAutoSteamActive, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles, getGrinders } from './api.js';
+import { isSteamOff, recipeSteamPatch } from './steam-mode.js';
+import { API_BASE_URL, isAutoSteamActive, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, readSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, STEAM_TEMP_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles, getGrinders } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox, getTranslation } from './i18n.js';
@@ -371,10 +371,18 @@ export function renderStrip(mode) {
                 // being dialled in, so a tap must not revert the machine to the stored values --
                 // "Save changes" or DYE2 decides what happens to the drift (#159 acceptance 1).
                 if (active) return;
+                const previousSelection = { id: activeItemId, modified: activeModified };
                 activeItemId = recipe.id;
                 activeModified = false;
                 renderStrip('R');
-                applyRecipe(recipe).catch(e => logger.error('applyRecipe failed', e));
+                applyRecipe(recipe).catch(e => {
+                    logger.error('applyRecipe failed', e);
+                    showToast('Could not apply recipe', 4000, 'error');
+                    if (activeItemId !== recipe.id) return;
+                    activeItemId = previousSelection.id;
+                    activeModified = previousSelection.modified;
+                    if (currentMode === 'R') renderStrip('R');
+                });
             }, btn => openCellMenu(btn, () => editRecipe(recipe), 'recipe', recipe, slot));
             strip.appendChild(cell);
         });
@@ -668,9 +676,9 @@ async function applyRecipeLegacy(recipe) {
     return patch;
 }
 
-// Override only the recipe's steam/hot-water/flush fields on the LIVE sub-objects
-// (which already carry the required targetTemperature/flow). Guarded so we never
-// send a partial.
+// Put every steam/hot-water/flush setting the recipe holds on the machine, so the
+// machine matches the recipe after each apply. An active Auto steam session keeps
+// its own steam time, flow and temperature.
 //
 // Also persists each field we touch to its "last value" KV record
 // (api.persistSharedValue — a plain KV write, no hardware call). Those records
@@ -684,15 +692,16 @@ async function applyRecipeLegacy(recipe) {
 async function mergeRecipeLiveSettings(dv, live) {
     const patch = {};
     const steam = {};
-    const manualSteam = !isAutoSteamActive();
-    const heaterOn = !isSteamOff(live?.steamSettings?.targetTemperature);
-    if (dv.steamTimeS != null && (dv.steamMode === 'time' || (manualSteam && heaterOn && dv.steamTimeS > 0))) {
-        steam.duration = dv.steamTimeS;
-        await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, dv.steamTimeS);
-    }
-    if (dv.steamFlowMls != null && (dv.steamMode === 'flow' || (manualSteam && dv.steamFlowMls > 0))) {
-        steam.flow = dv.steamFlowMls;
-        await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, dv.steamFlowMls);
+    if (!isAutoSteamActive()) {
+        const heaterOff = !!live?.steamSettings && isSteamOff(live.steamSettings.targetTemperature);
+        const remembered = heaterOff
+            ? { temp: await readSharedValue(STEAM_TEMP_LAST_VALUE_KEY), duration: await readSharedValue(STEAM_DURATION_LAST_VALUE_KEY) }
+            : {};
+        Object.assign(steam, recipeSteamPatch(dv, heaterOff, remembered));
+        const valuesToReturnTo = steam.targetTemperature === 0 ? live?.steamSettings : steam;
+        if (valuesToReturnTo?.targetTemperature > 0) await persistSharedValue(STEAM_TEMP_LAST_VALUE_KEY, valuesToReturnTo.targetTemperature);
+        if (valuesToReturnTo?.duration > 0) await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, valuesToReturnTo.duration);
+        if (steam.flow != null) await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, steam.flow);
     }
     // Not gated on steamMode: that is the display hint for the time/flow pair
     // and says nothing about the stop. Remembered only while armed, the rule
@@ -724,10 +733,14 @@ async function mergeRecipeLiveSettings(dv, live) {
     if (dv.hotWaterFlowMls != null) water.flow = dv.hotWaterFlowMls;
     if (Object.keys(water).length) patch.hotWaterData = water;
 
+    const rinse = {};
     if (dv.flushS != null) {
-        patch.rinseData = { duration: dv.flushS };
+        rinse.duration = dv.flushS;
         await persistSharedValue(FLUSH_DURATION_LAST_VALUE_KEY, dv.flushS);
     }
+    if (dv.flushTempC != null) rinse.targetTemperature = dv.flushTempC;
+    if (dv.flushFlowMls != null) rinse.flow = dv.flushFlowMls;
+    if (Object.keys(rinse).length) patch.rinseData = rinse;
     return patch;
 }
 

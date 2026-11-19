@@ -165,6 +165,10 @@ function showEmptyHistoryPlaceholders() {
         element.setAttribute('data-i18n-key', key);
         element.textContent = getTranslation(key);
     }
+    for (const id of ['history-date', 'history-profile-name']) {
+        const element = document.getElementById(id);
+        if (element) element.textContent = '';
+    }
 }
 
 async function displayShot(index) {
@@ -721,10 +725,6 @@ export async function clearShotHistory() {
             chart.clearChart();
             clearShotData();
             showEmptyHistoryPlaceholders();
-            const dateEl = document.getElementById('history-date');
-            const profileNameEl = document.getElementById('history-profile-name');
-            if (dateEl) dateEl.textContent = '';
-            if (profileNameEl) profileNameEl.textContent = '';
             document.getElementById('history-prev-btn')?.classList.add('invisible');
             document.getElementById('history-next-btn')?.classList.add('invisible');
         }

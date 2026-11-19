@@ -15,7 +15,7 @@ step just run — it survives a zero, so it is only read back on a latch.
 
 ## 2. DE1 sensor calibration — `GET|PUT /api/v1/machine/calibration/{target}`
 
-de1app's temperature / pressure / flow calibration page
+Temperature and pressure rows of de1app's calibration page
 (`de1plus/binary.tcl:calibrate_spec`, `de1_comms.tcl:de1_send_calibration`).
 Lives under Calibration → Sensor Calibration
 (`renderSensorCalSettings()` in `src/settings/settings.js`, arithmetic in
@@ -26,8 +26,8 @@ The page is de1app's calibration table: one row per sensor, **Saved** and
 button, and one number for the user to type.
 
 **`de1ReportedValue` is what the DE1's own sensor reported — never a frame
-setpoint.** The reading comes from the snapshot socket's `groupTemperature`,
-`pressure` and `flow` (`readingKey` in `SENSOR_CAL_TARGETS`). The matching
+setpoint.** The reading comes from the snapshot socket's `groupTemperature`
+and `pressure` (`readingKey` in `SENSOR_CAL_TARGETS`). The matching
 `target*` fields are the frame's setpoints, decoded straight off the
 ShotSample (`unified_de1.parsing.dart:40-41`), and in a frame that controls
 the other variable they carry that frame's **limiter**: a flow-controlled
@@ -41,8 +41,7 @@ than a live target.
 
 **Capture happens while the machine runs, not at Apply time.** The pair is
 one observation: the user reads their instrument during the shot, then walks
-back to Settings, by which point the machine reports 0 for pressure and
-flow. So Capture latches the reading at the moment it is pressed, averaged
+back to Settings, by which point the machine reports 0 for pressure. So Capture latches the reading at the moment it is pressed, averaged
 over `SENSOR_CAL_SAMPLE_WINDOW_MS` (5 s of 1 Hz frames) so one tick of pump
 noise cannot set the correction, and that captured number stays on screen
 until the write clears it.
@@ -54,7 +53,8 @@ that call the live column reads `—` forever.
 
 de1app drives flow through the machine's `calFlowEst` multiplier rather than
 the A012 flow calibration (its flow entry field is commented out at
-`:2287`); this page exposes the real per-sensor flow calibration instead.
+`:2287`). This page does the same: the table has no flow row, and flow is set
+with the Flow calibration multiplier above it.
 
 What has to stay true of any change here:
 
@@ -69,7 +69,7 @@ What has to stay true of any change here:
   is a no-op — which is why that button is safe to press twice and Apply is
   not.
 - Reads answer with the calibration in `measuredValue`; `de1ReportedValue`
-  is 1.0 for flow/pressure and 0.0 for temperature.
+  is 1.0 for pressure and 0.0 for temperature.
 - Both values are clamped to the signed **Q16.16 range,
   -32768..32767.9999**; outside it the PUT is a 400
   (`de1handler.dart:549-559`), so `parseSensorCalInput()` stops it at the
@@ -83,11 +83,11 @@ What has to stay true of any change here:
   an offset converts by scale and not by the absolute °C↔°F conversion.
 - A ratio correction divides by `de1ReportedValue` and scales the stored
   calibration by `measuredValue`, so `correctionBlocked()` refuses a zero on
-  either side for flow and pressure, and a zero capture for every target — an
+  either side for pressure, and a zero capture for every target — an
   idle machine reports nothing, and correcting against that is either a
   division by zero or the whole reading shoved into the offset.
 - Ratio corrections are held to a sanity band,
-  `SENSOR_CAL_RATIO_MIN..MAX` (0.75..1.33). A DE1 pressure or flow sensor
+  `SENSOR_CAL_RATIO_MIN..MAX` (0.75..1.33). A DE1 pressure sensor
   out by a third is broken hardware or a mis-capture, and the arithmetic
   would write the number regardless. Widen the band if a real sensor is ever
   found outside it; do not remove it.

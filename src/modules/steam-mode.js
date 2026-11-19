@@ -257,6 +257,34 @@ export function steamDurationWrite(targetTemperature, duration, { rearm = false 
 }
 
 /**
+ * The steam settings a DYE2 recipe puts on the machine: everything it holds, kept
+ * as one consistent on or off state. A zero left behind in the unit the recipe is
+ * not using (a flow recipe's old time of 0) is not a request to switch off.
+ *
+ * @param {{steamMode?:string, steamTimeS?:*, steamFlowMls?:*, steamTempC?:*}} dv  the recipe's dashboardVariables
+ * @param {boolean} heaterOff  the machine's heater is known to be off now
+ * @param {{temp?:*, duration?:*}} remembered  the shared last-* values
+ */
+export function recipeSteamPatch(dv, heaterOff, remembered = {}) {
+    const mode = dv.steamMode || (dv.steamFlowMls != null ? 'flow' : 'time');
+    const steam = {};
+    if (dv.steamFlowMls != null && (mode === 'flow' || dv.steamFlowMls > 0)) steam.flow = dv.steamFlowMls;
+    const holdsTime = dv.steamTimeS != null && (mode !== 'flow' || dv.steamTimeS > 0);
+    const holdsTemp = dv.steamTempC != null;
+    if ((holdsTime && dv.steamTimeS < MIN_STEAM_DURATION_S) || (holdsTemp && isSteamOff(dv.steamTempC))) {
+        return { ...steam, ...steamOffPatch() };
+    }
+    if (holdsTime) steam.duration = dv.steamTimeS;
+    if (holdsTemp) steam.targetTemperature = dv.steamTempC;
+    if (heaterOff && (holdsTime || holdsTemp)) {
+        const recipe = { tempC: dv.steamTempC, durationS: holdsTime ? dv.steamTimeS : undefined };
+        const { targetTemperature, duration } = steamOnPatch({ recipe, remembered });
+        Object.assign(steam, { targetTemperature, duration });
+    }
+    return steam;
+}
+
+/**
  * The duration the user asked for, folded into an on/off decision: anything
  * below MIN_STEAM_DURATION_S (0 included, and the numpad's empty box) is Off.
  * @param {*} raw  typed, stepped or parsed duration

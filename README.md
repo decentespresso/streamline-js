@@ -660,8 +660,8 @@ See [docs/grinders.md](docs/grinders.md) for the plugin side.
 
 ### 3. Calibration
 Sub-pages for **Default load settings**, **Refill Kit**, **Voltage**, **Fan**, **Steam**
-(steam-heater on/off toggle and temperature), **Sensor Calibration** (temperature, pressure
-and flow, corrected against your own reference measurement — the page previews the result before it
+(steam-heater on/off toggle and temperature), **Sensor Calibration** (temperature and
+pressure, corrected against your own reference measurement — the page previews the result before it
 writes, because the firmware folds each write into the value it already holds) and — on Bengle machines only — **Load Cells**, which walks through a
 load-cell calibration with a reference weight. Some values here are read from the machine but not saveable, depending on what the firmware
 API supports.

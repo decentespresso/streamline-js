@@ -267,7 +267,7 @@ const descMatch = source.match(/^function pluginDescription\(plugin\) \{[\s\S]*?
 assert.ok(descMatch, 'pluginDescription not found in settings.js');
 const pluginDescription = new Function(`${descMatch[0]}\nreturn pluginDescription;`)();
 
-test('a card with only custom-UI settings keeps Open and version info, has no enable toggle, and no raw fields', () => {
+test('a card with only custom-UI settings keeps Open and version info, hides its enable toggle, and has no raw fields', () => {
     const match = source.match(/^function renderPluginCard\(pluginId, plugins, \{ asPage = false \} = \{\}\) \{[\s\S]*?\r?\n\}/m);
     assert.ok(match, 'renderPluginCard not found');
     const render = new Function('pluginCardOverride', 'pluginViewModel', 'getTranslation',
@@ -283,7 +283,7 @@ test('a card with only custom-UI settings keeps Open and version info, has no en
     };
     const html = render(plugin.id, [plugin], { asPage: true });
     assert.match(html, /data-i18n-key="Open"/);
-    assert.doesNotMatch(html, /plugin-enable-toggle/);
+    assert.match(html, /<div data-role="plugin-enable-row" hidden>/, 'the switch stays hidden until the probe allows it');
     assert.match(html, /data-i18n-key="Manage this plugin in the Decaid dashboard\."/);
     assert.doesNotMatch(html, /data-role="plugin-manage"/);
     assert.match(html, /data-role="plugin-version-info"/);

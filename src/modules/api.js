@@ -1756,6 +1756,8 @@ export async function setMachineState(newState) {
         throw error;
     });
     if (!response.ok) {
+        const refusal = response.status === 400 ? await response.json().catch(() => null) : null;
+        if (refusal?.type === 'block_no_scale') ui.showToast('No scale connected — shot blocked', 4000, 'error');
         throw new Error(`Failed to set machine state to ${newState}`);
     }
     return response;
@@ -2919,7 +2921,7 @@ export async function getPluginSettings(pluginId, { strict = false } = {}) {
             throw new Error(`Failed to get plugin settings for ${pluginId}: ${response.statusText}`);
         }
         const settings = await response.json();
-        logger.info(`Plugin settings for ${pluginId} retrieved successfully.`, settings);
+        logger.info(`Plugin settings for ${pluginId} retrieved successfully.`);
         return settings;
     } catch (error) {
         logger.error(`Error getting plugin settings for ${pluginId}:`, error);
@@ -2942,12 +2944,27 @@ export async function setPluginSettings(pluginId, settings) {
             const errorBody = await response.text();
             throw new Error(`Failed to set plugin settings for ${pluginId}. Status: ${response.status}, Body: ${errorBody}`);
         }
-        logger.info(`Plugin settings for ${pluginId} updated successfully:`, settings);
+        logger.info(`Plugin settings for ${pluginId} updated successfully.`);
         document.dispatchEvent(new CustomEvent('streamline:plugins-changed', { detail: { pluginId } }));
         return true;
     } catch (error) {
         throw error; // Re-throw to allow calling code to handle
     }
+}
+
+const PLUGIN_MANAGEMENT_PROBE_ID = 'streamline-management-probe.reaplugin';
+let pluginManagementProbe = null;
+
+export function probePluginManagement() {
+    pluginManagementProbe ??= fetch(`${API_BASE_URL}/plugins/${PLUGIN_MANAGEMENT_PROBE_ID}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+    })
+        .then(response => response.status)
+        .catch(() => null)
+        .finally(() => { pluginManagementProbe = null; });
+    return pluginManagementProbe;
 }
 
 function pluginEndpointError(pluginId, endpoint, status, errorBody) {

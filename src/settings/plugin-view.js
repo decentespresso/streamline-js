@@ -104,6 +104,14 @@ export function pluginStatus(plugins, pluginId) {
     return 'enabled';
 }
 
+export function pluginManagementAllowed(probeStatus) {
+    return Number.isInteger(probeStatus) && probeStatus !== 401 && probeStatus !== 403;
+}
+
+export function pluginChangeBlockedByMachine(machineState) {
+    return machineState === 'espresso';
+}
+
 /** Whole minutes since `iso`, or null when it is absent or unparseable. */
 export function minutesSince(iso, now = Date.now()) {
     const at = Date.parse(iso || '');
