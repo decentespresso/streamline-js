@@ -1,6 +1,7 @@
 import * as ui from './ui.js';
 import { logger ,setDebug} from './logger.js';
 import { createSocketSlot, RECONNECT_POLICY } from './socket-slot.js';
+import { PLUGIN_MANAGEMENT_PROBE_KEY, pluginManagementProbeTarget } from '../settings/plugin-view.js';
 import { decideResync } from './resync-policy.js';
 import { createScaleSampleBuffer } from './calibrated-steam.js';
 import { clampAutoSteamSettings } from './auto-steam-safety.js';
@@ -2952,16 +2953,19 @@ export async function setPluginSettings(pluginId, settings) {
     }
 }
 
-const PLUGIN_MANAGEMENT_PROBE_ID = 'streamline-management-probe.reaplugin';
 let pluginManagementProbe = null;
 
 export function probePluginManagement() {
-    pluginManagementProbe ??= fetch(`${API_BASE_URL}/plugins/${PLUGIN_MANAGEMENT_PROBE_ID}/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-    })
-        .then(response => response.status)
+    pluginManagementProbe ??= getPlugins()
+        .then(plugins => {
+            const target = pluginManagementProbeTarget(plugins);
+            if (!target) return null;
+            return fetch(`${API_BASE_URL}/plugins/${encodeURIComponent(target)}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [PLUGIN_MANAGEMENT_PROBE_KEY]: null }),
+            }).then(response => response.status);
+        })
         .catch(() => null)
         .finally(() => { pluginManagementProbe = null; });
     return pluginManagementProbe;

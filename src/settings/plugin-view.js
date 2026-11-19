@@ -104,6 +104,18 @@ export function pluginStatus(plugins, pluginId) {
     return 'enabled';
 }
 
+export const PLUGIN_MANAGEMENT_PROBE_KEY = '__streamline_probe__';
+
+export function pluginManagementProbeTarget(plugins) {
+    if (!Array.isArray(plugins)) return null;
+    const target = plugins.find(plugin => {
+        const settings = plugin?.settings;
+        return typeof plugin?.id === 'string' && settings && typeof settings === 'object'
+            && Object.keys(settings).length > 0 && !(PLUGIN_MANAGEMENT_PROBE_KEY in settings);
+    });
+    return target?.id ?? null;
+}
+
 export function pluginManagementAllowed(probeStatus) {
     return Number.isInteger(probeStatus) && probeStatus !== 401 && probeStatus !== 403;
 }
