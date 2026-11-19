@@ -236,9 +236,9 @@ test('a machine that drops off BLE while asleep releases the dim', () => {
 
 test('every state that can follow a dim eventually restores — no dead end', () => {
     // Whatever the machine does next after we dimmed it, there must be a path back
-    // to a lit panel. The only states that legitimately follow 'sleeping' are a wake
-    // ('idle') and a disconnect ('error'); both restore.
-    for (const next of ['idle', 'error']) {
+    // to a lit panel. A waking DE1 reaches 'idle' only once the group is warm
+    // (23 s on issue #201), so the warm-up states have to restore as well.
+    for (const next of ['idle', 'error', 'booting', 'heating', 'preheating', 'busy', 'espresso', 'steam']) {
         assert.equal(deriveDisplayAction('sleeping', next), 'restore', `${next} must undo the dim`);
     }
 });
@@ -255,6 +255,9 @@ test('states that are neither sleep nor a wake nor a drop leave brightness alone
     for (const next of ['espresso', 'steam', 'hotWater', 'heating', 'flush', 'booting']) {
         assert.equal(deriveDisplayAction('idle', next), 'none');
     }
+    // Already awake when the DE1 came back: the dim was released on entering 'error'.
+    assert.equal(deriveDisplayAction('error', 'idle'), 'none');
+    assert.equal(deriveDisplayAction('heating', 'idle'), 'none');
 });
 
 test('the first frame after boot dims if the machine is already asleep', () => {

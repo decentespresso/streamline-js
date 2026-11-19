@@ -143,12 +143,17 @@ export function deriveSleepButtonAction({ machineState, screensaverActive = fals
 /**
  * What the panel brightness should do on a machine state TRANSITION.
  *
- * 'error' means the DE1 fell off BLE. It has to release the dim, because the only
- * other thing that does is an 'idle' frame and a machine that is gone never sends
- * one: a drop while the machine was asleep used to leave the tablet dark for the
- * rest of the session, recoverable only by the settings slider the user could not
- * see (reaprime#519). If it comes back still asleep, the sleeping transition dims
- * it again.
+ * The dim is released by LEAVING sleep, not by arriving at 'idle'. A DE1 that
+ * wakes goes 'sleeping' -> 'booting'/'heating'/'busy' and only reaches 'idle'
+ * once the group is up to temperature, which took 23 s on the report in #201:
+ * the overlay came down immediately and the panel stayed at the saver level for
+ * the whole warm-up.
+ *
+ * 'error' means the DE1 fell off BLE. It has to release the dim too, because a
+ * machine that is gone never sends another frame: a drop while it was asleep used
+ * to leave the tablet dark for the rest of the session, recoverable only by the
+ * settings slider the user could not see (reaprime#519). If it comes back still
+ * asleep, the sleeping transition dims it again.
  *
  * Transition-only by design — the snapshot feed repeats the same state at ~10 Hz,
  * and re-dimming on every frame would clobber a brightness the user just chose.
@@ -158,7 +163,7 @@ export function deriveSleepButtonAction({ machineState, screensaverActive = fals
 export function deriveDisplayAction(previousState, currentState) {
     if (previousState === currentState) return 'none';
     if (isMachineAsleep(currentState)) return 'dim';
-    if (currentState === 'idle' || currentState === 'error') return 'restore';
+    if (!previousState || isMachineAsleep(previousState) || currentState === 'error') return 'restore';
     return 'none';
 }
 
