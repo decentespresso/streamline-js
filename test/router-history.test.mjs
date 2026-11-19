@@ -37,3 +37,9 @@ test('the previous page is recorded before a page inits, so the editor can retur
     assert.equal((editor.match(/loadPage\(_returnUrl\)/g) || []).length, 1);
     assert.match(editor, /function finishSaveSuccess[\s\S]*?loadPage\('index\.html'\)/);
 });
+
+test('a back into a spent editor entry replaces it with the return page, silently', () => {
+    const editor = readFileSync('src/modules/profile_editor.js', 'utf8');
+    assert.ok(editor.includes("loadPage(_returnUrl, { history: 'replace' })"));
+    assert.ok(!editor.includes('No profile data found'));
+});

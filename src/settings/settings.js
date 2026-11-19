@@ -7727,6 +7727,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     Object.entries(initialReaChanges).forEach(([key, value]) => updateReaSetting(key, value, false));
     machineDriftChecked = false;
     preloadSettings().then(() => {
+        if (document.getElementById('settings-search')) indexSettingsPageText();
         if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
         // After the network values are in: the IDB pre-seed is the skin's own
         // last snapshot, so comparing against it would only ever compare the
@@ -9601,8 +9602,6 @@ async function loadPluginSearchKeywords() {
     }
 }
 
-let pageTextIndexed = false;
-
 // Index the words each settings page actually shows, so a search reaches the
 // copy on the page and not just its title — "history" should find the "Upload
 // existing shot history" toggle, which lives nowhere in the nav tree.
@@ -9610,15 +9609,11 @@ let pageTextIndexed = false;
 // The renderers are plain functions returning an HTML string, so the text is
 // obtained by calling them and stripping the tags. Each is wrapped: one that
 // throws (or needs a cache that is not loaded yet) costs that page its page-text
-// keywords, nothing more — its name and plugin keywords still match. Runs once;
-// re-rendering on every keystroke would be wasteful and pointless, as the copy
-// does not change between searches.
+// keywords, nothing more — its name and plugin keywords still match.
 function indexSettingsPageText() {
-    if (pageTextIndexed) return;
-    pageTextIndexed = true;
     for (const category of Object.values(settingsTree)) {
         for (const subcat of category.subcategories || []) {
-            if (!subcat.settingsCategory) continue;
+            if (!subcat.settingsCategory || subcat.pageText !== undefined || (subcat.bengleOnly && !isBengleMachine())) continue;
             try {
                 subcat.pageText = textFromHtml(renderSettingsContent(subcat.settingsCategory));
             } catch (e) {

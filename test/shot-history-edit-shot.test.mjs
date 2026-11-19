@@ -185,3 +185,28 @@ test('the espresso lock also closes the DYE2 tap and the press-and-hold menu', (
     assert.ok(guards[0] < tapAt, 'a tap on the shot lines cannot open DYE2 mid-shot');
     assert.ok(guards[1] > tapAt && guards[1] < menuAt, 'a long press opens no menu mid-shot');
 });
+
+test('a painted shot drops the i18n keys so translatePage cannot restore the placeholders', () => {
+    const code = stripComments(historySrc);
+    const start = code.indexOf('async function displayShot(index)');
+    const body = code.slice(start, code.indexOf('\n}\n', start));
+    assert.match(body, /if \(doseInEl\) \{\s*doseInEl\.removeAttribute\('data-i18n-key'\);/);
+    assert.match(body, /if \(grindSizeEl\) \{\s*grindSizeEl\.removeAttribute\('data-i18n-key'\);/);
+});
+
+test('emptied history puts the translated placeholders and their keys back', () => {
+    const code = stripComments(historySrc);
+    const pick = (name) => code.match(new RegExp(`(?:export )?function ${name}\\([\\s\\S]*?\\n\\}`))[0].replace(/^export /, '');
+    const element = () => ({ attrs: {}, textContent: 'stale', setAttribute(name, value) { this.attrs[name] = value; } });
+    const elements = { 'shot-history-label': element(), 'history-dose-in': element(), 'history-grind-size': element() };
+    new Function('document', 'getTranslation', `${pick('setHistoryLabel')}\n${pick('showEmptyHistoryPlaceholders')}\nshowEmptyHistoryPlaceholders();`)(
+        { getElementById: (id) => elements[id] ?? null },
+        (key) => `t:${key}`,
+    );
+    const painted = Object.values(elements).map((el) => [el.attrs['data-i18n-key'], el.textContent]);
+    assert.deepEqual(painted, [['SHOT HISTORY', 't:SHOT HISTORY'], ['Dose In', 't:Dose In'], ['Grind Size', 't:Grind Size']]);
+
+    const emptyBranches = code.match(/clearShotData\(\);\s*showEmptyHistoryPlaceholders\(\);/g) ?? [];
+    assert.equal(emptyBranches.length, 3, 'DYE2 delete, clear history and delete current shot');
+    assert.match(code, /if \(shots\.length === 0\) showEmptyHistoryPlaceholders\(\);\s*if \(shots\.length > 0 && !isReviewingHistory\(\)\) displayShot\(0\);/);
+});

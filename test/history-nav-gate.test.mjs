@@ -28,6 +28,7 @@ function extract(pattern, label) {
     return match[0].replace(/^export /, '');
 }
 
+const labelSource = extract(/export function setHistoryLabel\([\s\S]*?\n\}/, 'setHistoryLabel');
 const paintSource = extract(/function paintNavLock\(\)[\s\S]*?\n\}/, 'paintNavLock');
 const updateSource = extract(/export function updateHistoryNavLock\([\s\S]*?\n\}/, 'updateHistoryNavLock');
 
@@ -36,7 +37,7 @@ function harness({ index = 0 } = {}) {
         'history-prev-btn': { disabled: false, style: {} },
         'history-next-btn': { disabled: false, style: {} },
     };
-    const label = { textContent: 'HISTORY' };
+    const label = { textContent: 'HISTORY', setAttribute(name, value) { this[name] = value; } };
     const suspended = [];
     const elements = { ...buttons, 'shot-history-label': label };
     const document = { getElementById: (id) => elements[id] ?? null };
@@ -46,6 +47,7 @@ function harness({ index = 0 } = {}) {
          let currentShotIndex = startIndex;
          let paintedShotId = 'drawn';
          function isReviewingHistory() { return currentShotIndex > 0; }
+         ${labelSource}
          ${paintSource}
          ${updateSource}
          return {
@@ -90,6 +92,7 @@ test('locking while a past shot is on screen ends the review without plotting', 
     assert.equal(reviewing.index(), 0, 'the review must end, or app.js holds the live chart back');
     assert.deepEqual(reviewing.suspended, [false], 'the data panel paints the running shot again');
     assert.equal(reviewing.label.textContent, 'NEWEST');
+    assert.equal(reviewing.label['data-i18n-key'], 'NEWEST', 'a later translatePage must keep the label');
     // No displayShot/plotHistoricalShot: this runs from handleData(), so the
     // past shot's curves would still be on the chart when the live frames of
     // the shot now starting append to them.

@@ -1,4 +1,5 @@
 import { currentBeanContext } from '../src/modules/bean-selection.js';
+import { isSteamOff } from '../src/modules/steam-mode.js';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -573,13 +574,18 @@ function lift(module, patterns) {
 // write on the mode silently dropped everything the recipe held outside it.
 {
     const persisted = [];
+    const heaterOn = { steamSettings: { targetTemperature: 165 } };
+    const heaterOff = { steamSettings: { targetTemperature: 0 } };
+    let autoSteamActive = false;
     const mergeRecipeLiveSettings = new Function(
-        'persistSharedValue', 'STEAM_DURATION_LAST_VALUE_KEY', 'STEAM_FLOW_LAST_VALUE_KEY',
+        'isSteamOff', 'isAutoSteamActive', 'persistSharedValue', 'STEAM_DURATION_LAST_VALUE_KEY', 'STEAM_FLOW_LAST_VALUE_KEY',
         'MILK_STOP_LAST_VALUE_KEY', 'HOT_WATER_VOLUME_LAST_VALUE_KEY', 'HOT_WATER_TEMP_LAST_VALUE_KEY',
         'FLUSH_DURATION_LAST_VALUE_KEY',
         `${readFileSync(new URL('../src/modules/dyeStrip.js', import.meta.url), 'utf8')
-            .match(/async function mergeRecipeLiveSettings\(dv\) \{[\s\S]*?\r?\n\}/)[0]}\nreturn mergeRecipeLiveSettings;`
+            .match(/async function mergeRecipeLiveSettings\(dv, live\) \{[\s\S]*?\r?\n\}/)[0]}\nreturn mergeRecipeLiveSettings;`
     )(
+        isSteamOff,
+        () => autoSteamActive,
         async (key, value) => { persisted.push([key, value]); },
         'last-steam-duration', 'last-steam-flow', 'last-milk-stop',
         'last-hot-water-volume', 'last-hot-water-temp', 'last-flush-duration',
@@ -605,6 +611,46 @@ function lift(module, patterns) {
         persisted.length = 0;
         const patch = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25, steamStopAtTempC: 62 });
         assert.deepEqual(patch, { steamSettings: { duration: 25, stopAtTemperature: 62 } });
+    });
+
+    test('a time-mode recipe holding a flow writes and remembers both', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'time', steamTimeS: 25, steamFlowMls: 1.2 }, heaterOn);
+        assert.deepEqual(patch, { steamSettings: { duration: 25, flow: 1.2 } });
+        assert.deepEqual(persisted, [['last-steam-duration', 25], ['last-steam-flow', 1.2]]);
+    });
+
+    test('a flow-mode recipe holding a time writes and remembers both', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'flow', steamTimeS: 25, steamFlowMls: 1.2 }, heaterOn);
+        assert.deepEqual(patch, { steamSettings: { duration: 25, flow: 1.2 } });
+        assert.deepEqual(persisted, [['last-steam-duration', 25], ['last-steam-flow', 1.2]]);
+    });
+
+    test('a flow-mode recipe holding a zero time writes no duration', async () => {
+        persisted.length = 0;
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'flow', steamTimeS: 0, steamFlowMls: 1.2 }, heaterOn);
+        assert.deepEqual(patch, { steamSettings: { flow: 1.2 } });
+        assert.deepEqual(persisted, [['last-steam-flow', 1.2]]);
+    });
+
+    test('a heater that is off takes the recipe flow but no inactive-mode time', async () => {
+        persisted.length = 0;
+        assert.deepEqual(await mergeRecipeLiveSettings({ steamTimeS: 25, steamFlowMls: 1.2 }, heaterOff), { steamSettings: { flow: 1.2 } });
+        assert.deepEqual(persisted, [['last-steam-flow', 1.2]]);
+        const patch = await mergeRecipeLiveSettings({ steamMode: 'flow', steamTimeS: 25, steamFlowMls: 1.2 }, heaterOff);
+        assert.deepEqual(patch, { steamSettings: { flow: 1.2 } });
+    });
+
+    test('an active Auto steam session keeps its duration and flow', async () => {
+        persisted.length = 0;
+        autoSteamActive = true;
+        try {
+            assert.deepEqual(await mergeRecipeLiveSettings({ steamTimeS: 25, steamFlowMls: 1.2 }, heaterOn), {});
+            assert.deepEqual(persisted, []);
+        } finally {
+            autoSteamActive = false;
+        }
     });
 
     test('every hot water setting held is applied, whatever the display mode says', async () => {

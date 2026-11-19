@@ -1751,6 +1751,9 @@ export function onWorkflowUpdated(listener) {
 export async function setMachineState(newState) {
     const response = await fetch(`${API_BASE_URL}/machine/state/${newState}`, {
         method: 'PUT',
+    }).catch((error) => {
+        ui.showToast('Disconnected', 4000, 'error');
+        throw error;
     });
     if (!response.ok) {
         throw new Error(`Failed to set machine state to ${newState}`);

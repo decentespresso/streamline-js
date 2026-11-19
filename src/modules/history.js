@@ -150,6 +150,23 @@ async function loadFullShot(shot) {
     }
 }
 
+export function setHistoryLabel(key) {
+    const label = document.getElementById('shot-history-label');
+    if (!label) return;
+    label.setAttribute('data-i18n-key', key);
+    label.textContent = getTranslation(key);
+}
+
+function showEmptyHistoryPlaceholders() {
+    setHistoryLabel('SHOT HISTORY');
+    for (const [id, key] of [['history-dose-in', 'Dose In'], ['history-grind-size', 'Grind Size']]) {
+        const element = document.getElementById(id);
+        if (!element) continue;
+        element.setAttribute('data-i18n-key', key);
+        element.textContent = getTranslation(key);
+    }
+}
+
 async function displayShot(index) {
     if (index < 0 || index >= shots.length) {
         logger.warn('Invalid shot index', index);
@@ -166,7 +183,6 @@ async function displayShot(index) {
     // Update footer text
     const dateEl = document.getElementById('history-date');
     const profileNameEl = document.getElementById('history-profile-name');
-    const historyLabelEl = document.getElementById('shot-history-label');
 
     if (dateEl) {
         const date = new Date(shot.timestamp);
@@ -180,20 +196,13 @@ async function displayShot(index) {
     if (profileNameEl && shot.workflow && shot.workflow.profile) {
         profileNameEl.textContent = translateProfileTitle(shot.workflow.profile.title);
     }
-    if (historyLabelEl) {
-        if (index === 0) {
-            historyLabelEl.textContent = getTranslation('NEWEST');
-        } else if (index === shots.length - 1 && !historyHasMore) {
-            historyLabelEl.textContent = getTranslation('OLDEST');
-        } else {
-            historyLabelEl.textContent = getTranslation('HISTORY');
-        }
-    }
+    setHistoryLabel(index === 0 ? 'NEWEST' : index === shots.length - 1 && !historyHasMore ? 'OLDEST' : 'HISTORY');
 
     const doseInEl = document.getElementById('history-dose-in');
     const grindSizeEl = document.getElementById('history-grind-size');
 
     if (doseInEl) {
+        doseInEl.removeAttribute('data-i18n-key');
         const doseIn = shot.annotations?.actualDoseWeight
             ?? shot.workflow?.context?.targetDoseWeight
             ?? shot.workflow?.doseData?.doseIn;
@@ -205,6 +214,7 @@ async function displayShot(index) {
     }
 
     if (grindSizeEl) {
+        grindSizeEl.removeAttribute('data-i18n-key');
         const grindSetting = shot.workflow?.context?.grinderSetting ?? shot.workflow?.grinderData?.setting;
         if (typeof grindSetting !== 'undefined' && grindSetting !== null) {
             const settingFloat = parseFloat(grindSetting);
@@ -287,6 +297,7 @@ export async function refreshShotAfterDye2Edit(id) {
         if (shots.length === 0) {
             chart.clearChart();
             clearShotData();
+            showEmptyHistoryPlaceholders();
             document.getElementById('history-prev-btn')?.classList.add('invisible');
             document.getElementById('history-next-btn')?.classList.add('invisible');
         } else {
@@ -584,8 +595,7 @@ export function updateHistoryNavLock(state) {
         currentShotIndex = 0;
         setPaintSuspended(false);
         paintedShotId = null;
-        const historyLabelEl = document.getElementById('shot-history-label');
-        if (historyLabelEl) historyLabelEl.textContent = getTranslation('NEWEST');
+        setHistoryLabel('NEWEST');
     }
     paintNavLock();
 }
@@ -688,6 +698,7 @@ async function runRefreshToNewestShot(knownNewestId, tries, intervalMs, expected
         await new Promise(r => setTimeout(r, intervalMs));
     }
     // Gave up waiting — show whatever is newest so the panel isn't left stale.
+    if (shots.length === 0) showEmptyHistoryPlaceholders();
     if (shots.length > 0 && !isReviewingHistory()) displayShot(0);
 }
 
@@ -704,6 +715,7 @@ export async function clearShotHistory() {
         } else {
             chart.clearChart();
             clearShotData();
+            showEmptyHistoryPlaceholders();
             const dateEl = document.getElementById('history-date');
             const profileNameEl = document.getElementById('history-profile-name');
             if (dateEl) dateEl.textContent = '';
@@ -741,6 +753,7 @@ export async function deleteCurrentShot() {
     if (shots.length === 0) {
         chart.clearChart();
         clearShotData();
+        showEmptyHistoryPlaceholders();
         document.getElementById('history-prev-btn')?.classList.add('invisible');
         document.getElementById('history-next-btn')?.classList.add('invisible');
     } else {

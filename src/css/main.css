@@ -380,6 +380,17 @@ body {
     cursor: pointer;
 }
 
+#app-toast {
+    min-width: 0;
+    width: max-content;
+    max-width: calc(100vw - 2rem);
+    white-space: normal;
+}
+
+#app-toast-message {
+    overflow-wrap: anywhere;
+}
+
 .status-msg-clickable {
     font-family: 'NotoSansMono', monospace;
     font-weight: 600;

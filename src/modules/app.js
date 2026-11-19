@@ -1101,10 +1101,7 @@ function handleData(data) {
                 if (!history.isReviewingHistory()) {
                     chart.clearChart();
                     shotData.clearShotData();
-                    const historyLabelEl = document.getElementById('shot-history-label');
-                    if (historyLabelEl) {
-                        historyLabelEl.textContent = getTranslation('NEWEST');
-                    }
+                    history.setHistoryLabel('NEWEST');
                 }
                 startPerfShot();
             }
@@ -2023,6 +2020,10 @@ async function refreshWorkflowTiles() {
         workflow = await getWorkflow();
     } catch (e) {
         logger.warn('Workflow refresh failed:', e);
+        if (pendingForcedRefresh && !tileEditPending()) {
+            const confirmed = tilesToPaint(lastWorkflowTiles, lastWorkflowTiles, { force: true });
+            for (const key of Object.keys(confirmed)) WORKFLOW_TILE_PAINTERS[key]?.(confirmed[key]);
+        }
         return;
     }
     if (!workflow) return;

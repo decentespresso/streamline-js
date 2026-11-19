@@ -127,7 +127,7 @@ test('a profile switch shows up as a title change', () => {
         )(
             () => subPage,
             { msSinceTileInteraction: () => sinceEdit },
-            getWorkflowImpl ? async () => { calls.fetches++; return getWorkflowImpl(); }
+            getWorkflowImpl ? async () => { calls.fetches++; if (editAfterRead) sinceEdit = 100; return getWorkflowImpl(); }
                 : async () => { calls.fetches++; if (editAfterRead) sinceEdit = 100; return workflow; },
             { info() {}, warn() {} },
             async () => { calls.reloads++; },
@@ -152,6 +152,28 @@ test('a profile switch shows up as a title change', () => {
         steamSettings: { duration: 45, flow: 0.8, stopAtTemperature: 0 },
         hotWaterData: { volume: 50, targetTemperature: 80 },
         rinseData: { duration: 5 },
+    });
+
+    const unreachable = () => { throw new TypeError('Failed to fetch'); };
+
+    test('a failed forced read repaints the confirmed tiles and keeps the force', async () => {
+        const { refresh, calls, state } = build({ baseline: workflowTileValues(base()), force: true, getWorkflowImpl: unreachable });
+        await refresh();
+        assert.deepEqual(Object.fromEntries(calls.painted), tilesToPaint(workflowTileValues(base()), workflowTileValues(base()), { force: true }));
+        assert.equal(state.read(), true, 'the first successful read must still repaint');
+    });
+
+    test('a failed read repaints nothing unless a refresh was forced', async () => {
+        const { refresh, calls } = build({ baseline: workflowTileValues(base()), getWorkflowImpl: unreachable });
+        await refresh();
+        assert.deepEqual(calls.painted, []);
+    });
+
+    test('a failed forced read leaves a tile edit made during the read alone', async () => {
+        const { refresh, calls, state } = build({ baseline: workflowTileValues(base()), force: true, editAfterRead: true, getWorkflowImpl: unreachable });
+        await refresh();
+        assert.deepEqual(calls.painted, []);
+        assert.equal(state.read(), true);
     });
 
     test('a tile touched moments ago blocks the refresh entirely', async () => {
@@ -327,4 +349,11 @@ test('the edit guard outlasts the tile write debounce and is not duplicated as a
     assert.ok(API_DEBOUNCE_MS <= 300, `tile writes must not wait longer than 300 ms (got ${API_DEBOUNCE_MS})`);
     assert.doesNotMatch(readFileSync(new URL('../src/modules/app.js', import.meta.url), 'utf8'), /WORKFLOW_EDIT_GUARD_MS\s*=\s*\d/);
     assert.doesNotMatch(readFileSync(new URL('../src/modules/ui.js', import.meta.url), 'utf8'), /API_DEBOUNCE_MS\s*=\s*\d/);
+});
+
+test('tilesToPaint: forcing the baseline onto itself restores confirmed tiles, never the profile', () => {
+    const confirmed = { profileTitle: 'A', profileSig: 'sig', dose: 18, yield: 36, grind: '5', brewTemp: 93 };
+    assert.deepEqual(tilesToPaint(confirmed, confirmed, { force: true }),
+        { dose: 18, yield: 36, grind: '5', brewTemp: 93 });
+    assert.deepEqual(tilesToPaint(null, null, { force: true }), {});
 });

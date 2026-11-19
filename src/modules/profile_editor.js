@@ -3503,9 +3503,7 @@ export async function initializeProfileEditor() {
     // 1. Read pending profile from window global (set by profile_selector.js)
     const profileRecord = window.__pendingEditProfile;
     if (!profileRecord) {
-        console.warn('[ProfileEditor] No profile data on window.__pendingEditProfile — aborting.');
-        showToast('No profile data found. Returning to selector.', 3000, 'error');
-        setTimeout(() => { loadPage('src/profiles/profile_selector.html'); }, 1000);
+        setTimeout(() => { loadPage(_returnUrl, { history: 'replace' }); }, 0);
         return;
     }
     console.log('[ProfileEditor] Got profile:', profileRecord?.profile?.title);

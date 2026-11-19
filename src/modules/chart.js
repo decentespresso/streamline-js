@@ -1631,10 +1631,7 @@ export function setTheme(theme) {
     applyLabelLayout(layoutUpdate);
     const data = chartTraces;
     const element = getChartElement();
-    if (!element) {
-        console.error('setTheme: chartElement not found in DOM');
-        return;
-    }
+    if (!element) return;
     renderMain(data, layoutUpdate);
     if (expandedOpen) renderExpandedCharts();
 }

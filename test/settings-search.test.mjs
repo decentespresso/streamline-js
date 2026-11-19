@@ -194,3 +194,30 @@ test('page text makes on-screen copy findable', () => {
     assert.equal(subcategoryMatches(subcat, 'idle machine'), true);
     assert.equal(subcategoryMatches({ name: 'Shot Uploader' }, 'history'), false);
 });
+
+test('Bengle-only page text waits for the model and other machines never render it', () => {
+    const settingsSource = readFileSync(new URL('../src/settings/settings.js', import.meta.url), 'utf8');
+    const start = settingsSource.indexOf('function indexSettingsPageText()');
+    const source = settingsSource.slice(start, settingsSource.indexOf('\n}\n', start) + 2);
+    const settingsTree = { calibration: { subcategories: [
+        { id: 'general', settingsCategory: 'general' },
+        { id: 'loadcell', settingsCategory: 'calib_loadcell', bengleOnly: true },
+    ] } };
+    const rendered = [];
+    let bengle = false;
+    const indexSettingsPageText = new Function(
+        'settingsTree', 'isBengleMachine', 'textFromHtml', 'renderSettingsContent', 'logger',
+        `${source}\nreturn indexSettingsPageText;`,
+    )(settingsTree, () => bengle, textFromHtml, (category) => { rendered.push(category); return `<p>${category} text</p>`; }, { debug() {} });
+
+    indexSettingsPageText();
+    indexSettingsPageText();
+    assert.deepEqual(rendered, ['general']);
+
+    bengle = true;
+    indexSettingsPageText();
+    assert.deepEqual(rendered, ['general', 'calib_loadcell']);
+    assert.equal(settingsTree.calibration.subcategories[1].pageText, 'calib_loadcell text');
+
+    assert.match(settingsSource, /preloadSettings\(\)\.then\(\(\) => \{\s*if \(document\.getElementById\('settings-search'\)\) indexSettingsPageText\(\);/);
+});

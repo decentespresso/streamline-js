@@ -19,7 +19,8 @@
 // in the stored `workflow`). Legacy items without `workflow` fall back to
 // snapshot+copyMask / dashboardVariables.
 
-import { API_BASE_URL, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles, getGrinders } from './api.js';
+import { isSteamOff } from './steam-mode.js';
+import { API_BASE_URL, isAutoSteamActive, getWorkflow, updateWorkflow, getDye2KvArray, setDye2KvArray, getKVValue, DYE2_KV_NAMESPACE, onWorkflowUpdated, getPlugins, installPluginFromRelease, enablePlugin, checkPluginUpdates, approvePluginUpdate, persistSharedValue, FLUSH_DURATION_LAST_VALUE_KEY, HOT_WATER_VOLUME_LAST_VALUE_KEY, HOT_WATER_TEMP_LAST_VALUE_KEY, STEAM_DURATION_LAST_VALUE_KEY, STEAM_FLOW_LAST_VALUE_KEY, MILK_STOP_LAST_VALUE_KEY, getProfiles, getGrinders } from './api.js';
 import { applyWorkflowToMainPageUI } from './profileManager.js';
 import { logger } from './logger.js';
 import { fitTextToBox, getTranslation } from './i18n.js';
@@ -508,7 +509,7 @@ export async function applyRecipe(recipe) {
     }
     // Steam / hot-water / flush are NOT in the stored workflow — add them here.
     const dv = recipe.dashboardVariables || {};
-    Object.assign(patch, await mergeRecipeLiveSettings(dv));
+    Object.assign(patch, await mergeRecipeLiveSettings(dv, live));
     // This recipe is now the one being dialled in (dye2#36).
     mergeContext(patch, recipeIdPatch(recipe.id));
     const seq = ++applySeq;
@@ -669,7 +670,7 @@ async function applyRecipeLegacy(recipe) {
 
 // Override only the recipe's steam/hot-water/flush fields on the LIVE sub-objects
 // (which already carry the required targetTemperature/flow). Guarded so we never
-// send a partial. Identical to dashboard.ts applyRecipe.
+// send a partial.
 //
 // Also persists each field we touch to its "last value" KV record
 // (api.persistSharedValue — a plain KV write, no hardware call). Those records
@@ -680,14 +681,16 @@ async function applyRecipeLegacy(recipe) {
 // right after applying the recipe sees the new value as *drift* from the old
 // remembered one and immediately pushes the OLD value back over both the
 // workflow and the live machine — silently reverting the recipe's own change.
-async function mergeRecipeLiveSettings(dv) {
+async function mergeRecipeLiveSettings(dv, live) {
     const patch = {};
     const steam = {};
-    if (dv.steamMode === 'time' && dv.steamTimeS != null) {
+    const manualSteam = !isAutoSteamActive();
+    const heaterOn = !isSteamOff(live?.steamSettings?.targetTemperature);
+    if (dv.steamTimeS != null && (dv.steamMode === 'time' || (manualSteam && heaterOn && dv.steamTimeS > 0))) {
         steam.duration = dv.steamTimeS;
         await persistSharedValue(STEAM_DURATION_LAST_VALUE_KEY, dv.steamTimeS);
     }
-    if (dv.steamMode === 'flow' && dv.steamFlowMls != null) {
+    if (dv.steamFlowMls != null && (dv.steamMode === 'flow' || (manualSteam && dv.steamFlowMls > 0))) {
         steam.flow = dv.steamFlowMls;
         await persistSharedValue(STEAM_FLOW_LAST_VALUE_KEY, dv.steamFlowMls);
     }
