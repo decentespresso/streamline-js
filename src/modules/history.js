@@ -168,6 +168,7 @@ function showEmptyHistoryPlaceholders() {
 }
 
 async function displayShot(index) {
+    if (navLocked && index > 0) return;
     if (index < 0 || index >= shots.length) {
         logger.warn('Invalid shot index', index);
         return;
@@ -575,6 +576,15 @@ function paintNavLock() {
     }
 }
 
+export function endHistoryReview() {
+    if (!isReviewingHistory()) return false;
+    currentShotIndex = 0;
+    setPaintSuspended(false);
+    paintedShotId = null;
+    setHistoryLabel('NEWEST');
+    return true;
+}
+
 // Called from app.js on every machine-state change.
 export function updateHistoryNavLock(state) {
     const next = historyNavBlocked(state);
@@ -591,12 +601,7 @@ export function updateHistoryNavLock(state) {
     // the chart and draw the running shot from empty. The footer keeps the old
     // shot's date and profile until the shot ends and refreshToNewestShot()
     // repaints -- the same one-shot staleness a user who never reviewed sees.
-    if (navLocked && isReviewingHistory()) {
-        currentShotIndex = 0;
-        setPaintSuspended(false);
-        paintedShotId = null;
-        setHistoryLabel('NEWEST');
-    }
+    if (navLocked) endHistoryReview();
     paintNavLock();
 }
 

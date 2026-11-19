@@ -51,6 +51,9 @@ the panel to the newest shot, because `app.js` holds the live chart and data pan
 for as long as `isReviewingHistory()` is true. It ends the review inline rather than
 calling `displayShot(0)`: it runs from `handleData()`, and plotting a past shot there
 leaves the live frames of the shot now starting appending to that shot's arrays.
+The lock fires on entering `espresso`, before preinfusion, so `displayShot()` refuses past
+shots while locked and the shot-start branch in `app.js` calls `endHistoryReview()` before
+it clears the chart.
 
 Shot index 0 is a position -- "newest" -- not a particular shot, so `applyHistoryPage()`
 only follows the selection by id above index 0. Following it at 0 shifted a user sitting

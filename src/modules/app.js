@@ -1094,15 +1094,12 @@ function handleData(data) {
                 // gateway mode so the fallback heuristics run at shot end.
                 seqTrackedShot = false;
                 seqStopToastShown = false;
-                // Not while the user is reading a past shot: these three wipe
-                // the chart, the data panel and the label they are looking at.
-                // A cleaning profile starts five shots, so without this the
-                // review survives at most one flush.
-                if (!history.isReviewingHistory()) {
-                    chart.clearChart();
-                    shotData.clearShotData();
-                    history.setHistoryLabel('NEWEST');
+                if (history.endHistoryReview()) {
+                    logger.warn('Shot started while a past shot was under review; returning to the live chart.');
                 }
+                chart.clearChart();
+                shotData.clearShotData();
+                history.setHistoryLabel('NEWEST');
                 startPerfShot();
             }
             // Bengle: use the machine's true gravimetric flow (GFlow) straight from

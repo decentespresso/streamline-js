@@ -30,7 +30,9 @@ function extract(pattern, label) {
 
 const labelSource = extract(/export function setHistoryLabel\([\s\S]*?\n\}/, 'setHistoryLabel');
 const paintSource = extract(/function paintNavLock\(\)[\s\S]*?\n\}/, 'paintNavLock');
+const endReviewSource = extract(/export function endHistoryReview\([\s\S]*?\n\}/, 'endHistoryReview');
 const updateSource = extract(/export function updateHistoryNavLock\([\s\S]*?\n\}/, 'updateHistoryNavLock');
+const displayShotSource = extract(/async function displayShot\([\s\S]*?\n\}/, 'displayShot');
 
 function harness({ index = 0 } = {}) {
     const buttons = {
@@ -49,9 +51,12 @@ function harness({ index = 0 } = {}) {
          function isReviewingHistory() { return currentShotIndex > 0; }
          ${labelSource}
          ${paintSource}
+         ${endReviewSource}
          ${updateSource}
          return {
              updateHistoryNavLock,
+             endHistoryReview,
+             selectPastShot: (next) => { currentShotIndex = next; },
              locked: () => navLocked,
              index: () => currentShotIndex,
              painted: () => paintedShotId,
@@ -131,6 +136,41 @@ test('a socket that falls silent mid-shot releases the lock, and a resumed shot 
     h.updateHistoryNavLock('espresso');
     assert.equal(h.locked(), true);
     assert.equal(h.buttons['history-prev-btn'].disabled, true);
+});
+
+test('a review opened after the lock is still ended when the shot starts', () => {
+    const h = harness();
+    h.updateHistoryNavLock('espresso');
+    h.selectPastShot(2);
+    assert.equal(h.endHistoryReview(), true);
+    assert.equal(h.index(), 0);
+    assert.equal(h.label.textContent, 'NEWEST');
+    assert.equal(h.endHistoryReview(), false, 'nothing left to end');
+});
+
+test('shot start always clears the chart, whatever the history panel was showing', () => {
+    const appSource = readFileSync(new URL('../src/modules/app.js', import.meta.url), 'utf8');
+    const shotStart = appSource.match(/shotGeneration\+\+;[\s\S]*?startPerfShot\(\);/);
+    assert.ok(shotStart, 'shot-start block not found in app.js');
+    assert.doesNotMatch(shotStart[0], /isReviewingHistory/);
+    assert.match(shotStart[0], /endHistoryReview\(\)[\s\S]*chart\.clearChart\(\)/);
+});
+
+test('a locked panel refuses past shots but still shows the newest', async () => {
+    const reached = new Error('passed the lock');
+    const run = new Function(
+        'navLocked', 'setPaintSuspended',
+        `let currentShotIndex = 0;
+         const shots = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+         const logger = { warn() {} };
+         ${displayShotSource}
+         return displayShot;`
+    );
+    const stop = () => { throw reached; };
+
+    await run(true, stop)(2);
+    await assert.rejects(run(true, stop)(0), reached);
+    await assert.rejects(run(false, stop)(2), reached);
 });
 
 test('unlocking never drags the user off the shot they are reading', () => {
