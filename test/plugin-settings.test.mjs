@@ -14,12 +14,25 @@ import {
     isFlowCalPluginManaging,
     AUTO_FLOW_CAL_PLUGIN_ID,
     pluginManagementAllowed,
+    pluginManagementProbeTarget,
+    PLUGIN_MANAGEMENT_PROBE_KEY,
     pluginChangeBlockedByMachine,
 } from '../src/settings/plugin-view.js';
 
 test('plugin management opens only when the probe gets past the auth gate', () => {
     for (const status of [200, 400, 404, 500]) assert.equal(pluginManagementAllowed(status), true, String(status));
     for (const status of [401, 403, null, undefined]) assert.equal(pluginManagementAllowed(status), false, String(status));
+});
+
+test('the probe targets a plugin whose manifest rejects the probe key before any write', () => {
+    assert.equal(pluginManagementProbeTarget([
+        { id: 'bare.reaplugin', settings: {} },
+        { id: 'claims-key.reaplugin', settings: { [PLUGIN_MANAGEMENT_PROBE_KEY]: { type: 'boolean' } } },
+        { id: 'grinder.reaplugin', settings: { MockGrinder: { type: 'boolean' } } },
+    ]), 'grinder.reaplugin');
+    for (const plugins of [null, undefined, [], [{ id: 'bare.reaplugin' }], [{ settings: { A: {} } }]]) {
+        assert.equal(pluginManagementProbeTarget(plugins), null, JSON.stringify(plugins));
+    }
 });
 
 test('plugin changes wait for espresso and nothing else', () => {
