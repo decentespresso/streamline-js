@@ -2681,7 +2681,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             profileNameEl.style.cursor = 'pointer';
             ui.setupPressAndHold(
                 profileNameEl,
-                () => loadPage('src/profiles/profile_selector.html'),
+                () => {
+                    sessionStorage.removeItem('pendingAssignmentIndex');
+                    loadPage('src/profiles/profile_selector.html');
+                },
                 (el) => {
                     const activeRecord = resolveHeaderProfileRecord(el);
                     const profileTitle = activeRecord
@@ -2690,7 +2693,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const items = [
                         {
                             label: getTranslation('Browse Profiles'),
-                            onSelect: () => loadPage('src/profiles/profile_selector.html'),
+                            onSelect: () => {
+                                sessionStorage.removeItem('pendingAssignmentIndex');
+                                loadPage('src/profiles/profile_selector.html');
+                            },
                         },
                         {
                             label: profileTitle ? `${getTranslation('Edit')} "${profileTitle}"` : getTranslation('Edit Profile'),
@@ -2724,6 +2730,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const profileSelectBtn = document.getElementById('profile-select-btn');
         if (profileSelectBtn) {
             profileSelectBtn.addEventListener('click', () => {
+                sessionStorage.removeItem('pendingAssignmentIndex');
                 loadPage('src/profiles/profile_selector.html');
             });
         }

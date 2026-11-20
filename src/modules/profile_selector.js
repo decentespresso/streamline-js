@@ -422,6 +422,7 @@ async function handleConfirm() {
 }
 
 function handleCancel() {
+    sessionStorage.removeItem('pendingAssignmentIndex');
     loadPage('index.html');
 }
 
@@ -567,6 +568,7 @@ function showProfileContextMenu(key, profileRecord, anchorEl) {
             label: getTranslation('Edit'),
             onSelect: () => {
                 window.__pendingEditProfile = profileRecord;
+                sessionStorage.setItem('lastEditedProfileKey', key);
                 loadPage('src/profiles/profile_editor.html');
             },
         },
@@ -648,9 +650,11 @@ function renderProfiles() {
 
         let visibleProfileCount = 0;
 
+        let sectionHeaderCount = 0;
         const renderSectionHeader = (label) => {
             const h = document.createElement('div');
-            h.className = 'px-3 pt-4 pb-1 text-[16px] uppercase tracking-wider text-[var(--low-contrast-white)] select-none';
+            const spacing = sectionHeaderCount++ === 0 ? 'pt-4' : 'border-t border-[var(--border-primary)] mt-3 pt-5';
+            h.className = `px-3 ${spacing} pb-1 text-[20px] font-semibold uppercase tracking-wider text-[var(--text-primary)] select-none`;
             h.textContent = label;
             frag.appendChild(h);
         };
@@ -1781,6 +1785,7 @@ export async function initializeProfileSelector() {
                     ],
                 },
             };
+            if (selectedProfileKey) sessionStorage.setItem('lastEditedProfileKey', selectedProfileKey);
             loadPage('src/profiles/profile_editor.html');
         });
     }
@@ -1835,6 +1840,7 @@ export async function initializeProfileSelector() {
             const profileRecord = availableProfiles[selectedProfileKey];
             if (!profileRecord) return;
             window.__pendingEditProfile = profileRecord;
+            sessionStorage.setItem('lastEditedProfileKey', selectedProfileKey);
             loadPage('src/profiles/profile_editor.html');
         });
     };
