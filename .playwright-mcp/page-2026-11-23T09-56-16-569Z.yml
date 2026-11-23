@@ -1,0 +1,8 @@
+- generic [active] [ref=e1]:
+  - dialog:
+    - generic:
+      - heading "Choose a Profile" [level=3]
+      - generic:
+        - button "Upload a Profile"
+        - generic:
+          - button "Close"

@@ -615,15 +615,15 @@ panels to resize them. **SAVE** and **CANCEL** sit at the top right.
 ![The settings screen with the help overlay showing](docs/media/settings-help.jpg)
 
 ### 1. Quick Adjustments
-Sub-pages for **Flow calibration**, **Steam**, **Hot Water**, **Water Tank**, **Flush** and
+Sub-pages for **Shot control**, **Steam**, **Hot Water**, **Water Tank**, **Flush** and
 **Machine Advanced Settings**.
 
-The two flow multipliers are worth understanding if your shots stop slightly early or late:
+The two **Look-ahead** settings under Shot control are worth understanding if your shots stop slightly early or late:
 
 | Setting | Default | What it does |
 |---|---|---|
-| **Weight Flow Multiplier** | 1.0 | Applied to weight flow when projecting the final weight for stop-at-weight. Higher stops the shot earlier, lower stops it later |
-| **Volume Flow Multiplier** | 0.3 s | Applied to machine flow when projecting volume for stop-at-volume. Accounts for the lag between the stop command and flow actually stopping |
+| **Weight Look-ahead** | 1.0 | Applied to weight flow when projecting the final weight for stop-at-weight. Higher stops the shot earlier, lower stops it later |
+| **Volume Look-ahead** | 0.3 s | Applied to machine flow when projecting volume for stop-at-volume. Accounts for the lag between the stop command and flow actually stopping |
 
 ### 2. Connection
 Three sub-pages: **1. Machine**, **2. Scale** and **3. Grinder**. This is the section to visit when devices
@@ -665,6 +665,10 @@ pressure, corrected against your own reference measurement — the page previews
 writes, because the firmware folds each write into the value it already holds) and — on Bengle machines only — **Load Cells**, which walks through a
 load-cell calibration with a reference weight. Some values here are read from the machine but not saveable, depending on what the firmware
 API supports.
+
+Sensor Calibration also holds **Flow calibration**, the same setting as the De1App's Flow multiplier:
+the DE1 estimates flow rather than measuring it, and this scales that estimate. If the volume shown for
+a shot doesn't match what is in the cup, this is the setting to adjust, not the Look-ahead settings.
 
 ### 4. Machine
 Sub-pages for **Smart Charging**, **Machine Info**, and — on Bengle machines only — **Cup

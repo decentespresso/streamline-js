@@ -1,0 +1,9 @@
+[     352ms] [LOG] [AUDIT] i18n: device=en-US|en match=en stored=en chosen=false -> en @ http://localhost:8044/src/modules/i18n.js:453
+[    1396ms] [LOG] [AUDIT] perf: nav settings:translate total=8ms @ http://localhost:8044/src/modules/perf-probe.js:181
+[    1540ms] [LOG] [AUDIT] perf: nav settings/calib_sensors render=5 translate=80 total=81ms @ http://localhost:8044/src/modules/perf-probe.js:181
+[    1543ms] [LOG] rendering flush settings form with settings:  null @ http://localhost:8044/src/settings/settings.js:1370
+[    1556ms] [LOG] [AUDIT] perf: nav settings/calib_sensors module=27 total=175ms @ http://localhost:8044/src/modules/perf-probe.js:181
+[    1603ms] [LOG] [AUDIT] perf: nav profiles:load fetched=43 records=43 merged=57 total=57ms @ http://localhost:8044/src/modules/perf-probe.js:181
+[    1835ms] [LOG] [AUDIT] perf: nav settings fetch=12 inject=14 shell=64 paint=513 total=513ms @ http://localhost:8044/src/modules/perf-probe.js:181
+[   37436ms] [LOG] [AUDIT] perf: nav settings/flowmultiplier render=3 translate=9 total=9ms @ http://localhost:8044/src/modules/perf-probe.js:181
+[   38951ms] [LOG] [AUDIT] perf: nav settings/flowmultiplier render=3 translate=9 total=9ms @ http://localhost:8044/src/modules/perf-probe.js:181
