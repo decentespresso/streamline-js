@@ -1,0 +1,19 @@
+/* A device plugin's page in a top-layer dialog (surface-dialog.js). The dialog is not
+   inside the scaled 1920x1200 canvas, so the framed page renders at the WebView's own
+   size; the skin's chrome is sized in vh, 1vh being 12 design px. */
+.surface-dialog { width: 94vw; height: 92vh; max-width: none; max-height: none; padding: 0; border: 0; border-radius: 1.5vh; overflow: hidden; background: var(--box-color, #fff); color: var(--text-primary, #000); font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+.surface-dialog[open] { display: flex; flex-direction: column; }
+.surface-dialog::backdrop { background: rgba(0,0,0,.5); backdrop-filter: blur(6px); }
+.surface-dialog-header { display: flex; justify-content: space-between; align-items: center; gap: 2vh; padding: 1.5vh 3vh; border-bottom: 1px solid var(--border-primary, #e8e8e8); flex-shrink: 0; }
+.surface-dialog-title { margin: 0; min-width: 0; font-size: 3vh; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.surface-dialog-close { display: inline-flex; align-items: center; gap: 1vh; flex-shrink: 0; height: 5.3vh; padding: 0 3vh; font-size: 2vh; font-weight: 600; border: 2px solid var(--mimoja-blue-v2); border-radius: 1vh; background: transparent; color: var(--mimoja-blue-v2); cursor: pointer; }
+.surface-dialog-close span[aria-hidden] { font-size: 3vh; line-height: 1; }
+.surface-dialog-body { position: relative; flex: 1; min-height: 0; }
+.surface-dialog-frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.surface-dialog-error { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3vh; padding: 3vh; text-align: center; font-size: 2.2vh; }
+.surface-dialog-error[hidden] { display: none; }
+.surface-dialog-error p { margin: 0; }
+.surface-dialog-open { display: inline-flex; align-items: center; height: 5.3vh; padding: 0 3.3vh; font-size: 2vh; font-weight: 600; border: 2px solid var(--mimoja-blue-v2); border-radius: 1vh; color: var(--mimoja-blue-v2); text-decoration: none; }
+.surface-dialog-hint { flex-shrink: 0; margin: 0; padding: .3vh 3vh; font-size: 1.7vh; text-align: center; border-top: 1px solid var(--border-primary, #e8e8e8); }
+.surface-dialog-hint span { opacity: .7; }
+.surface-dialog-hint a { display: inline-flex; align-items: center; min-height: 5.3vh; padding: 0 1.5vh; color: var(--mimoja-blue-v2); text-decoration: underline; text-underline-offset: .3vh; }

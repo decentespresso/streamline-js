@@ -191,6 +191,17 @@ export function scaleDoseFor({ weight, readAt, now, state, espressoEndedAt }) {
     return scaleDoseWeight(weight);
 }
 
+/** A device surface's href, resolved against the Decaid API origin: only a plugin page on that origin, else null. */
+export function deviceSurfaceUrl(href, apiOrigin) {
+    if (typeof href !== 'string' || !href) return null;
+    try {
+        const url = new URL(href, apiOrigin);
+        return url.origin === apiOrigin && !url.username && !url.password && url.pathname.startsWith('/api/v1/plugins/') ? url.href : null;
+    } catch {
+        return null;
+    }
+}
+
 // The size an overlay asked for with `streamline:size`, held to what the overlay may
 // use: never bigger than the default dialog or the screen, never a sliver. null for junk.
 export const OVERLAY_LIMITS = { maxWidth: 1100, maxHeight: 760, minWidth: 280, minHeight: 160 };

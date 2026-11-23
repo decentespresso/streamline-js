@@ -28,7 +28,7 @@ The Grind tile is a recipe value (remembered per profile). The grinder has its o
 
 With both on, a value one side just wrote is not sent back, so they do not fight.
 
-The Grinder page also links to the plugin's own settings and diagnostics pages when the plugin offers them.
+The Grinder page also opens the plugin's own settings and diagnostics pages when the plugin offers them, in a dialog over the page with a **Close** button (a tap outside it or Escape closes it too). The host must allow the skin to frame those pages (`Content-Security-Policy: frame-ancestors` naming the skin's origin); the page gets `embed=1` and `theme=light|dark` like a plugin overlay. A page Decaid answers with an error, or one that does not load within 10 s, shows an error instead, and **Open anyway** under the dialog opens the page in place of the skin for a host that refuses to be framed (the kiosk then leaves the skin).
 
 ## For plugin authors
 

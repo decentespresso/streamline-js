@@ -256,6 +256,20 @@ export function connectGrinderSnapshot(onSnapshot, onOpen = null) {
     return { close: () => socket.close() };
 }
 
+/**
+ * GET a Decaid-served page before it is framed (plugin endpoints dispatch every method to the
+ * plugin, so HEAD would not be cheaper or safer): true for 2xx, false for any other status,
+ * null when the request itself failed.
+ */
+export async function isPageAvailable(url, signal) {
+    try {
+        return (await fetch(url, { signal })).ok;
+    } catch (error) {
+        logger.debug('Page check failed:', url, error);
+        return null;
+    }
+}
+
 // ── Sensors (Bengle milk probe et al.) ──────────────────────────────────────
 // GET /api/v1/sensors lists devices currently registered on the sensor bus
 // (e.g. a Bengle's onboard milk probe, auto-registered by reaprime's
