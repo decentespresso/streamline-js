@@ -276,6 +276,8 @@ let shotEndedAt = null;
 // A counter that only ever increases has no such collision.
 let shotGeneration = 0;
 const SHOT_RESTART_COOLDOWN_MS = 5000;
+const SHOT_FEED_GAP_MS = 5000;
+let lastShotFrameAt = null;
 let dataTimeout;
 let de1DeviceId = null;
 let isDe1Connected = false;
@@ -1084,6 +1086,12 @@ function handleData(data) {
         // Only start the shot clock and chart when preinfusion or pouring starts
         // This excludes the "preparingForShot" phase from the shot timing
         if (substate === 'preinfusion' || substate === 'pouring') {
+            const frameAt = new Date(data.timestamp).getTime();
+            if (shotStartTime && frameAt - lastShotFrameAt > SHOT_FEED_GAP_MS) {
+                logger.warn(`Shot frames resumed after ${Math.round((frameAt - lastShotFrameAt) / 1000)}s of silence; starting a new shot.`);
+                endLiveShot();
+            }
+            lastShotFrameAt = frameAt;
             if (!shotStartTime) {
                 if (shotEndedAt && (Date.now() - shotEndedAt) < SHOT_RESTART_COOLDOWN_MS) {
                     return;
@@ -1121,29 +1129,18 @@ function handleData(data) {
     } else {
         if (shotStartTime) {
             shotEndedAt = Date.now();
-            // Clear before finalizing, and guard the finalize itself. A throw
-            // in there used to unwind past the reset and strand shotStartTime:
-            // every later idle frame retried the same failing finalize, and --
-            // because the next shot's reset hangs off `if (!shotStartTime)` --
-            // that shot appended to the previous shot's arrays instead of
-            // starting clean. Issue #73, where a 3s flush reported 72995s
-            // because it was still measuring from a shot 20 hours earlier.
-            // The catch also keeps the blame local: uncaught, this surfaced in
-            // the WebView console as "Error parsing WebSocket message", which
-            // points at the JSON parser rather than the chart.
-            shotStartTime = null;
-            // Before finalize: the line describes the frames of the shot, and a
-            // throw in finalize must not take the measurement down with it.
-            endPerfShot(shotData.getTotalTime());
-            try {
-                // Reviewing: end the live shot but do not paint. The labels
-                // belong to the shot that finished, chartData holds the one the
-                // user is reading.
-                chart.finalizeLiveChart(!history.isReviewingHistory());
-            } catch (error) {
-                logger.error('finalizeLiveChart failed; shot ended without final labels:', error);
-            }
+            endLiveShot();
         }
+    }
+}
+
+function endLiveShot() {
+    shotStartTime = null;
+    endPerfShot(shotData.getTotalTime());
+    try {
+        chart.finalizeLiveChart(!history.isReviewingHistory());
+    } catch (error) {
+        logger.error('finalizeLiveChart failed; shot ended without final labels:', error);
     }
 }
 
