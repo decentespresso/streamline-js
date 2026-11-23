@@ -276,8 +276,7 @@ let shotEndedAt = null;
 // A counter that only ever increases has no such collision.
 let shotGeneration = 0;
 const SHOT_RESTART_COOLDOWN_MS = 5000;
-const SHOT_FEED_GAP_MS = 5000;
-let lastShotFrameAt = null;
+let liveShotId = null;
 let dataTimeout;
 let de1DeviceId = null;
 let isDe1Connected = false;
@@ -1086,12 +1085,6 @@ function handleData(data) {
         // Only start the shot clock and chart when preinfusion or pouring starts
         // This excludes the "preparingForShot" phase from the shot timing
         if (substate === 'preinfusion' || substate === 'pouring') {
-            const frameAt = new Date(data.timestamp).getTime();
-            if (shotStartTime && frameAt - lastShotFrameAt > SHOT_FEED_GAP_MS) {
-                logger.warn(`Shot frames resumed after ${Math.round((frameAt - lastShotFrameAt) / 1000)}s of silence; starting a new shot.`);
-                endLiveShot();
-            }
-            lastShotFrameAt = frameAt;
             if (!shotStartTime) {
                 if (shotEndedAt && (Date.now() - shotEndedAt) < SHOT_RESTART_COOLDOWN_MS) {
                     return;
@@ -1136,6 +1129,7 @@ function handleData(data) {
 
 function endLiveShot() {
     shotStartTime = null;
+    liveShotId = null;
     endPerfShot(shotData.getTotalTime());
     try {
         chart.finalizeLiveChart(!history.isReviewingHistory());
@@ -1469,6 +1463,15 @@ let seqWeightStop = null; // { shotId, gen } | null
 
 function handleShotStateEvent(frame) {
     if (!frame?.event) return;
+
+    if (shotStartTime && frame.shotId) {
+        if (liveShotId && frame.shotId !== liveShotId) {
+            logger.warn(`Decaid reports shot ${frame.shotId} while ${liveShotId} is still open; starting a new shot.`);
+            endLiveShot();
+        } else {
+            liveShotId = frame.shotId;
+        }
+    }
 
     const active = frame.state && frame.state !== 'idle' && frame.state !== 'finished';
     // Any active-shot or decision frame proves the sequencer is running this
