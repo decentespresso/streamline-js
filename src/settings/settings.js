@@ -6764,9 +6764,22 @@ function bindPluginOpenButton(cardEl, plugin) {
     const pageUrl = button.dataset.pluginUrl;
     if (!pageUrl) return;
     button.addEventListener('click', async () => {
-        // Nothing is disabled while the answer is read: the read is a local
-        // request that normally takes milliseconds, and a second tap either
-        // navigates or is swallowed by the overlay's one-at-a-time guard.
+        if (plugin && !plugin.loaded) {
+            if (await machineBlocksPluginChange()) {
+                ui.showToast(getTranslation('Wait until this shot is saved'), 4000, 'info');
+                return;
+            }
+            try {
+                await enablePlugin(plugin.id);
+                plugin.loaded = true;
+                const toggle = cardEl.querySelector('[data-role="plugin-enable-toggle"]');
+                if (toggle) toggle.checked = true;
+            } catch (e) {
+                logger.error(`Failed to enable ${plugin.id} before opening its page`, e);
+                ui.showToast(`${getTranslation('Failed')}: ${e.message || e}`, 4000, 'error');
+                return;
+            }
+        }
         const action = plugin ? await readSettingsOpen(plugin) : null;
         if (!action) {
             window.location.assign(pageUrl);
