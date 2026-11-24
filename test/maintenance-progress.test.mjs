@@ -285,7 +285,7 @@ test('transport mode runs started -> ongoing -> done on screen', () => {
 
     state = run(state, { state: 'idle' }, AIR_PURGE_PROCEDURE);
     assert.equal(state.phase, 'done');
-    assert.equal(caption(state, AIR_PURGE_PROCEDURE), 'Ready');
+    assert.equal(caption(state, AIR_PURGE_PROCEDURE), 'Finished');
     assert.equal(procedureIndicatorView(state, AIR_PURGE_PROCEDURE).tone, 'success');
     assert.ok(!isProcedureActive(state), 'the button reads Start again once it is done');
 

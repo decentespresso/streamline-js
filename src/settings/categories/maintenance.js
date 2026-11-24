@@ -64,7 +64,7 @@ function stepDots(milestone, labels) {
  * sentence, a Start button that becomes Stop, a confirmation, and the milestone
  * strip. Keeping them in one template is what stops the two drifting apart.
  */
-function procedureView({ title, action, description, confirmation, extra = '' }) {
+function procedureView({ title, action, description, confirmation, extra = '', confirmExtra = '', confirmLabel = 'Start' }) {
     return `
         <div class="flex flex-col gap-[60px] items-start w-full">
             <h2 class="font-semibold text-[var(--text-primary)] text-[36px] text-center w-full" data-i18n-key="${title}">${title}</h2>
@@ -84,10 +84,11 @@ function procedureView({ title, action, description, confirmation, extra = '' })
             <dialog data-procedure-confirm class="modal">
                 <div class="modal-box bg-[var(--box-color)] max-w-2xl">
                     <h3 class="font-semibold text-[30px] text-[var(--action-label)] mb-2" data-i18n-key="${title}">${title}</h3>
+                    ${confirmExtra}
                     <p class="text-[20px] text-[var(--text-primary)] opacity-80 mb-4" data-i18n-key="${confirmation}">${confirmation}</p>
                     <div class="modal-action">
                         <button type="button" data-action="cancel" class="${DIALOG_CANCEL_BTN}" data-i18n-key="Cancel">Cancel</button>
-                        <button type="button" data-action="confirm-procedure" class="${DIALOG_BTN}" data-i18n-key="Start">Start</button>
+                        <button type="button" data-action="confirm-procedure" class="${DIALOG_BTN}" data-i18n-key="${confirmLabel}">${confirmLabel}</button>
                     </div>
                 </div>
             </dialog>
@@ -113,12 +114,23 @@ function descaling() {
     });
 }
 
+const TRANSPORT_PHOTOS = { idle: 'src/ui/transport-prepare.webp', running: 'src/ui/transport-do.webp' };
+const PULL_TANK = 'After you press Ok, pull the water tank forward as shown in this photograph.';
+const transportPhoto = (src, attrs = '') =>
+    `<img src="${src}" alt="" ${attrs} class="block w-[280px] h-auto rounded-[16px] bg-[#f6f1f0] shrink-0">`;
+
 function airPurge() {
     return procedureView({
         title: 'Transport Mode',
         action: 'air-purge',
         description: 'Purges remaining water from inside the machine. Run before packing the machine to prevent leaks during transport.',
         confirmation: 'You can turn your machine off once it is out of water. It will then be ready for transport.',
+        confirmLabel: 'Ok',
+        extra: `<div class="flex justify-center w-full">${transportPhoto(TRANSPORT_PHOTOS.idle, 'data-procedure-photo')}</div>`,
+        confirmExtra: `<div class="flex items-center gap-[24px] mb-4">
+                ${transportPhoto(TRANSPORT_PHOTOS.idle)}
+                <p class="text-[22px] font-semibold text-[var(--text-primary)]" data-i18n-key="${PULL_TANK}">${PULL_TANK}</p>
+            </div>`,
     });
 }
 
@@ -174,6 +186,9 @@ export async function mountSettingsCategory({ container, category }) {
             caption.dataset.i18nKey = view.caption;
             caption.textContent = getTranslation(view.caption) + (view.suffix ?? '');
         }
+
+        const photo = container.querySelector('[data-procedure-photo]');
+        if (photo) photo.src = isProcedureActive(procedureState) ? TRANSPORT_PHOTOS.running : TRANSPORT_PHOTOS.idle;
 
         const button = container.querySelector('[data-procedure-start]');
         if (!button) return;

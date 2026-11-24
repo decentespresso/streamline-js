@@ -93,6 +93,7 @@ export const AIR_PURGE_PROCEDURE = Object.freeze({
     state: 'airPurge',
     milestones: Object.freeze(['Starting', 'Now removing water from your espresso machine.']),
     milestoneFor() { return 1; },
+    doneCaption: 'Finished',
 });
 
 /** Nothing has been started, and nothing observed. */
@@ -236,7 +237,7 @@ export function procedureIndicatorView(procedureState, procedure) {
         case 'running':
             return { ...base, caption: procedure.milestones[milestone], tone: 'progress' };
         case 'done':
-            return { ...base, caption: 'Ready', tone: 'success' };
+            return { ...base, caption: procedure.doneCaption ?? 'Ready', tone: 'success' };
         default:
             return { ...base, caption: 'The machine did not start. Check that it is awake and connected.', tone: 'error' };
     }
