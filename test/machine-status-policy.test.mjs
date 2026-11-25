@@ -36,6 +36,7 @@ test('state-level keys still resolve from the status', () => {
     assert.equal(resolveStatusStateKey('Disconnected', undefined), 'disconnected');
     assert.equal(resolveStatusStateKey('Heating 12s', 'idle'), 'heating');
     assert.equal(resolveStatusStateKey('Error', 'idle'), 'error');
+    assert.equal(resolveStatusStateKey('Busy', 'idle'), 'busy');
 });
 
 test('the tail predicate is true for pouringDone and puffing only', () => {

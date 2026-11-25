@@ -1,0 +1,524 @@
+{
+    "title": "Streamline — getting started",
+    "baseUrl": "http://127.0.0.1:8045",
+    "decaid": "http://localhost:8080",
+    "kokoro": "/Users/markc/Documents/streamline_js/kokoro-tts",
+    "voice": "am_michael",
+    "speed": 1.0,
+    "gap": 0.28,
+    "tail": 0.6,
+    "viewport": {
+        "width": 1920,
+        "height": 1080
+    },
+    "output": {
+        "width": 1920,
+        "height": 1080
+    },
+    "localStorage": {
+        "streamline.dye2Enabled": "false",
+        "theme": "light"
+    },
+    "scenes": [
+        {
+            "id": "intro",
+            "lines": [
+                {
+                    "say": "This video explains our new Streamline skin for your Decent machine."
+                },
+                {
+                    "say": "Everything for one shot is on this page:"
+                },
+                {
+                    "say": "grind and dose at the top left,",
+                    "do": [
+                        [
+                            "outline",
+                            "#grind-section, #dose-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "your brew temperature,",
+                    "do": [
+                        [
+                            "outline",
+                            "#brew-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "steam, flush and hot water below them,",
+                    "do": [
+                        [
+                            "outline",
+                            "#steam-section, #flush-section, #hotwater-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "and the live chart in the middle.",
+                    "do": [
+                        [
+                            "outline",
+                            "#chart-wrap"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "profile",
+            "lines": [
+                {
+                    "say": "Your favourite profiles sit along the top.",
+                    "do": [
+                        [
+                            "outline",
+                            "#profile-fav-nav"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Tap one to load it,",
+                    "do": [
+                        [
+                            "tap",
+                            "#fav-profile-btn-0"
+                        ]
+                    ]
+                },
+                {
+                    "say": "and the machine takes its temperature and pressure from that profile.",
+                    "do": [
+                        [
+                            "outline",
+                            "#profile-name"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Press and hold a favourite for a few more options.",
+                    "do": [
+                        [
+                            "press",
+                            "#fav-profile-btn-0"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.2,
+                    "do": [
+                        [
+                            "outline",
+                            "#app-context-menu"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 0.8,
+                    "do": [
+                        [
+                            "tap",
+                            "#app-context-menu-backdrop"
+                        ],
+                        [
+                            "clear",
+                            ""
+                        ]
+                    ]
+                },
+                {
+                    "say": "Tap the profile name, or the two arrows beside it,",
+                    "do": [
+                        [
+                            "outline",
+                            "#profile-name, #profile-select-btn"
+                        ]
+                    ]
+                },
+                {
+                    "say": "to open the profile list.",
+                    "do": [
+                        [
+                            "tap",
+                            "#profile-select-btn"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.0,
+                    "do": [
+                        [
+                            "outline",
+                            "#profile-list"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Pick one from the list,"
+                },
+                {
+                    "say": "and tap Confirm to load it.",
+                    "do": [
+                        [
+                            "outline",
+                            "#confirm-profile-btn"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 0.8,
+                    "do": [
+                        [
+                            "tap",
+                            "#confirm-profile-btn"
+                        ],
+                        [
+                            "clear",
+                            ""
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.2
+                }
+            ]
+        },
+        {
+            "id": "dose",
+            "lines": [
+                {
+                    "say": "Set your dose with the plus and minus buttons,",
+                    "do": [
+                        [
+                            "outline",
+                            "#dose-section"
+                        ],
+                        [
+                            "tap",
+                            "#dose-in-plus"
+                        ]
+                    ]
+                },
+                {
+                    "say": "and your grinder setting beside it.",
+                    "do": [
+                        [
+                            "outline",
+                            "#grind-section"
+                        ],
+                        [
+                            "tap",
+                            "#grind-plus"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Streamline remembers both separately for every profile.",
+                    "do": [
+                        [
+                            "outline",
+                            "#grind-section, #dose-section"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "shot",
+            "lines": [
+                {
+                    "say": "Now press espresso on your machine.",
+                    "do": [
+                        [
+                            "state",
+                            "espresso"
+                        ],
+                        [
+                            "clear",
+                            ""
+                        ]
+                    ]
+                },
+                {
+                    "say": "The chart draws the shot as it happens: pressure, flow and weight, second by second.",
+                    "do": [
+                        [
+                            "outline",
+                            "#chart-wrap"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Each step of the profile is named at the top right as it happens.",
+                    "do": [
+                        [
+                            "outline",
+                            "#machine-status"
+                        ]
+                    ]
+                },
+                {
+                    "say": "The clock and the weight in the status row tell you where you are.",
+                    "do": [
+                        [
+                            "outline",
+                            "#data-clock"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 2.5,
+                    "do": [
+                        [
+                            "outline",
+                            "#data-weight"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.5,
+                    "do": [
+                        [
+                            "clear",
+                            ""
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.0,
+                    "do": [
+                        [
+                            "state",
+                            "idle"
+                        ],
+                        [
+                            "tap",
+                            "#steam-preset-1"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "steam",
+            "lines": [
+                {
+                    "say": "For milk, set the time and the flow here first.",
+                    "do": [
+                        [
+                            "outline",
+                            "#steam-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Thirty seconds suits most jugs.",
+                    "do": [
+                        [
+                            "outline",
+                            "#steam-presets"
+                        ],
+                        [
+                            "tap",
+                            "#steam-preset-2"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Then press steam on your machine.",
+                    "do": [
+                        [
+                            "state",
+                            "steam"
+                        ],
+                        [
+                            "clear",
+                            ""
+                        ]
+                    ]
+                },
+                {
+                    "hold": 2.0
+                },
+                {
+                    "hold": 0.6,
+                    "do": [
+                        [
+                            "state",
+                            "idle"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "flushwater",
+            "lines": [
+                {
+                    "say": "Flush and hot water work the same way.",
+                    "do": [
+                        [
+                            "outline",
+                            "#flush-section, #hotwater-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Set the seconds,",
+                    "do": [
+                        [
+                            "outline",
+                            "#flush-section"
+                        ],
+                        [
+                            "tap",
+                            "#flush-preset-1"
+                        ]
+                    ]
+                },
+                {
+                    "say": "or the volume and temperature, on the tablet,",
+                    "do": [
+                        [
+                            "outline",
+                            "#hotwater-section"
+                        ],
+                        [
+                            "tap",
+                            "#hot-water-vol-plus"
+                        ]
+                    ]
+                },
+                {
+                    "say": "and start them on the machine.",
+                    "do": [
+                        [
+                            "clear",
+                            ""
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "outro",
+            "lines": [
+                {
+                    "say": "Every shot is saved.",
+                    "do": [
+                        [
+                            "outline",
+                            "#shot-history-panel"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Tap the arrow in Shot History to look back through your last ones,",
+                    "do": [
+                        [
+                            "tap",
+                            "#history-prev-btn"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.5,
+                    "do": [
+                        [
+                            "tap",
+                            "#history-prev-btn"
+                        ]
+                    ]
+                },
+                {
+                    "say": "When you're done, tap Sleep to put the machine to sleep.",
+                    "do": [
+                        [
+                            "outline",
+                            "#sleep-button"
+                        ]
+                    ]
+                },
+                {
+                    "say": "And for more helpful tips, open Settings,",
+                    "do": [
+                        [
+                            "outline",
+                            "#settings-btn"
+                        ],
+                        [
+                            "tap",
+                            "#settings-btn"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 0.6,
+                    "do": [
+                        [
+                            "outline",
+                            "#usermanual-btn"
+                        ]
+                    ]
+                },
+                {
+                    "say": "choose User Manual,",
+                    "do": [
+                        [
+                            "tap",
+                            "#usermanual-btn"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 0.8,
+                    "do": [
+                        [
+                            "outline",
+                            ".settings-subnav-btn[data-category=\"quickstart\"]"
+                        ]
+                    ]
+                },
+                {
+                    "say": "and tap the Quick Start Guide to learn more.",
+                    "do": [
+                        [
+                            "tap",
+                            ".settings-subnav-btn[data-category=\"quickstart\"]"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 2.5,
+                    "do": [
+                        [
+                            "clear",
+                            ""
+                        ],
+                        [
+                            "tap",
+                            "#cancel-settings-btn"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Enjoy making Decent espresso!",
+                    "do": [
+                        [
+                            "tap",
+                            "#sleep-button"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 4.5
+                }
+            ]
+        }
+    ],
+    "hide": [
+        "#fullscreen-toggle-btn"
+    ]
+}

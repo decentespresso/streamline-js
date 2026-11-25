@@ -3323,7 +3323,7 @@ export function updateMachineStatus(data) {
     // logger.debug(`isPouringState: ${isPouringState}, status: ${status}, substate: ${substate}`);
 
     // Clear previous classes and intervals to prevent conflicts
-    machineStatusEl.classList.remove('status-msg-green', 'status-msg-red', 'status-msg-clickable', 'text-red-500', 'text-[var(--status-ready-green)]', 'text-[var(--status-needs-water-red)]', 'text-[var(--status-water-blue)]');
+    machineStatusEl.classList.remove('status-msg-green', 'status-msg-red', 'status-msg-busy', 'status-msg-clickable', 'text-red-500', 'text-[var(--status-ready-green)]', 'text-[var(--status-needs-water-red)]', 'text-[var(--status-water-blue)]');
     machineStatusEl.onclick = null; // Clear previous click handler
 
     // Manage preinfusion/pouring interval lifecycle
@@ -3542,6 +3542,10 @@ function getStatusConfiguration(status, substate, stepName, timeValue, isClickab
         'idle': {
             message: getTranslation('Ready'),
             messageClass: 'status-msg-green'
+        },
+        'busy': {
+            message: status,
+            messageClass: 'status-msg-busy'
         },
         'preinfusion': {
             message: `${stepName} | ${formatTimeAbbreviated(timeValue)} >>`,

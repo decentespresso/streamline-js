@@ -243,6 +243,7 @@ body {
     --status-ready-green:#17c29a;
     --status-green-color: #0CA581;
     --status-red-color: #DA515E;
+    --status-busy-color: #777777;
     --status-clickable-color: var(--mimoja-blue-v2);
     --fav-button-wait:#e3e4e6;
 
@@ -317,6 +318,7 @@ body {
     --left-label-text : var(--mimoja-blue-v2);
     --status-green-color: #0CA581; /* Same as light mode */
     --status-red-color: #DA515E;   /* Same as light mode */
+    --status-busy-color: #707485;
     --status-clickable-color: #415996;
     /* One step lighter than the button, the way the light value is one step
        darker than its own. The light #e3e4e6 left unset here read as a white
@@ -366,6 +368,13 @@ body {
     font-weight: 600;
     font-size: 33px;
     color: var(--status-red-color);
+}
+
+.status-msg-busy {
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    font-size: 33px;
+    color: var(--status-busy-color);
 }
 
 /* A toast that does something when tapped. The solid alert-info fill read as a

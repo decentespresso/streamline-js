@@ -9,6 +9,7 @@ const STATE_KEYS = [
     { key: 'error', from: 'status' },
     { key: 'heating', from: 'status' },
     { key: 'idle', from: 'status' },
+    { key: 'busy', from: 'status' },
     { key: 'flushing', from: 'both' },
     { key: 'steaming', from: 'both' },
     { key: 'hotwater', from: 'both' },
