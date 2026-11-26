@@ -1144,22 +1144,3 @@ textarea,
     font-weight: 600;
     line-height: 28px;
 }
-
-#settings-content-area > div > div.text-\[36px\]:first-child:has(+ div > hr) {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  margin-top: -24px;
-  padding-top: 24px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--border-primary);
-  background-color: var(--box-color);
-}
-
-#settings-content-area > div > div.text-\[36px\]:first-child + div:has(> hr) {
-  display: none;
-}
-
-#settings-content-area p.font-normal.leading-\[1\.4\] {
-  max-width: 34em;
-}

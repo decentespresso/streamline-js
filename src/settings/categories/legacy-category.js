@@ -6,9 +6,7 @@ export async function mountSettingsCategory(context) {
     await initializeSettings({
         initialMainCategory: context.mainCategory,
         initialCategory: context.category,
-        initialReaChanges: getPendingReaChanges(),
-        revealTerm: context.revealTerm,
-        pendingCategories: context.pendingCategories
+        initialReaChanges: getPendingReaChanges()
     });
     return cleanupSettings;
 }
