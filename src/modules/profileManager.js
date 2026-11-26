@@ -888,8 +888,12 @@ export async function loadProfileForWake(profileId) {
         let held = false;
         for (let attempt = 0; attempt < 2 && !held; attempt++) {
             if (attempt) logger.warn(`Wake profile ${profileId} did not stick; retrying once.`);
-            await updateWorkflow(wakePatch, 'profile.wake');
-            held = workflowHoldsProfile(await getWorkflow().catch(() => null), profileToSend);
+            try {
+                const written = await updateWorkflow(wakePatch, 'profile.wake');
+                held = workflowHoldsProfile(await getWorkflow(), written?.profile);
+            } catch (error) {
+                logger.warn(`Wake profile ${profileId} write failed:`, error);
+            }
         }
         if (!held) {
             logger.error(`Wake profile ${profileId} still not on the machine after retry.`);
