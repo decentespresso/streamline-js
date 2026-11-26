@@ -35,7 +35,7 @@ import { loadStyle } from './vendor-loader.js';
 import { loadECharts } from './echarts-loader.js';
 import { initHelpLauncher } from './help-launcher.js';
 import { noteClearContext } from './workflow-note.js';
-import { sleepProfileMark, shouldApplyWakeProfile, createSleepMarkStore } from './wake-profile.js';
+import { sleepProfileMark, shouldApplyWakeProfile, createSleepMarkStore, sleepTransition } from './wake-profile.js';
 import { legacyKeysToPurge, LEGACY_VISUALIZER_PURGED_FLAG } from './legacy-credentials-purge.js';
 import { shouldPromptReload } from './skin-version.js';
 import { APP_VERSION, SKIN_ID } from '../version.js';
@@ -283,6 +283,7 @@ let isDe1Connected = false;
 let isNonGhcMachine = false;
 let isScaleConnected = false; // New variable to track Scale connection status
 let previousState = {}; // Track previous machine state object {state, substate}
+let lastSettledState = null;
 let currentActiveProfile = null; // Track active profile for shot-end reason detection
 
 let latestScaleWeight = 0;
@@ -931,39 +932,29 @@ function handleData(data) {
         ui.updateMachineStatus({ status: "Disconnected" }); // Show disconnected when in error state
     }
 
-    // Remember which profile the machine went to sleep with, so waking can tell a
-    // profile chosen during sleep from the one it was left on.
-    if (state === MachineState.SLEEPING && previousState.state !== MachineState.SLEEPING) {
-        // commit() publishes THIS sleep's answer. An unreadable workflow commits
-        // null, which clears the key: leaving the previous sleep's mark behind
-        // made the next wake compare against an unrelated profile and skip the
-        // wake profile. A commit that lands after the machine already woke is
-        // dropped by the store's generation token.
+    const sleepEdge = sleepTransition(lastSettledState, state);
+    const sleepSeenAwake = lastSettledState !== null;
+    if (state !== MachineState.ERROR) lastSettledState = state;
+    const wakeProfileId = api.isWakeProfileEnabled() ? api.getWakeProfileId() : '';
+
+    if (sleepEdge === 'sleep') {
         const commit = sleepMarks.beginSleep();
-        getWorkflow().then(wf => commit(sleepProfileMark(wf))).catch(() => commit(null));
+        const preload = wakeProfileId && sleepSeenAwake
+            ? profileManager.loadProfileForWake(wakeProfileId).catch(error => logger.warn('Wake profile preload at sleep failed:', error))
+            : Promise.resolve();
+        preload.then(() => getWorkflow()).then(wf => commit(sleepProfileMark(wf))).catch(() => commit(null));
     }
 
-    // Reload data when machine wakes from sleep
-    const wasSleeping = previousState.state === MachineState.SLEEPING;
-    if (wasSleeping && state !== MachineState.SLEEPING && state !== MachineState.ERROR) {
+    if (sleepEdge === 'wake') {
         logger.info('Machine woke from sleep. Reloading initial data.');
         loadInitialData();
 
-        // Consume the mark on every wake, feature on or off: one left behind
-        // would be compared against a later, unrelated sleep.
         const mark = sleepMarks.takeOnWake();
-        if (api.isWakeProfileEnabled()) {
-            const wakeProfileId = api.getWakeProfileId();
-            if (wakeProfileId) {
-                // The fallback is scoped to the workflow READ (an unreadable live
-                // workflow still wakes onto the profile). Catching the whole chain
-                // instead meant a throw from loadProfileForWake ran it a second
-                // time -- another PUT /workflow and another steam-settings apply.
-                getWorkflow().catch(() => null).then(wf => {
-                    if (shouldApplyWakeProfile(mark, wf)) return profileManager.loadProfileForWake(wakeProfileId);
-                    logger.info('Wake profile skipped: a different profile was chosen while the machine slept.');
-                }).catch(error => logger.warn('Wake profile load failed:', error));
-            }
+        if (wakeProfileId) {
+            getWorkflow().catch(() => null).then(wf => {
+                if (shouldApplyWakeProfile(mark, wf)) return profileManager.loadProfileForWake(wakeProfileId);
+                logger.info('Wake profile skipped: a different profile was chosen while the machine slept.');
+            }).catch(error => logger.warn('Wake profile load failed:', error));
         }
 
         // Hold off "[Reconnect]" — REA fires devices ws scanning ~3s after wake.

@@ -15,6 +15,7 @@ import { recipeIdPatch } from './dye-selection.js';
 import { profileSendBlocked, setPendingProfileSend, clearPendingProfileSend } from './profile-send-gate.js';
 import { profileAtBrewTemp } from './brew-temp.js';
 import { profileFingerprint } from './dye-selection.js';
+import { workflowHoldsProfile } from './wake-profile.js';
 
 /**
  * Rename a profile by ID
@@ -883,7 +884,16 @@ export async function loadProfileForWake(profileId) {
     const profileToSend = withSavedBrewTemp(
         targetYield > 0 ? { ...profile, target_weight: targetYield } : profile, meta);
     try {
-        await updateWorkflow({ profile: profileToSend, context: { ...dial, ...recipeIdPatch(null) } }, 'profile.wake');
+        const wakePatch = { profile: profileToSend, context: { ...dial, ...recipeIdPatch(null) } };
+        await updateWorkflow(wakePatch, 'profile.wake');
+        if (!workflowHoldsProfile(await getWorkflow().catch(() => null), profileToSend)) {
+            logger.warn(`Wake profile ${profileId} did not stick; retrying once.`);
+            await updateWorkflow(wakePatch, 'profile.wake');
+            if (!workflowHoldsProfile(await getWorkflow().catch(() => null), profileToSend)) {
+                logger.error(`Wake profile ${profileId} still not on the machine after retry.`);
+                return false;
+            }
+        }
         setActiveProfile(profileId);
         // Steam rides its own setters, not the workflow context.
         await applySavedSteamSettings(meta);

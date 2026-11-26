@@ -1,7 +1,7 @@
 // Run: node --test test/wake-profile.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sleepProfileMark, shouldApplyWakeProfile, createSleepMarkStore, wakeProfileChoices, SLEEP_PROFILE_KEY } from '../src/modules/wake-profile.js';
+import { sleepProfileMark, shouldApplyWakeProfile, createSleepMarkStore, wakeProfileChoices, workflowHoldsProfile, sleepTransition, SLEEP_PROFILE_KEY } from '../src/modules/wake-profile.js';
 
 const a = { title: 'Londinium', target_weight: 36, steps: [{ name: 'fill', temperature: 90 }] };
 const b = { title: 'Blooming', target_weight: 40, steps: [{ name: 'bloom', temperature: 92 }] };
@@ -105,4 +105,20 @@ test('choices sort by the title actually shown, not by record order', () => {
 test('a missing or empty record set yields no choices', () => {
     assert.deepEqual(wakeProfileChoices(null, 'v1'), []);
     assert.deepEqual(wakeProfileChoices({}, 'v1'), []);
+});
+
+test('workflowHoldsProfile ignores yield and per-step temperature, rejects another profile', () => {
+    assert.equal(workflowHoldsProfile({ profile: { ...a, target_weight: 50 } }, a), true);
+    assert.equal(workflowHoldsProfile({ profile: b }, a), false);
+    assert.equal(workflowHoldsProfile(null, a), false);
+});
+
+test('sleepTransition sees a wake through a disconnect during sleep', () => {
+    assert.equal(sleepTransition('idle', 'sleeping'), 'sleep');
+    assert.equal(sleepTransition('sleeping', 'sleeping'), null);
+    assert.equal(sleepTransition('sleeping', 'error'), null);
+    assert.equal(sleepTransition('sleeping', 'booting'), 'wake');
+    assert.equal(sleepTransition('idle', 'error'), null);
+    assert.equal(sleepTransition(null, 'sleeping'), 'sleep');
+    assert.equal(sleepTransition(null, 'idle'), null);
 });

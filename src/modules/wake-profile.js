@@ -30,6 +30,17 @@ export function shouldApplyWakeProfile(mark, liveWorkflow) {
     return live === mark;
 }
 
+export function workflowHoldsProfile(workflow, profile) {
+    const live = identity(workflow?.profile);
+    return !!live && live === identity(profile);
+}
+
+export function sleepTransition(lastSettledState, state) {
+    if (state === 'error') return null;
+    if (state === 'sleeping') return lastSettledState === 'sleeping' ? null : 'sleep';
+    return lastSettledState === 'sleeping' ? 'wake' : null;
+}
+
 /**
  * Bookkeeping for the sleep mark, kept here so node:test can drive it with a
  * fake store. Storage is injected because this module must stay DOM-free.
