@@ -3,7 +3,7 @@
     "baseUrl": "http://127.0.0.1:8045",
     "decaid": "http://localhost:8080",
     "kokoro": "/Users/markc/Documents/streamline_js/kokoro-tts",
-    "voice": "am_michael",
+    "voice": "John (Qwen3-TTS clone)",
     "speed": 1.0,
     "gap": 0.28,
     "tail": 0.6,
@@ -22,56 +22,79 @@
     "scenes": [
         {
             "id": "intro",
+            "extra": 0,
             "lines": [
                 {
-                    "say": "This video explains our new Streamline skin for your Decent machine."
+                    "say": "At Decent, we've made a few different interfaces for your tablet, so you can choose how you want to see your brewing information."
                 },
                 {
-                    "say": "Everything for one shot is on this page:"
+                    "say": "We call these skins."
                 },
                 {
-                    "say": "grind and dose at the top left,",
+                    "say": "Today, let's look at the Streamline skin."
+                },
+                {
+                    "say": "It's a dashboard that puts everything about your shot on one screen.",
                     "do": [
                         [
                             "outline",
-                            "#grind-section, #dose-section"
+                            "#main-page"
                         ]
                     ]
                 },
                 {
-                    "say": "your brew temperature,",
+                    "say": "Your coffee dose, your temperature, your pressure, steam, and even flushing afterwards.",
                     "do": [
                         [
                             "outline",
-                            "#brew-section"
-                        ]
-                    ]
-                },
-                {
-                    "say": "steam, flush and hot water below them,",
-                    "do": [
-                        [
-                            "outline",
-                            "#steam-section, #flush-section, #hotwater-section"
-                        ]
-                    ]
-                },
-                {
-                    "say": "and the live chart in the middle.",
-                    "do": [
-                        [
-                            "outline",
-                            "#chart-wrap"
+                            "#grind-section, #dose-section, #drink-section, #brew-section"
                         ]
                     ]
                 }
             ]
         },
         {
-            "id": "profile",
+            "id": "heating",
+            "extra": 0,
             "lines": [
                 {
-                    "say": "Your favourite profiles sit along the top.",
+                    "say": "When you first switch the machine on, look at the top right.",
+                    "do": [
+                        [
+                            "outlineText",
+                            "#machine-status"
+                        ]
+                    ]
+                },
+                {
+                    "say": "It says Heating while the water comes up to temperature,"
+                },
+                {
+                    "say": "and Ready when you can actually pull a shot. No guessing."
+                },
+                {
+                    "say": "While you wait, this row keeps an eye on your water and steam temperature, and how much water is left in the tank.",
+                    "do": [
+                        [
+                            "outline",
+                            "#mix-info-container, #data-steam-temp, #data-tank-vol"
+                        ]
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "favourites",
+            "extra": 0,
+            "lines": [
+                {
+                    "say": "Most Decent owners like to switch between different espresso styles, using what we call coffee profiles."
+                },
+                {
+                    "say": "A profile is really a recipe for the machine: how hot, how much pressure, and how that changes while the shot runs."
+                },
+                {
+                    "say": "Streamline keeps your favourites right along the top.",
                     "do": [
                         [
                             "outline",
@@ -80,7 +103,7 @@
                     ]
                 },
                 {
-                    "say": "Tap one to load it,",
+                    "say": "Tap one and it's loaded. No hunting through a list.",
                     "do": [
                         [
                             "tap",
@@ -89,7 +112,7 @@
                     ]
                 },
                 {
-                    "say": "and the machine takes its temperature and pressure from that profile.",
+                    "say": "Whatever you've loaded shows up here.",
                     "do": [
                         [
                             "outline",
@@ -98,7 +121,7 @@
                     ]
                 },
                 {
-                    "say": "Press and hold a favourite for a few more options.",
+                    "say": "To put a different coffee on one of these buttons, press and hold it.",
                     "do": [
                         [
                             "press",
@@ -116,7 +139,10 @@
                     ]
                 },
                 {
-                    "hold": 0.8,
+                    "say": "Replace with swaps it for another one, and Clear button empties it."
+                },
+                {
+                    "hold": 0.6,
                     "do": [
                         [
                             "tap",
@@ -127,9 +153,15 @@
                             ""
                         ]
                     ]
-                },
+                }
+            ]
+        },
+        {
+            "id": "profilelist",
+            "extra": 0,
+            "lines": [
                 {
-                    "say": "Tap the profile name, or the two arrows beside it,",
+                    "say": "Want to see everything we ship? Tap the profile name, or the two arrows beside it.",
                     "do": [
                         [
                             "outline",
@@ -138,7 +170,7 @@
                     ]
                 },
                 {
-                    "say": "to open the profile list.",
+                    "say": "That opens the full list.",
                     "do": [
                         [
                             "tap",
@@ -156,10 +188,40 @@
                     ]
                 },
                 {
-                    "say": "Pick one from the list,"
+                    "say": "The one you're using stays highlighted, so you always know where you are."
                 },
                 {
-                    "say": "and tap Confirm to load it.",
+                    "say": "There are a lot of profiles in here, and you won't want all of them."
+                },
+                {
+                    "say": "The eye on a row tucks one out of the way. It's hidden, not gone.",
+                    "do": [
+                        [
+                            "outline",
+                            ".profile-hide-btn"
+                        ]
+                    ]
+                },
+                {
+                    "say": "The eye at the top brings the hidden ones back.",
+                    "do": [
+                        [
+                            "outline",
+                            "#view_profile"
+                        ]
+                    ]
+                },
+                {
+                    "say": "And the bin deletes one for good.",
+                    "do": [
+                        [
+                            "outline",
+                            "#delete_profile"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Pick the coffee you want, tap Confirm,",
                     "do": [
                         [
                             "outline",
@@ -181,19 +243,41 @@
                     ]
                 },
                 {
-                    "hold": 1.2
+                    "say": "and you're back on the main screen with it loaded.",
+                    "do": [
+                        [
+                            "outline",
+                            "#profile-name"
+                        ]
+                    ]
                 }
             ]
         },
         {
             "id": "dose",
+            "extra": 0,
             "lines": [
                 {
-                    "say": "Set your dose with the plus and minus buttons,",
+                    "say": "So, do you need to change anything before you make coffee? Honestly, not really."
+                },
+                {
+                    "say": "Your profile has already set the temperature and the pressure for you."
+                },
+                {
+                    "say": "But these are here for when you want them.",
                     "do": [
                         [
                             "outline",
-                            "#dose-section"
+                            "#grind-section, #dose-section, #drink-section, #brew-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Top left is your grind setting and your dose: how fine you ground, and how many grams went in the basket.",
+                    "do": [
+                        [
+                            "outline",
+                            "#grind-section, #dose-section"
                         ],
                         [
                             "tap",
@@ -202,12 +286,8 @@
                     ]
                 },
                 {
-                    "say": "and your grinder setting beside it.",
+                    "say": "Those two are notes for you. They get saved with the shot so you can repeat it, but they don't change what the machine does.",
                     "do": [
-                        [
-                            "outline",
-                            "#grind-section"
-                        ],
                         [
                             "tap",
                             "#grind-plus"
@@ -215,11 +295,59 @@
                     ]
                 },
                 {
-                    "say": "Streamline remembers both separately for every profile.",
+                    "say": "Drink does. That's the weight in the cup where the machine stops pouring.",
                     "do": [
                         [
                             "outline",
-                            "#grind-section, #dose-section"
+                            "#drink-section"
+                        ],
+                        [
+                            "tap",
+                            "#drink-out-plus"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Change it, and the ratio works itself out.",
+                    "do": [
+                        [
+                            "outline",
+                            "#drink-ratio-value"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Brew temperature comes from your profile. Nudge it here if the coffee tastes flat, or a bit harsh.",
+                    "do": [
+                        [
+                            "outline",
+                            "#brew-section"
+                        ],
+                        [
+                            "tap",
+                            "#temp-plus"
+                        ]
+                    ]
+                },
+                {
+                    "say": "And tapping the weight zeroes your scale.",
+                    "do": [
+                        [
+                            "outline",
+                            "#data-weight"
+                        ],
+                        [
+                            "tap",
+                            "#data-weight"
+                        ]
+                    ]
+                },
+                {
+                    "hold": 1.0,
+                    "do": [
+                        [
+                            "clear",
+                            ""
                         ]
                     ]
                 }
@@ -227,9 +355,10 @@
         },
         {
             "id": "shot",
+            "extra": 0,
             "lines": [
                 {
-                    "say": "Now press espresso on your machine.",
+                    "say": "Now put your cup on the scale, and press the brew button on your machine's group head.",
                     "do": [
                         [
                             "state",
@@ -242,7 +371,7 @@
                     ]
                 },
                 {
-                    "say": "The chart draws the shot as it happens: pressure, flow and weight, second by second.",
+                    "say": "Then just watch it happen.",
                     "do": [
                         [
                             "outline",
@@ -251,43 +380,28 @@
                     ]
                 },
                 {
-                    "say": "Each step of the profile is named at the top right as it happens.",
+                    "say": "Each line is labelled where it ends: pressure, flow, the weight in your cup, and temperature."
+                },
+                {
+                    "say": "The top right tells you which part of the profile you're in right now.",
                     "do": [
                         [
-                            "outline",
+                            "outlineText",
                             "#machine-status"
                         ]
                     ]
                 },
                 {
-                    "say": "The clock and the weight in the status row tell you where you are.",
+                    "say": "And underneath, your preinfusion, extraction and totals fill in as you go.",
                     "do": [
                         [
                             "outline",
-                            "#data-clock"
-                        ]
-                    ]
-                },
-                {
-                    "hold": 2.5,
-                    "do": [
-                        [
-                            "outline",
-                            "#data-weight"
+                            "#shot-data-panel"
                         ]
                     ]
                 },
                 {
                     "hold": 1.5,
-                    "do": [
-                        [
-                            "clear",
-                            ""
-                        ]
-                    ]
-                },
-                {
-                    "hold": 1.0,
                     "do": [
                         [
                             "state",
@@ -302,10 +416,20 @@
             ]
         },
         {
-            "id": "steam",
+            "id": "steamflush",
+            "extra": 0,
             "lines": [
                 {
-                    "say": "For milk, set the time and the flow here first.",
+                    "say": "Below your coffee settings are steam, flush and hot water.",
+                    "do": [
+                        [
+                            "outline",
+                            "#steam-section, #flush-section, #hotwater-section"
+                        ]
+                    ]
+                },
+                {
+                    "say": "Steam is for milk. Set how long, and how fast.",
                     "do": [
                         [
                             "outline",
@@ -350,14 +474,9 @@
                             "idle"
                         ]
                     ]
-                }
-            ]
-        },
-        {
-            "id": "flushwater",
-            "lines": [
+                },
                 {
-                    "say": "Flush and hot water work the same way.",
+                    "say": "Flush rinses the group head after a shot, and hot water is there for tea, or for warming your cup.",
                     "do": [
                         [
                             "outline",
@@ -366,47 +485,16 @@
                     ]
                 },
                 {
-                    "say": "Set the seconds,",
-                    "do": [
-                        [
-                            "outline",
-                            "#flush-section"
-                        ],
-                        [
-                            "tap",
-                            "#flush-preset-1"
-                        ]
-                    ]
-                },
-                {
-                    "say": "or the volume and temperature, on the tablet,",
-                    "do": [
-                        [
-                            "outline",
-                            "#hotwater-section"
-                        ],
-                        [
-                            "tap",
-                            "#hot-water-vol-plus"
-                        ]
-                    ]
-                },
-                {
-                    "say": "and start them on the machine.",
-                    "do": [
-                        [
-                            "clear",
-                            ""
-                        ]
-                    ]
+                    "say": "You set them all here, and start them on the machine itself."
                 }
             ]
         },
         {
             "id": "outro",
+            "extra": 0,
             "lines": [
                 {
-                    "say": "Every shot is saved.",
+                    "say": "Every shot you pull is saved.",
                     "do": [
                         [
                             "outline",
@@ -415,7 +503,7 @@
                     ]
                 },
                 {
-                    "say": "Tap the arrow in Shot History to look back through your last ones,",
+                    "say": "Tap the arrow to look back through the last ones and compare.",
                     "do": [
                         [
                             "tap",
@@ -433,7 +521,7 @@
                     ]
                 },
                 {
-                    "say": "When you're done, tap Sleep to put the machine to sleep.",
+                    "say": "When you're done for the day, Sleep puts the machine to bed.",
                     "do": [
                         [
                             "outline",
@@ -442,7 +530,7 @@
                     ]
                 },
                 {
-                    "say": "And for more helpful tips, open Settings,",
+                    "say": "And if you want to go deeper, Settings has a user manual,",
                     "do": [
                         [
                             "outline",
@@ -464,7 +552,7 @@
                     ]
                 },
                 {
-                    "say": "choose User Manual,",
+                    "say": "with a Quick Start Guide",
                     "do": [
                         [
                             "tap",
@@ -482,7 +570,7 @@
                     ]
                 },
                 {
-                    "say": "and tap the Quick Start Guide to learn more.",
+                    "say": "to walk you through the rest.",
                     "do": [
                         [
                             "tap",
@@ -491,7 +579,7 @@
                     ]
                 },
                 {
-                    "hold": 2.5,
+                    "hold": 2.0,
                     "do": [
                         [
                             "clear",
@@ -513,12 +601,13 @@
                     ]
                 },
                 {
-                    "hold": 4.5
+                    "hold": 4.0
                 }
             ]
         }
     ],
     "hide": [
         "#fullscreen-toggle-btn"
-    ]
+    ],
+    "qwen": "/Users/markc/Documents/streamline_js/john-voice-tts"
 }

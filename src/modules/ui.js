@@ -664,6 +664,8 @@ function showActiveValue(activeEl, otherEl) {
     activeEl.classList.add(...TILE_VALUE_BIG, 'text-[var(--text-primary)]');
     otherEl.classList.remove(...TILE_VALUE_BIG);
     otherEl.classList.add(...TILE_VALUE_SMALL);
+    activeEl.style.pointerEvents = '';
+    otherEl.style.pointerEvents = 'none';
     const stack = activeEl.parentElement;
     if (stack) stack.style.flexDirection = activeEl === stack.firstElementChild ? 'column' : 'column-reverse';
 }

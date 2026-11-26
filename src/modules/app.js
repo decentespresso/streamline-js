@@ -942,9 +942,7 @@ function handleData(data) {
         const willPreload = !!wakeProfileId && sleepSeenAwake;
         logger.audit(`wake-profile: sleep from ${previousState.state}, preload=${willPreload ? wakeProfileId : 'no'}`);
         const preload = willPreload
-            ? profileManager.loadProfileForWake(wakeProfileId)
-                .then(ok => logger.audit(`wake-profile: preload at sleep ${ok ? 'ok' : 'failed'}`))
-                .catch(error => logger.warn('Wake profile preload at sleep failed:', error))
+            ? profileManager.loadProfileForWake(wakeProfileId).catch(error => logger.warn('Wake profile preload at sleep failed:', error))
             : Promise.resolve();
         preload.then(() => getWorkflow())
             .then(wf => logger.audit(`wake-profile: sleep mark ${commit(sleepProfileMark(wf)) ? 'saved' : 'dropped (already awake)'}`))
@@ -959,10 +957,7 @@ function handleData(data) {
         logger.audit(`wake-profile: wake from ${previousState.state} to ${state}, enabled=${!!wakeProfileId}, mark=${mark ? 'yes' : 'no'}`);
         if (wakeProfileId) {
             getWorkflow().catch(() => null).then(wf => {
-                if (shouldApplyWakeProfile(mark, wf)) {
-                    return profileManager.loadProfileForWake(wakeProfileId)
-                        .then(ok => logger.audit(`wake-profile: load on wake ${ok ? 'ok' : 'failed'}`));
-                }
+                if (shouldApplyWakeProfile(mark, wf)) return profileManager.loadProfileForWake(wakeProfileId);
                 logger.audit('wake-profile: skipped, a different profile was chosen while asleep');
             }).catch(error => logger.warn('Wake profile load failed:', error));
         }

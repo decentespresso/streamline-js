@@ -26,7 +26,9 @@ import { openNotesModal } from '../modules/notes-modal.js';
 import { openDB, getSetting, setSetting, addEmails, getAllEmails, getLatestEmailTimestamp } from '../modules/idb.js';
 import { openModal, shouldUseNumpad, initializeNumpadModal } from '../modules/numpad-modal.js';
 import { ensureDye2PluginReady, getDye2VersionInfo, installDye2Plugin, offerDye2Update } from '../modules/dyeStrip.js';
-import { pluginKeywords, pluginListKeywords, subcategoryMatches, textFromHtml, tokenPattern, HIGHLIGHT_CLASS } from '../modules/settings-search.js';
+import { pluginKeywords, pluginListKeywords, subcategoryMatches, textFromHtml } from '../modules/settings-search.js';
+import { highlightSearchMatches, revealSearchMatches } from './search-highlight.js';
+import { SUBNAV_MARKERS_HTML, applyNavMarkers, localToggles, subcategorySummary } from './nav-markers.js';
 import { haYamlBlocks } from '../modules/home-assistant.js';
 import { loadIro } from '../modules/vendor-loader.js';
 import { readSettingsLocation, writeSettingsLocation } from './settings-location.js';
@@ -268,7 +270,29 @@ let activeSettingsCategory = null; // New global variable to track the currently
 let settingsLanguageListenerInstalled = false;
 
 let pendingChanges = { rea: {}, de1: {}, de1Advanced: {}, workflow: {} };
-function resetPendingChanges() { pendingChanges = { rea: {}, de1: {}, de1Advanced: {}, workflow: {} }; }
+const pendingPages = new Set();
+function resetPendingChanges() {
+    pendingChanges = { rea: {}, de1: {}, de1Advanced: {}, workflow: {} };
+    pendingPages.clear();
+    refreshNavMarkers();
+}
+function markActivePagePending() {
+    if (activeSettingsCategory) pendingPages.add(activeSettingsCategory);
+    refreshNavMarkers();
+}
+function refreshNavMarkers() {
+    applyNavMarkers(document.getElementById('sub-categories-panel'), {
+        summaryFor: category => subcategorySummary(category, {
+            ...settingsCache,
+            toggles: localToggles(displayStateCache?.wakeLockOverride ?? isWakeLockEnabled())
+        }, {
+            formatTemp,
+            translate: getTranslation,
+            tempUnit: getTempUnit()
+        }),
+        isStaged: category => pendingPages.has(category)
+    });
+}
 function hasPendingChanges() {
     return Object.keys(pendingChanges.rea).length > 0 ||
         Object.keys(pendingChanges.de1).length > 0 ||
@@ -458,52 +482,26 @@ function syncBrightnessSliderFill(slider, value) {
         `linear-gradient(to right, var(--button-primary-bg) 0%, var(--button-primary-bg) ${stop}%, #e8e8e8 ${stop}%, #e8e8e8 100%)`;
 }
 
-// Light up the search words inside the page itself, not only in the nav on the
-// left. Most of the words a person searches for live in the body copy — typing
-// "upload" surfaces the Shot Uploader page, and the word it matched is in the
-// paragraph under the toggle, so it has to be visible there.
-//
-// Text nodes are rewritten one at a time instead of reassigning innerHTML: the
-// content area is full of live inputs, sliders and inline handlers, and
-// re-serialising it would reset values and drop state. Nothing needs undoing —
-// updateSettingsContentArea rebuilds the area from scratch on every render, so
-// the marks disappear with it.
+let searchRevealTerm = '';
+let searchRevealDone = false;
+
+function setSearchRevealTerm(term) {
+    searchRevealTerm = term;
+    searchRevealDone = false;
+}
+
 function highlightSearchInContent() {
     const area = document.getElementById('settings-content-area');
-    const pattern = tokenPattern(document.getElementById('settings-search')?.value || '');
-    if (!area || !pattern) return;
-
-    const SKIP = new Set(['SCRIPT', 'STYLE', 'MARK', 'INPUT', 'TEXTAREA', 'SELECT', 'OPTION']);
-    const walker = document.createTreeWalker(area, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-            if (!node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
-            if (SKIP.has(node.parentElement?.tagName)) return NodeFilter.FILTER_REJECT;
-            return NodeFilter.FILTER_ACCEPT;
-        },
-    });
-    // Collect first: replacing a node while walking would move the cursor onto
-    // the fragment just inserted.
-    const targets = [];
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        pattern.lastIndex = 0;
-        if (pattern.test(node.nodeValue)) targets.push(node);
+    const typed = document.getElementById('settings-search')?.value || '';
+    if (typed || !searchRevealTerm) {
+        highlightSearchMatches(area, typed);
+        return;
     }
-
-    for (const node of targets) {
-        const frag = document.createDocumentFragment();
-        let last = 0;
-        pattern.lastIndex = 0;
-        for (let m = pattern.exec(node.nodeValue); m; m = pattern.exec(node.nodeValue)) {
-            if (m.index > last) frag.appendChild(document.createTextNode(node.nodeValue.slice(last, m.index)));
-            const mark = document.createElement('mark');
-            mark.className = HIGHLIGHT_CLASS;
-            mark.textContent = m[0];
-            frag.appendChild(mark);
-            last = m.index + m[0].length;
-        }
-        if (last < node.nodeValue.length) frag.appendChild(document.createTextNode(node.nodeValue.slice(last)));
-        node.parentNode.replaceChild(frag, node);
+    if (searchRevealDone) {
+        highlightSearchMatches(area, searchRevealTerm);
+        return;
     }
+    if (revealSearchMatches(area, searchRevealTerm)) searchRevealDone = true;
 }
 
 // Maintenance is an extracted category (categories/maintenance.js). The shell
@@ -659,6 +657,7 @@ function updateSettingsContentArea(category, nav = null) {
         setTimeout(attachSettingsNumpad, 0);
         // After translatePage(), so the marks land on the text actually shown.
         highlightSearchInContent();
+        refreshNavMarkers();
     }
 }
 
@@ -698,6 +697,7 @@ export function updateReaSetting(key, value, rerender = true) {
     if (!settingsCache.rea) settingsCache.rea = {};
     settingsCache.rea[key] = value;
     pendingChanges.rea[key] = value;
+    if (rerender) markActivePagePending();
     if (rerender && activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
 }
 
@@ -706,6 +706,7 @@ export function updateDe1Setting(key, value) {
     if (!settingsCache.de1) settingsCache.de1 = {};
     settingsCache.de1[key] = value;
     pendingChanges.de1[key] = value;
+    markActivePagePending();
     if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
 }
 
@@ -723,6 +724,7 @@ export function updateDe1AdvancedSettings(values) {
         settingsCache.de1Advanced[key] = value;
         pendingChanges.de1Advanced[key] = value;
     }
+    markActivePagePending();
     if (activeSettingsCategory) updateSettingsContentArea(activeSettingsCategory);
 }
 
@@ -732,6 +734,7 @@ export function updateSteamSetting(key, value) {
     if (!settingsCache.workflow.steamSettings) settingsCache.workflow.steamSettings = {};
     settingsCache.workflow.steamSettings[key] = value;
     stageWorkflowField(pendingChanges.workflow, 'steamSettings', key, value);
+    markActivePagePending();
 }
 
 // Update hot water settings via workflow API
@@ -740,6 +743,7 @@ export function updateHotWaterSetting(key, value) {
     if (!settingsCache.workflow.hotWaterData) settingsCache.workflow.hotWaterData = {};
     settingsCache.workflow.hotWaterData[key] = value;
     stageWorkflowField(pendingChanges.workflow, 'hotWaterData', key, value);
+    markActivePagePending();
 }
 
 
@@ -5937,6 +5941,7 @@ async function ensurePluginNav() {
     if (!panel || lastRenderedMainCategory !== 'extensions') return;
     panel.innerHTML = renderSubcategories('extensions');
     translatePage();
+    refreshNavMarkers();
     // Clicks are delegated on the panel, so the rebuilt rows need no listeners
     // -- only the active row's styling, which lived on the element just
     // replaced. Matches activateSubcategory().
@@ -7563,9 +7568,9 @@ export function renderSubcategories(mainCategoryKey) {
         // escaped here like every other manifest string that reaches innerHTML.
         subcategoryItems += `
             <li>
-                <button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]"
+                <button class="settings-subnav-btn grid grid-cols-[1fr_auto_auto] items-center w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]"
                         data-category="${escapeHtml(subcat.settingsCategory)}">
-                    ${prefix}<span data-i18n-key="${escapeHtml(subcat.i18nKey || label)}">${escapeHtml(label)}</span>
+                    <span>${prefix}<span data-i18n-key="${escapeHtml(subcat.i18nKey || label)}">${escapeHtml(label)}</span></span>${SUBNAV_MARKERS_HTML}
                 </button>
             </li>
         `;
@@ -7804,12 +7809,14 @@ function handleSettingsLanguageChange() {
 }
 
 // Initialize the settings page
-export async function initializeSettings({ initialMainCategory = null, initialCategory = null, initialReaChanges = {} } = {}) {
+export async function initializeSettings({ initialMainCategory = null, initialCategory = null, initialReaChanges = {}, revealTerm = '', pendingCategories = [] } = {}) {
+    setSearchRevealTerm(revealTerm);
     const savedLocation = readSettingsLocation();
     const restoredMainCategory = initialMainCategory || savedLocation?.mainCategory || 'quickadjustments';
     const restoredCategory = initialCategory
         || (savedLocation?.mainCategory === restoredMainCategory ? savedLocation.category : null);
     resetPendingChanges();
+    pendingCategories.forEach(category => pendingPages.add(category));
     // Pre-seed cache from IDB backup for instant render, then fetch from network in background
     await preSeedFromIDB();
     Object.entries(initialReaChanges).forEach(([key, value]) => updateReaSetting(key, value, false));
@@ -7907,6 +7914,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         });
         activeMainCategoryKey = button.id.replace(/-btn$/, '').replace(/-/g, '');
         if (subCategoriesPanel) subCategoriesPanel.innerHTML = renderSubcategories(activeMainCategoryKey);
+        refreshNavMarkers();
         const subcategories = Array.from(subCategoriesPanel?.querySelectorAll('.settings-subnav-btn') || []);
         const target = subcategories.find(item => item.dataset.category === requestedCategory) || subcategories[0];
         if (target) activateSubcategory(target);
@@ -7914,11 +7922,15 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
 
     mainCategoriesPanel?.addEventListener('click', event => {
         const button = event.target.closest('.settings-nav-btn');
-        if (button) activateMainCategory(button);
+        if (!button) return;
+        setSearchRevealTerm('');
+        activateMainCategory(button);
     });
     subCategoriesPanel?.addEventListener('click', event => {
         const button = event.target.closest('.settings-subnav-btn');
-        if (button) activateSubcategory(button);
+        if (!button) return;
+        setSearchRevealTerm('');
+        activateSubcategory(button);
     });
 
     const firstMainCategoryBtn = document.getElementById(`${restoredMainCategory}-btn`)
@@ -7959,6 +7971,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
     };
     window.setScreensaverEnabled = function(enabled) {
         localStorage.setItem('screensaverEnabled', enabled ? 'true' : 'false');
+        refreshNavMarkers();
         // If turning OFF while currently shown, hide immediately — the gate in
         // app.js only checks on state transition, so without this the overlay
         // would persist until next wake.
@@ -8018,6 +8031,7 @@ export async function initializeSettings({ initialMainCategory = null, initialCa
         // Either/or: a black cover IS the screen saver, so switching it on turns
         // the image saver off. Switching it off hands the image saver back.
         localStorage.setItem('screensaverEnabled', enabled ? 'false' : 'true');
+        refreshNavMarkers();
         // Repaint a saver that is already up, so the change is visible now rather
         // than only after the next sleep.
         if (ui.isScreensaverActive()) {
@@ -9747,6 +9761,7 @@ function setupSettingsSearch(activateResult) {
             results.addEventListener('click', event => {
                 const button = event.target.closest('.settings-search-result');
                 if (!button) return;
+                setSearchRevealTerm(searchInput.value.trim());
                 searchInput.value = '';
                 restore();
                 activateResult(button.dataset.mainCategory, button.dataset.category);
@@ -9874,6 +9889,7 @@ export function initDeviceWebSocket() {
 function handleDisplayState(data) {
     logger.debug('Display state received:', data);
     displayStateCache = data; // REA truth for render-time reads
+    refreshNavMarkers();
 
     // Update brightness slider + number entry if they exist
     if (data.brightness !== undefined) {
@@ -10089,6 +10105,7 @@ window.handleBrightnessChange = async function(value) {
 // flipped it is the user gesture the AudioContext needs.
 window.handleTouchSoundToggle = function(enabled) {
     try { localStorage.setItem(TOUCH_SOUND_KEY, enabled ? 'true' : 'false'); } catch (e) { /* private mode */ }
+    refreshNavMarkers();
     if (enabled) playTouchSound();
 };
 
@@ -10103,6 +10120,7 @@ window.handleWakeLockToggle = async function(enabled) {
             localStorage.setItem('wakeLockEnabled', 'false');
             ui.showToast(`${getTranslation('Wake Lock')} ${getTranslation('Disabled')}`, 3000, 'success');
         }
+        refreshNavMarkers();
     } catch (error) {
         console.error('Error toggling wake lock:', error);
         ui.showToast('Failed to toggle wake lock', 5000, 'error');

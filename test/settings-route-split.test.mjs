@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { SETTINGS_TREE } from '../src/settings/settings-tree.js';
-import { lowercaseCelsius } from '../src/settings/celsius-label.js';
+import { celsiusLabelText, lowercaseCelsius } from '../src/settings/celsius-label.js';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -113,4 +113,8 @@ test('settings labels show celsius in lowercase, whichever symbol the translatio
     assert.equal(lowercaseCelsius('水箱溫度（℃）'), '水箱溫度（°c）');
     assert.equal(lowercaseCelsius('Fahrenheit (°F)'), 'Fahrenheit (°F)');
     assert.equal(lowercaseCelsius('°Celsius'), '°Celsius');
+    assert.equal(celsiusLabelText('Stop at Milk Temperature (°C)', 'F'), 'Stop at Milk Temperature (°F)');
+    assert.equal(celsiusLabelText('水箱溫度（℃）', 'F'), '水箱溫度（°F）');
+    assert.equal(celsiusLabelText('Stop at Milk Temperature (°C)', 'C'), 'Stop at Milk Temperature (°c)');
+    assert.equal(celsiusLabelText('Set the water tank temperature (10-40°C)', 'F'), 'Set the water tank temperature (10-40°c)');
 });

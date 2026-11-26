@@ -221,3 +221,40 @@ test('Bengle-only page text waits for the model and other machines never render 
 
     assert.match(settingsSource, /preloadSettings\(\)\.then\(\(\) => \{\s*if \(document\.getElementById\('settings-search'\)\) indexSettingsPageText\(\);/);
 });
+
+test('search ignores accents and finds pages by their aliases', async () => {
+    const { foldText } = await import('../src/modules/settings-search.js');
+    assert.equal(foldText('Café Crème'), 'cafe creme');
+    assert.ok(subcategoryMatches({ name: 'Temperature', settingsCategory: 'tempunit' }, 'fahrenheit'));
+    assert.ok(subcategoryMatches({ name: 'Shot control', settingsCategory: 'flowmultiplier' }, 'Look-ahead'));
+    assert.ok(subcategoryMatches({ name: 'Température' }, 'temperature'));
+    assert.ok(!subcategoryMatches({ name: 'Flush', settingsCategory: 'flush' }, 'fahrenheit'));
+});
+
+test('subnav summaries show the value each page holds, or nothing', async () => {
+    const { subcategorySummary } = await import('../src/settings/nav-markers.js');
+    const formatTemp = (celsius, digits) => `${celsius.toFixed(digits)}°c`;
+    const options = { formatTemp, translate: (text) => `t:${text}` };
+    const sources = {
+        de1: { flushTemp: 92.4, tankTemp: 40 },
+        workflow: { steamSettings: { targetTemperature: 160 }, hotWaterData: { targetTemperature: 75 } },
+    };
+    assert.equal(subcategorySummary('steam', sources, options), '160°c');
+    assert.equal(subcategorySummary('steam', { workflow: { steamSettings: { targetTemperature: 0 } } }, options), 't:Off');
+    assert.equal(subcategorySummary('hotwater', sources, options), '75°c');
+    assert.equal(subcategorySummary('flush', sources, options), '92°c');
+    assert.equal(subcategorySummary('watertank', sources, options), '40°c');
+    assert.equal(subcategorySummary('tempunit', {}, { ...options, tempUnit: 'F' }), '°F');
+    assert.equal(subcategorySummary('steam', {}, options), null);
+    assert.equal(subcategorySummary('flush', { de1: {} }, options), null);
+    assert.equal(subcategorySummary('theme', sources, options), null);
+});
+
+test('on/off pages summarise as On or Off in the current language', async () => {
+    const { subcategorySummary } = await import('../src/settings/nav-markers.js');
+    const translate = (text) => ({ on: 'an', Off: 'Aus' })[text] ?? text;
+    const toggles = { sounds: true, wakelock: false };
+    assert.equal(subcategorySummary('sounds', { toggles }, { translate }), 'An');
+    assert.equal(subcategorySummary('wakelock', { toggles }, { translate }), 'Aus');
+    assert.equal(subcategorySummary('screensaver', { toggles }, { translate }), null);
+});

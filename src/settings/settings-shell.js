@@ -7,12 +7,19 @@ import {
     getSnapshot,
     resetSettingsSession,
     saveSettingsData,
-    startSettingsData
+    startSettingsData,
+    subscribe as subscribeSettingsData
 } from './settings-data.js';
+import { getSetting, openDB } from '../modules/idb.js';
+import { formatTemp, getTempUnit } from '../modules/units.js';
+import { SUBNAV_MARKERS_HTML, applyNavMarkers, localToggles, subcategorySummary } from './nav-markers.js';
+import { isWakeLockEnabled } from '../modules/api.js';
 import { SETTINGS_TREE as CANONICAL_SETTINGS_TREE } from './settings-tree.js';
 import { timeNav } from '../modules/perf-probe.js';
 import { observeSelects } from '../modules/custom-select.js';
 import { observeCelsiusLabels } from './celsius-label.js';
+import { categoryMatches, subcategoryMatches } from '../modules/settings-search.js';
+import { revealSearchMatches } from './search-highlight.js';
 
 // [name, category, bengleOnly?] tuples for the pre-legacy-load nav and search,
 // derived from the canonical tree (settings-tree.js) so the two can't drift —
@@ -53,6 +60,11 @@ let legacyMounted = false;
 let searchTimer = null;
 let searchScrollTop = 0;
 let searchActive = false;
+let searchRevealTerm = '';
+let activeCategory = null;
+let backupSources = {};
+let unsubscribeSettingsData = null;
+const stagedCategories = new Set();
 
 // Warm the sensor calibration read the moment Settings is reached, not when
 // the user opens Sensor Calibration -- so the table usually already has
@@ -81,6 +93,42 @@ function availableSubcategories(mainCategory) {
     return (SETTINGS_TREE[mainCategory] || []).filter(([, , bengleOnly]) => !bengleOnly || isBengleMachine());
 }
 
+function refreshNavMarkers() {
+    if (legacyMounted) return;
+    applyNavMarkers(document.getElementById('sub-categories-panel'), {
+        summaryFor: category => subcategorySummary(category, {
+            ...backupSources,
+            toggles: localToggles(isWakeLockEnabled())
+        }, {
+            formatTemp,
+            translate: getTranslation,
+            tempUnit: getTempUnit()
+        }),
+        isStaged: category => stagedCategories.has(category)
+    });
+}
+
+async function loadBackupSources() {
+    try {
+        await openDB();
+        const backup = await getSetting('settingsBackup');
+        if (!backup) return;
+        backupSources = {
+            de1: backup.de1,
+            workflow: { steamSettings: backup.steamSettings, hotWaterData: backup.hotWaterData }
+        };
+        refreshNavMarkers();
+    } catch {
+        backupSources = {};
+    }
+}
+
+function trackStagedCategory(snapshot) {
+    if (!snapshot.dirty) stagedCategories.clear();
+    else if (activeCategory) stagedCategories.add(activeCategory);
+    refreshNavMarkers();
+}
+
 function renderSubcategories(mainCategory) {
     const panel = document.getElementById('sub-categories-panel');
     if (!panel) return;
@@ -88,9 +136,10 @@ function renderSubcategories(mainCategory) {
     panel.innerHTML = `<ul class="space-y-1">${items.map(([name, category], index) => {
         const label = name.replace(/^\d+\.\s*/, '');
         const prefix = `${index + 1}. `;
-        return `<li><button class="settings-subnav-btn w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]" data-category="${category}">${prefix}<span data-i18n-key="${label}">${label}</span></button></li>`;
+        return `<li><button class="settings-subnav-btn grid grid-cols-[1fr_auto_auto] items-center w-full text-left px-4 py-3 rounded-lg text-[24px] text-[#959595] hover:text-white hover:bg-[#2c4a7a]" data-category="${category}"><span>${prefix}<span data-i18n-key="${label}">${label}</span></span>${SUBNAV_MARKERS_HTML}</button></li>`;
     }).join('')}</ul>`;
     translatePage();
+    refreshNavMarkers();
 }
 
 function renderSkeleton() {
@@ -107,9 +156,10 @@ function renderSkeleton() {
     return content;
 }
 
-async function renderCategory(mainCategory, category) {
+async function renderCategory(mainCategory, category, revealTerm = '') {
     const nav = timeNav(`settings/${category}`);
     activeMainCategory = mainCategory;
+    activeCategory = category;
     currentCleanup?.();
     currentCleanup = null;
     const content = renderSkeleton();
@@ -123,10 +173,13 @@ async function renderCategory(mainCategory, category) {
             container: content,
             mainCategory,
             category,
+            revealTerm,
+            pendingCategories: [...stagedCategories],
             activateLegacy: () => {
                 legacyMounted = true;
             }
         });
+        if (!legacyMounted) revealSearchMatches(content, revealTerm);
         nav.done();
     } catch (error) {
         if (sequence !== renderSequence) return;
@@ -184,20 +237,21 @@ function renderSearchResults(searchTerm) {
         searchActive = true;
     }
 
-    const term = searchTerm.toLocaleLowerCase();
+    const term = searchTerm;
     const fragment = document.createDocumentFragment();
     Object.keys(SETTINGS_TREE).forEach(mainCategory => {
         const mainButton = document.getElementById(`${mainCategory}-btn`);
         const mainLabel = mainButton?.querySelector('span')?.textContent?.trim() || mainCategory;
         const mainSourceLabel = mainButton?.querySelector('span')?.dataset.i18nKey || mainCategory;
-        const mainMatches = mainLabel.toLocaleLowerCase().includes(term)
-            || mainSourceLabel.toLocaleLowerCase().includes(term);
+        const mainMatches = categoryMatches(mainLabel, term) || categoryMatches(mainSourceLabel, term);
         availableSubcategories(mainCategory).forEach(([name, category]) => {
             const sourceLabel = name.replace(/^\d+\.\s*/, '');
             const label = getTranslation(sourceLabel);
+            const subcategory = CANONICAL_SETTINGS_TREE[mainCategory].subcategories
+                .find(sub => sub.settingsCategory === category);
             if (!mainMatches
-                && !sourceLabel.toLocaleLowerCase().includes(term)
-                && !label.toLocaleLowerCase().includes(term)) return;
+                && !categoryMatches(label, term)
+                && !subcategoryMatches(subcategory, term)) return;
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'settings-search-result w-full text-left px-4 py-3 rounded-lg text-[24px] text-[var(--text-primary)] hover:bg-[#2c4a7a] hover:text-white flex items-center gap-[10px]';
@@ -224,6 +278,7 @@ function bindShell(root) {
         const searchResult = event.target.closest('.settings-search-result');
         if (searchResult) {
             const searchInput = document.getElementById('settings-search');
+            searchRevealTerm = searchInput?.value.trim() || '';
             if (searchInput) searchInput.value = '';
             clearSearchResults();
             const mainButton = document.getElementById(`${searchResult.dataset.mainCategory}-btn`);
@@ -232,6 +287,7 @@ function bindShell(root) {
         }
         const mainButton = event.target.closest('.settings-nav-btn');
         if (mainButton) {
+            searchRevealTerm = '';
             selectMainCategory(mainButton);
             return;
         }
@@ -239,7 +295,9 @@ function bindShell(root) {
         if (subButton) {
             setActive(Array.from(document.querySelectorAll('.settings-subnav-btn')), subButton);
             writeSettingsLocation(activeMainCategory, subButton.dataset.category);
-            renderCategory(activeMainCategory, subButton.dataset.category);
+            const revealTerm = searchRevealTerm;
+            searchRevealTerm = '';
+            renderCategory(activeMainCategory, subButton.dataset.category, revealTerm);
         }
     });
 
@@ -366,14 +424,21 @@ export async function initializeSettingsShell() {
     searchTimer = null;
     searchScrollTop = 0;
     searchActive = false;
+    searchRevealTerm = '';
+    activeCategory = null;
+    backupSources = {};
+    stagedCategories.clear();
     resetSettingsSession();
+    unsubscribeSettingsData?.();
+    unsubscribeSettingsData = subscribeSettingsData(trackStagedCategory);
+    loadBackupSources();
     startSettingsData();
     warmSensorCalibrationInBackground();
     bindShell(root);
     selectCleanup?.();
     selectCleanup = observeSelects(document.getElementById('settings-content-area'));
     celsiusCleanup?.();
-    celsiusCleanup = observeCelsiusLabels(root);
+    celsiusCleanup = observeCelsiusLabels(root, { unit: getTempUnit });
     initResizableSeparators();
     const saved = readSettingsLocation();
     const first = document.getElementById(`${saved?.mainCategory || 'quickadjustments'}-btn`)
@@ -392,6 +457,9 @@ export function cleanupSettingsShell() {
     currentRoot = null;
     legacyMounted = false;
     renderSequence += 1;
+    unsubscribeSettingsData?.();
+    unsubscribeSettingsData = null;
+    stagedCategories.clear();
     clearTimeout(searchTimer);
     searchTimer = null;
     resetSettingsSession();

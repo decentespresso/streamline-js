@@ -885,18 +885,17 @@ export async function loadProfileForWake(profileId) {
         targetYield > 0 ? { ...profile, target_weight: targetYield } : profile, meta);
     try {
         const wakePatch = { profile: profileToSend, context: { ...dial, ...recipeIdPatch(null) } };
-        await updateWorkflow(wakePatch, 'profile.wake');
-        if (!workflowHoldsProfile(await getWorkflow().catch(() => null), profileToSend)) {
-            logger.warn(`Wake profile ${profileId} did not stick; retrying once.`);
+        let held = false;
+        for (let attempt = 0; attempt < 2 && !held; attempt++) {
+            if (attempt) logger.warn(`Wake profile ${profileId} did not stick; retrying once.`);
             await updateWorkflow(wakePatch, 'profile.wake');
-            if (!workflowHoldsProfile(await getWorkflow().catch(() => null), profileToSend)) {
-                logger.error(`Wake profile ${profileId} still not on the machine after retry.`);
-                return false;
-            }
-            logger.audit(`wake-profile: ${profileId} verified on /workflow after retry`);
-        } else {
-            logger.audit(`wake-profile: ${profileId} verified on /workflow`);
+            held = workflowHoldsProfile(await getWorkflow().catch(() => null), profileToSend);
         }
+        if (!held) {
+            logger.error(`Wake profile ${profileId} still not on the machine after retry.`);
+            return false;
+        }
+        logger.audit(`wake-profile: ${profileId} verified on /workflow`);
         setActiveProfile(profileId);
         // Steam rides its own setters, not the workflow context.
         await applySavedSteamSettings(meta);

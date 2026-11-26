@@ -16,6 +16,8 @@
 
 import { chromium } from 'playwright';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readFile, mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +26,10 @@ import { promisify } from 'node:util';
 const run = promisify(execFile);
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, 'out', 'explainer');
+// Qwen costs ~10s a line, so a clip is keyed by its words and reused until
+// those words change.
+const CACHE = join(HERE, 'out', 'voice-cache');
+const sha = text => createHash('sha1').update(text).digest('hex').slice(0, 16);
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -34,6 +40,7 @@ const flag = (name, fallback) => {
 const script = JSON.parse(await readFile(join(HERE, 'explainer.json'), 'utf8'));
 const VOICE = flag('voice', script.voice);
 const KOKORO = flag('kokoro', script.kokoro);
+const QWEN = flag('qwen', script.qwen);
 const AUDIO_ONLY = args.includes('--audio-only');
 const BASE = flag('base', script.baseUrl);
 const DECAID = flag('decaid', script.decaid);
@@ -53,6 +60,15 @@ async function duration(file) {
 
 // Kokoro when a model is configured, otherwise macOS `say`. Kokoro sounds
 // markedly better; `say` needs nothing installed.
+// John's cloned voice renders every line in one process: the model costs ~15s
+// to load and the whole script is only a few minutes of speech.
+async function speakAll(items) {
+    const batch = join(OUT, 'batch.json');
+    await writeFile(batch, JSON.stringify(items));
+    await run(join(QWEN, '.venv-qwen/bin/python'), ['-I', join(QWEN, 'tts.py'), '--batch', batch],
+        { maxBuffer: 1 << 24 });
+}
+
 async function speak(text, out) {
     if (KOKORO) {
         await run(join(KOKORO, 'venv/bin/python'), [
@@ -70,6 +86,16 @@ async function speak(text, out) {
 }
 
 async function narrate() {
+    if (QWEN) {
+        const items = [];
+        let i = 0;
+        for (const scene of script.scenes)
+            for (const line of scene.lines)
+                if (line.say) items.push({ out: join(CACHE, `${sha(line.say)}.wav`), text: line.say });
+        const missing = items.filter(it => !existsSync(it.out));
+        say(`  ${items.length} lines, ${missing.length} to render in John's voice`);
+        if (missing.length) await speakAll(missing);
+    }
     const scenes = [];
     let n = 0;
     for (const scene of script.scenes) {
@@ -79,8 +105,10 @@ async function narrate() {
             let length = line.hold ?? 0;
             let file = null;
             if (line.say) {
-                file = join(OUT, `${String(++n).padStart(2, '0')}-${scene.id}.wav`);
-                await speak(line.say, file);
+                n++;
+                file = QWEN ? join(CACHE, `${sha(line.say)}.wav`)
+                            : join(OUT, `${String(n).padStart(2, '0')}-${scene.id}.wav`);
+                if (!QWEN) await speak(line.say, file);
                 length = await duration(file) + script.gap;
             }
             lines.push({ ...line, at, length, file });
@@ -151,21 +179,30 @@ async function installOverlay(page) {
         document.body.appendChild(box);
         // A selector list outlines all of them at once: "steam, flush and hot
         // water" wants one box around the three, not a box on the first.
-        window.__exOutline = selector => {
+        window.__exOutline = (selector, textOnly) => {
             const els = [...document.querySelectorAll(selector)].filter(e => e.getClientRects().length);
             if (!els.length) return false;
-            const boxes = els.map(e => e.getBoundingClientRect());
-            const r = {
-                left: Math.min(...boxes.map(b => b.left)),
-                top: Math.min(...boxes.map(b => b.top)),
-                right: Math.max(...boxes.map(b => b.right)),
-                bottom: Math.max(...boxes.map(b => b.bottom)),
+            // A wide container with a short label (the machine status is a 556px
+            // right-aligned box) should be outlined around its words, not its box.
+            const rectOf = el => {
+                if (textOnly) {
+                    const range = document.createRange();
+                    range.selectNodeContents(el);
+                    const r = range.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) return r;
+                }
+                return el.getBoundingClientRect();
             };
-            r.width = r.right - r.left;
-            r.height = r.bottom - r.top;
+            const boxes = els.map(rectOf);
+            const pad = 6;
+            const left = Math.max(pad, Math.min(...boxes.map(b => b.left)) - pad);
+            const top = Math.max(pad, Math.min(...boxes.map(b => b.top)) - pad);
+            const right = Math.min(window.innerWidth - pad, Math.max(...boxes.map(b => b.right)) + pad);
+            const bottom = Math.min(window.innerHeight - pad, Math.max(...boxes.map(b => b.bottom)) + pad);
             Object.assign(box.style, {
-                left: `${r.left - 6}px`, top: `${r.top - 6}px`,
-                width: `${r.width + 12}px`, height: `${r.height + 12}px`,
+                left: `${left}px`, top: `${top}px`,
+                width: `${Math.max(0, right - left)}px`,
+                height: `${Math.max(0, bottom - top)}px`,
                 opacity: '1',
             });
             return true;
@@ -202,10 +239,11 @@ async function requireMock() {
 }
 
 const OPS = {
-    outline: async (page, selector) => {
+    outlineText: (page, selector) => OPS.outline(page, selector, true),
+    outline: async (page, selector, textOnly = false) => {
         const alive = await page.evaluate(() => typeof window.__exOutline === 'function');
         if (!alive) await installOverlay(page);
-        if (!await page.evaluate(s => window.__exOutline(s), selector)) {
+        if (!await page.evaluate(([s, t]) => window.__exOutline(s, t), [selector, textOnly])) {
             say(`  ! outline missed ${selector}`);
         }
     },
@@ -255,6 +293,16 @@ async function film(scenes) {
         Storage.prototype.setItem = function (k, v) {
             write.call(this, k, k in pinned ? pinned[k] : v);
         };
+        // settingsSync applies Decaid's synced theme straight onto data-theme,
+        // which never goes through setItem, so hold the attribute instead.
+        const theme = pinned.theme;
+        if (!theme) return;
+        const root = document.documentElement;
+        const hold = () => {
+            if (root.getAttribute('data-theme') !== theme) root.setAttribute('data-theme', theme);
+        };
+        hold();
+        new MutationObserver(hold).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
     }, script.localStorage ?? {});
     await forceGhc(page);
     await page.goto(BASE, { waitUntil: 'networkidle' });
@@ -315,6 +363,7 @@ async function assemble(webm, lead, total) {
 
 await rm(OUT, { recursive: true, force: true });
 await mkdir(OUT, { recursive: true });
+await mkdir(CACHE, { recursive: true });
 
 say(`voice: ${VOICE}`);
 const scenes = await narrate();
