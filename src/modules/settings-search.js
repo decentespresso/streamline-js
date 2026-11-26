@@ -38,15 +38,38 @@ export function pluginListKeywords(plugins) {
 // used to find nothing, because the whole string had to occur verbatim and no
 // label contains it; the words are next to each other in the user's head, not in
 // the text. Order does not matter and neither does where each word lands.
+export function foldText(value) {
+    return String(value || '').normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+export const SEARCH_ALIASES = Object.freeze({
+    flowmultiplier: 'look-ahead lookahead flow multiplier weight volume stop drip',
+    steam: 'milk froth wand purge',
+    hotwater: 'tea americano',
+    tempunit: 'celsius fahrenheit °c °f degrees',
+    brightness: 'dim screen backlight',
+    fontsize: 'text font zoom larger readable',
+    wakelock: 'keep screen awake',
+    usbchargermode: 'battery tablet charging',
+    maint_cleaning: 'backflush detergent group',
+    maint_descaling: 'limescale citric',
+    maint_airpurge: 'empty drain travel ship',
+    ble_scale: 'bluetooth weight',
+    ble_machine: 'bluetooth connect',
+    ble_grinder: 'grind',
+    firmware: 'version',
+    sounds: 'beep audio',
+});
+
 export function searchTokens(searchTerm) {
-    return String(searchTerm || '').toLowerCase().split(/\s+/).filter(Boolean);
+    return foldText(searchTerm).split(/\s+/).filter(Boolean);
 }
 
 // Everything a subcategory can be found by: its label, its id, the vocabulary
 // of any plugin it hosts, and the words rendered on the page itself.
 function haystack(subcat) {
-    return [subcat.name, subcat.id, subcat.keywords, subcat.pageText]
-        .filter(Boolean).join(' ').toLowerCase();
+    return foldText([subcat.name, subcat.id, subcat.keywords, subcat.pageText, SEARCH_ALIASES[subcat.settingsCategory]]
+        .filter(Boolean).join(' '));
 }
 
 // The one predicate both the filter pass and the render pass use, so a term that
@@ -62,7 +85,7 @@ export function subcategoryMatches(subcat, searchTerm) {
 export function categoryMatches(name, searchTerm) {
     const tokens = searchTokens(searchTerm);
     if (tokens.length === 0) return true;
-    const text = String(name || '').toLowerCase();
+    const text = foldText(name);
     return tokens.every(token => text.includes(token));
 }
 
