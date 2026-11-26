@@ -854,7 +854,7 @@ export async function loadProfileForWake(profileId) {
             const resolvedKey = staleTitle && resolveProfileKeyByTitle(availableProfiles, staleTitle, translateProfileTitle);
             if (resolvedKey && resolvedKey !== profileId) {
                 profile = availableProfiles[resolvedKey].profile;
-                logger.info(`Wake profile ${profileId} was superseded by an edit; resolved by title to ${resolvedKey}.`);
+                logger.audit(`wake-profile: ${profileId} superseded, resolved by title to ${resolvedKey}`);
                 profileId = resolvedKey;
                 localStorage.setItem('wakeProfileId', profileId);
             }
@@ -869,7 +869,7 @@ export async function loadProfileForWake(profileId) {
     }
     if (await recipeHoldsDial(profile)) {
         setActiveProfile(profileId);
-        logger.info(`Wake profile ${profileId} already loaded under a selected recipe; dial left alone.`);
+        logger.audit(`wake-profile: ${profileId} already loaded under a DYE2 recipe, dial left alone`);
         return true;
     }
     // Waking onto a profile is a profile switch, so it owes the same saved
@@ -893,6 +893,9 @@ export async function loadProfileForWake(profileId) {
                 logger.error(`Wake profile ${profileId} still not on the machine after retry.`);
                 return false;
             }
+            logger.audit(`wake-profile: ${profileId} verified on /workflow after retry`);
+        } else {
+            logger.audit(`wake-profile: ${profileId} verified on /workflow`);
         }
         setActiveProfile(profileId);
         // Steam rides its own setters, not the workflow context.
