@@ -658,6 +658,10 @@ plugin — with none installed the page says so and offers **Search**. Two switc
 
 See [docs/grinders.md](docs/grinders.md) for the plugin side.
 
+The buttons a grinder plugin offers on its card (its settings or diagnostics page) open the page
+in a dialog with a **Close** button. If the page cannot be shown there, **Open anyway** opens it in
+place of the skin: the kiosk leaves Streamline until you navigate back.
+
 ### 3. Calibration
 Sub-pages for **Default load settings**, **Refill Kit**, **Voltage**, **Fan**, **Steam**
 (steam-heater on/off toggle and temperature), **Sensor Calibration** (temperature and

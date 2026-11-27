@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { STRIP_BAR_MAX, stripLayout, STRIP_COLUMNS, stripReading, stripDotLevel, stripBarFraction, STRIP_MAX_CELLS, scaleDoseWeight, scaleDoseFor, fitOverlaySize, parseNumpadInput, fitNumpadValue, yieldForRatio, doseForRatio, parseSkinAnswer, skinPlugins, callableEndpoint, liveEndpoint, pushWants, createPushCoalescer, RESERVED_ENDPOINTS, MAX_SURFACES,
-    nextStepSize, resolveStepSize, formatStepSize } from '../src/modules/plugin-surfaces.js';
+    nextStepSize, resolveStepSize, formatStepSize, deviceSurfaceUrl } from '../src/modules/plugin-surfaces.js';
 
 const ok = surfaces => parseSkinAnswer({ version: 1, surfaces }).surfaces;
 
@@ -880,4 +880,22 @@ test('stepsize custom: a typed step is kept, sizes may be empty only with custom
     assert.equal(resolveStepSize([], 0.25, true), 0.25);
     // a tap from a typed step goes back to the first offered size
     assert.equal(nextStepSize([1, 5], 2.5), 1);
+});
+
+test('deviceSurfaceUrl: only a plugin page on the Decaid API origin', () => {
+    const api = 'http://tablet:8080';
+    assert.equal(deviceSurfaceUrl('/api/v1/plugins/grinder/diagnostics?ui=1&deviceId=g%2F1', api),
+        'http://tablet:8080/api/v1/plugins/grinder/diagnostics?ui=1&deviceId=g%2F1');
+    assert.equal(deviceSurfaceUrl('http://tablet:8080/api/v1/plugins/grinder/settings', api), 'http://tablet:8080/api/v1/plugins/grinder/settings');
+    for (const bad of [
+        'javascript:alert(1)',
+        'data:text/html,<script>alert(1)</script>',
+        'https://evil.example/api/v1/plugins/grinder/settings',
+        '//evil.example/api/v1/plugins/grinder/settings',
+        'http://tablet:8081/api/v1/plugins/grinder/settings',
+        '/api/v1/machine/state',
+        '/api/v1/plugins/../machine/state',
+        'http://user:pw@tablet:8080/api/v1/plugins/grinder/settings',
+        '', null, 42,
+    ]) assert.equal(deviceSurfaceUrl(bad, api), null, String(bad));
 });

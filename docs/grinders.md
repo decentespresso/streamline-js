@@ -28,8 +28,12 @@ The Grind tile is a recipe value (remembered per profile). The grinder has its o
 
 With both on, a value one side just wrote is not sent back, so they do not fight.
 
-The Grinder page also links to the plugin's own settings and diagnostics pages when the plugin offers them.
+The Grinder page also opens the plugin's own settings and diagnostics pages when the plugin offers them, in a dialog over the page with a **Close** button (a tap outside it or Escape closes it too). The page must allow the skin to frame it (see below); the page gets `embed=1` and `theme=light|dark` like a plugin overlay. A page Decaid answers with an error, or one that does not load within 10 s, shows an error instead, and **Open anyway** under the dialog opens the page in place of the skin for a host that refuses to be framed (the kiosk then leaves the skin).
 
 ## For plugin authors
 
 A plugin that wants the skin to follow a reading without the user flipping the switch can use the `tile-sync` surface instead; see [plugin-surfaces.md](plugin-surfaces.md#tile-sync).
+
+A settings or diagnostics page shown in the dialog must send its own `Content-Security-Policy: frame-ancestors` naming the skin's origin (for example `frame-ancestors 'self' http://localhost:*`). Without it the frame is refused: Decaid's web server is built on `dart:io`, whose default response headers include `X-Frame-Options: SAMEORIGIN`, and the skin is served from another port than the API. Decaid passes a plugin's own response headers through, and a browser ignores `X-Frame-Options` when `frame-ancestors` is present (decentespresso/decaid#990). The refusal is invisible to the skin, which is why **Open anyway** stays under the frame.
+
+Opening a page GETs it twice: once to check it answers 2xx, then in the frame. Keep GET on these pages free of side effects.
