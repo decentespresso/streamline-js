@@ -502,11 +502,15 @@ export async function applyPluginStepAsync(field, by) {
     return applyPluginSetAsync(field, current + by);
 }
 
-export function updateGrindValue(newValue) {
-    workflowGrind = newValue;
+function holdSteppedGrind(value) {
+    workflowGrind = value;
     document.getElementById('grind-value')?.style.removeProperty('font-size');
     document.getElementById('grind-value')?.removeAttribute('data-reading-only');
     showGrindSource(false);
+}
+
+export function updateGrindValue(newValue) {
+    holdSteppedGrind(newValue);
     const workflowUpdate = {
         context: {
             grinderSetting: parseFloat(newValue).toFixed(2)
@@ -3003,7 +3007,7 @@ export function initUI(callbacks) {
     setupValueAdjuster('grind-minus', 'grind-plus', 'grind-value', grindStepNow,
         () => workflowGrinderRange.min,
         (val) => Number.isInteger(grindStepNow()) ? String(Math.round(val)) : val.toFixed(grindDecimals(grindStepNow())),
-        updateGrindValue, undefined, () => workflowGrinderRange.max);
+        updateGrindValue, holdSteppedGrind, () => workflowGrinderRange.max);
     setupValueAdjuster('flush-minus', 'flush-plus', 'flush-value', 1, 0, (val) => `${val}s`, (val) => {
         updateFlushValue(val);
         updateFlushDisplay(val);
