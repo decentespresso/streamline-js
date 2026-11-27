@@ -213,15 +213,19 @@ export async function getGrinderDevices() {
     return Array.isArray(devices) ? devices.filter(device => device?.type === 'grinder') : [];
 }
 
-/** GET /grinder/info -> { deviceId, capabilities, observations?, controls?, surfaces? }, or null. */
+/**
+ * GET /grinder/info -> { deviceId, capabilities, observations?, controls?, surfaces? }; null when
+ * Decaid says no grinder is connected (503), undefined when it could not be asked.
+ */
 export async function getGrinderInfo() {
     return dedupedGet('grinder/info', async () => {
         try {
             const response = await fetch(`${API_BASE_URL}/grinder/info`);
-            return response.ok ? await response.json() : null;
+            if (response.ok) return await response.json();
+            return response.status === 503 ? null : undefined;
         } catch (error) {
             logger.debug('Grinder info unavailable:', error);
-            return null;
+            return undefined;
         }
     });
 }

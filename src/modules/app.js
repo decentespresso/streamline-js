@@ -1776,10 +1776,9 @@ async function loadInitialData() {
         } else if (grinderData?.setting) {
             ui.updateGrindDisplay(grinderData);
         } else {
-            // A dash, not a 0: a recipe naming no grind clears the field (#189), and 0
-            // reads as a real dial position. Nothing is set, so say nothing is set.
-            const grindEl = document.getElementById('grind-value');
-            if (grindEl) grindEl.textContent = '—';
+            // A recipe naming no grind clears the field (#189): the tile falls back to the
+            // connected grinder's own reading, else a dash -- not a 0, which reads as a dial position.
+            ui.updateGrindDisplay(null);
         }
         logger.debug("Dose data received:", context || doseData);
         

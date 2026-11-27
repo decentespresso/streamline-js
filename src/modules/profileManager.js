@@ -960,8 +960,7 @@ export async function resetActiveProfileToDefaults() {
 
     // Tiles come from what Rea echoed back, so they show the machine's numbers.
     applyWorkflowToMainPageUI(sentWorkflow, { updateName: false });
-    const grindEl = document.getElementById('grind-value');
-    if (grindEl) grindEl.textContent = RESET_GRINDER_SETTING;
+    updateGrindDisplay({ grinderSetting: RESET_GRINDER_SETTING });
 
     // Pin what the reset landed on as this profile's own numbers, exactly as if
     // the user had typed them -- but only for the two fields the profile schema
@@ -1151,11 +1150,9 @@ async function handleProfileClick(index) {
 
             // The one tile applyWorkflowToMainPageUI cannot paint: a null grind
             // means nothing is known, and leaving the previous profile's number
-            // standing would claim the machine is set to it.
-            if (workflowResponse.context?.grinderSetting == null) {
-                const grindEl = document.getElementById('grind-value');
-                if (grindEl) grindEl.textContent = '0';
-            }
+            // standing would claim the machine is set to it. Same as the first
+            // paint: the connected grinder's reading, else a dash.
+            if (workflowResponse.context?.grinderSetting == null) updateGrindDisplay(null);
 
             if (!held) await applySavedSteamSettings(meta);
 
