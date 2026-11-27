@@ -259,7 +259,7 @@ export function connectGrinderSnapshot(onSnapshot, onOpen = null) {
 /**
  * GET a Decaid-served page before it is framed (plugin endpoints dispatch every method to the
  * plugin, so HEAD would not be cheaper or safer): true for 2xx, false for any other status,
- * null when the request itself failed.
+ * null when the request itself failed. The frame then GETs the page again.
  */
 export async function isPageAvailable(url, signal) {
     try {

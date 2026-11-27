@@ -1,7 +1,8 @@
 // A device plugin's own page (settings, diagnostics) in a dialog over the settings page,
-// so the WebView never navigates away from the skin. The host must allow framing the
-// page (CSP frame-ancestors); a refusal is invisible to the skin, so the fallback link
-// to open the page itself stays on screen. Key events go to the frame once it is
+// so the WebView never navigates away from the skin. The page must send its own CSP
+// frame-ancestors, or Decaid's default X-Frame-Options: SAMEORIGIN refuses the frame; a
+// refusal is invisible to the skin, so the fallback link to open the page itself stays
+// on screen. Key events go to the frame once it is
 // touched and a tablet has no Escape key: the dialog closes on its own button and on a
 // backdrop tap too.
 
